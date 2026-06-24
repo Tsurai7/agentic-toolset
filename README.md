@@ -4,6 +4,9 @@ Portable AI agent configuration: skills, instructions, MCP integrations, and syn
 
 This repo is the **source of truth**. Provider-specific paths are populated by `bin/install.sh`.
 
+- New machine? See [`SETUP.md`](SETUP.md).
+- Working on the repo itself? See [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
 ## Quick start
 
 ```bash

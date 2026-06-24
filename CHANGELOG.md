@@ -2,6 +2,15 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.5.0] — 2026-06-24
+
+### Added
+- `SETUP.md` — step-by-step onboarding for a new machine (prerequisites, auth,
+  clone path, install, update, per-project use, and honest portability caveats).
+- `ARCHITECTURE.md` — internal wiring for agents working on the repo: the
+  source-of-truth → render → provider model, directory map, merge-mcp invariants,
+  conventions, how-to-extend, and gotchas. Linked from the README.
+
 ## [0.4.0] — 2026-06-24
 
 ### Added
