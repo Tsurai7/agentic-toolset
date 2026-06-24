@@ -2,6 +2,14 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.9.0] — 2026-06-24
+
+### Added
+- `core/principles/honesty.md` — honesty-and-transparency principle: every claim
+  must be backed by cited evidence, fact separated from inference, outcomes
+  reported faithfully (including failures and unverified parts), and no hidden
+  side effects.
+
 ## [0.8.0] — 2026-06-24
 
 ### Added
