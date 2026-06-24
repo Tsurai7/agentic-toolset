@@ -17,6 +17,7 @@ run() {
 link_skills() {
   local target="${HOME}/.cursor/skills"
   local source="${AGENTIC_ROOT}/core/skills"
+  run mkdir -p "${HOME}/.cursor"
   if [[ -L "$target" ]]; then
     run rm "$target"
   elif [[ -d "$target" ]]; then
@@ -69,8 +70,35 @@ install_rules() {
   log "rules: linked from $rules_src"
 }
 
+install_principles() {
+  local src="${AGENTIC_ROOT}/core/principles"
+  local dst="${HOME}/.cursor/rules"
+  [[ -d "$src" ]] || return 0
+  run mkdir -p "$dst"
+  for f in "$src"/*.md; do
+    [[ -f "$f" ]] || continue
+    [[ "$(basename "$f")" == "README.md" ]] && continue
+    local name out
+    name="$(basename "$f" .md)"
+    out="${dst}/principle-${name}.mdc"
+    if [[ "$DRY_RUN" == "1" ]]; then
+      log "[dry-run] render principle $name -> $out"
+      continue
+    fi
+    {
+      printf -- '---\n'
+      printf 'description: "Always-on principle: %s"\n' "$name"
+      printf 'alwaysApply: true\n'
+      printf -- '---\n\n'
+      cat "$f"
+    } >"$out"
+    log "principle: $out"
+  done
+}
+
 link_skills
 install_mcp
 install_rules
 install_hooks
+install_principles
 log "done"

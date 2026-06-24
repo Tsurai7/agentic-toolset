@@ -45,6 +45,7 @@ Rules:
 
 | Topic | File |
 |-------|------|
+| Always-on principles (think/simplify/surgical/verify) | [`core/principles/`](../../core/principles/) |
 | Communication & citations | [user-rules/communication.md](user-rules/communication.md) |
 | Code change principles | [user-rules/coding-principles.md](user-rules/coding-principles.md) |
 | Cursor rules pointer | [user-rules/cursor-rules-pointer.md](user-rules/cursor-rules-pointer.md) |

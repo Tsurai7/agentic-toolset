@@ -48,6 +48,7 @@ flowchart LR
 | `core/skills/<name>/SKILL.md` | Personal skills. Symlinked to `~/.cursor/skills` and `~/.claude/skills`. |
 | `core/rules/*.mdc` | Cursor rules (with `description` / `alwaysApply` frontmatter). Symlinked to `~/.cursor/rules`. |
 | `core/instructions/AGENTS.md` | Portable agent instructions (the [agents.md](https://agents.md) convention). Inlined into the generated `~/.claude/CLAUDE.md`. |
+| `core/principles/*.md` | Always-on behavioral principles. Concatenated into `CLAUDE.md`; rendered to `alwaysApply` Cursor rules. Principle vs skill: see `core/principles/README.md`. |
 | `core/instructions/user-rules/*.md` | Detailed rule docs, appended to `CLAUDE.md` and referenced from `AGENTS.md`. |
 | `core/workflows/README.md` | Decision guide for when to reach for which skill/plugin. |
 | `integrations/<name>/mcp*.json` | MCP server fragments, collected and merged into provider `mcp.json` files. |
@@ -113,6 +114,7 @@ can live anywhere — no path is tied to a specific machine.
 | Goal | Do this |
 |------|---------|
 | Add a skill | Create `core/skills/<name>/SKILL.md` with frontmatter. It auto-syncs via the symlink — no install code change. |
+| Add an always-on principle | Drop `core/principles/<name>.md`; it is concatenated into `CLAUDE.md` and rendered to a Cursor `alwaysApply` rule. Keep it short. |
 | Add a Cursor rule | Drop `core/rules/<name>.mdc`; `install_rules` links it. |
 | Add an MCP server | Create `integrations/<name>/mcp.stdio.json` (use `__PLACEHOLDER__` for machine-specific values) + a short README. Add defaults to `merge-mcp.load_env` and `secrets/.env.example` if it needs new env. |
 | Add an eval | Drop a JSON case in `evals/cases/` (see `evals/README.md`). |

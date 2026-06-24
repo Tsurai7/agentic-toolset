@@ -23,6 +23,7 @@ Cursor / Claude after install. Full walkthrough: [`SETUP.md`](SETUP.md).
 |------|---------|
 | `core/skills/` | Personal `SKILL.md` files (symlinked to `~/.cursor/skills` and `~/.claude/skills`) |
 | `core/instructions/` | `AGENTS.md` + exported user rules |
+| `core/principles/` | Always-on behavioral principles (concatenated into `CLAUDE.md`; rendered to Cursor `alwaysApply` rules) |
 | `core/rules/` | Cursor `.mdc` rules (symlinked to `~/.cursor/rules`) |
 | `integrations/` | Custom MCP server definitions (merged into provider configs) |
 | `catalog/plugins.yaml` | Marketplace plugins to enable manually (not vendored) |

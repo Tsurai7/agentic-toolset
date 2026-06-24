@@ -45,6 +45,14 @@ install_claude_md() {
     sed "s#__AGENTIC_ROOT__#${AGENTIC_ROOT}#g" "$stub"
     cat "$agents"
     echo ""
+    echo "## Principles (always-on)"
+    for f in "${AGENTIC_ROOT}/core/principles"/*.md; do
+      [[ -f "$f" ]] || continue
+      [[ "$(basename "$f")" == "README.md" ]] && continue
+      echo ""
+      cat "$f"
+    done
+    echo ""
     echo "## User rules"
     for f in "${AGENTIC_ROOT}/core/instructions/user-rules"/*.md; do
       [[ -f "$f" ]] || continue

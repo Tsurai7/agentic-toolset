@@ -2,6 +2,16 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.8.0] — 2026-06-24
+
+### Added
+- `core/principles/` — always-on behavioral principles layer. Added the Karpathy
+  guidelines (think before coding, simplicity, surgical changes, goal-driven
+  execution), adapted from multica-ai/andrej-karpathy-skills (MIT). Principles are
+  concatenated into the generated `CLAUDE.md` and rendered to `alwaysApply` Cursor
+  rules by the installers. `core/principles/README.md` documents the
+  principle-vs-skill decision.
+
 ## [0.7.0] — 2026-06-24
 
 ### Added
