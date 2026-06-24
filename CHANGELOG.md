@@ -2,6 +2,17 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.3.0] — 2026-06-24
+
+### Added
+- `core/rules/lean-ctx.mdc` — pulled the personal lean-ctx rule out of the local
+  Cursor config (`~/.cursor/rules/`) into the repo so it is portable across
+  machines. `providers/cursor/install.sh` symlinks it back into `~/.cursor/rules`.
+
+### Fixed
+- Repaired the `~/.cursor/skills` symlink, which pointed at the stale `agentic`
+  path and was dangling; it now resolves to `agentic-cfg/core/skills`.
+
 ## [0.2.0] — 2026-06-24
 
 ### Fixed

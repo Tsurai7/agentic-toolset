@@ -21,6 +21,7 @@ Restart Cursor / Claude after install.
 |------|---------|
 | `core/skills/` | Personal `SKILL.md` files (symlinked to `~/.cursor/skills` and `~/.claude/skills`) |
 | `core/instructions/` | `AGENTS.md` + exported user rules |
+| `core/rules/` | Cursor `.mdc` rules (symlinked to `~/.cursor/rules`) |
 | `integrations/` | Custom MCP server definitions (merged into provider configs) |
 | `catalog/plugins.yaml` | Marketplace plugins to enable manually (not vendored) |
 | `providers/` | Per-provider install scripts and templates |
