@@ -3,45 +3,49 @@
 How to install this agentic config on a fresh laptop for **Cursor** and/or
 **Claude** (Desktop + Code), and how to keep it updated.
 
-## 0. Prerequisites (once per machine)
-
-```bash
-xcode-select --install                  # git
-brew install python3 node               # python3 + npx (installer + MCP launchers)
-
-# Optional external binaries the config REFERENCES but does not vendor:
-brew install yvgude/lean-ctx/lean-ctx   # lean-ctx (ctx_* tools + hooks)
-# rtk — installed separately; not version-controlled in this repo (see Caveats)
-```
-
-GitNexus needs no install — it runs via `npx`.
-
 ## 1. Authenticate (the repo is private)
 
 The repo lives under the **Tsurai7** GitHub account and is private, so a new
-machine needs access:
+machine needs access first:
 
 ```bash
-brew install gh
+# install gh however you like, then:
 gh auth login            # log in as Tsurai7, HTTPS protocol
 ```
 
-## 2. Clone into the expected path
+## 2. Clone (anywhere)
 
-The generated `~/.claude/CLAUDE.md` points at a fixed path, so clone there:
-
-```bash
-git clone https://github.com/Tsurai7/agentic-cfg.git ~/Documents/GitHub/personal/agentic-cfg
-cd ~/Documents/GitHub/personal/agentic-cfg
-cp secrets/.env.example secrets/.env     # adjust paths for this machine if needed
-```
-
-## 3. Install
+The install path is detected automatically, so the clone location is up to you:
 
 ```bash
-bin/install.sh --provider all     # or: --provider cursor | --provider claude
-bin/doctor.sh --deep              # verify
+git clone https://github.com/Tsurai7/agentic-cfg.git
+cd agentic-cfg
 ```
+
+## 3. One command: deps + install
+
+`bin/bootstrap.sh` installs every dependency (Homebrew if missing, git, python3,
+node, gh, plus the optional `rtk` and `lean-ctx`), then runs the installer and a
+health check:
+
+```bash
+bin/bootstrap.sh                  # all providers
+# or: bin/bootstrap.sh --provider cursor
+```
+
+That's the whole setup. GitNexus needs no install (it runs via `npx`).
+
+<details>
+<summary>Manual path (if you don't want bootstrap to install deps)</summary>
+
+```bash
+brew install python3 node gh rtk
+brew install yvgude/lean-ctx/lean-ctx     # optional
+cp secrets/.env.example secrets/.env       # only to override auto-detected paths
+bin/install.sh --provider all
+bin/doctor.sh --deep
+```
+</details>
 
 What each provider gets:
 
@@ -84,16 +88,19 @@ stay in `$HOME` via the symlink.
 
 GitNexus indexes per repo — run `npx gitnexus analyze` from a project root once.
 
-## Caveats (honest portability gaps)
+## Notes
 
-1. **Claude side is lighter than a fully hand-tuned machine.** The generated
-   `CLAUDE.md` is built from `AGENTS.md` + `core/instructions/user-rules/`. Any
-   richer rules you added directly to a machine's `~/.claude/CLAUDE.md` (e.g. a
-   full lean-ctx ruleset, `RTK.md`) are not all in the repo yet.
-2. **`rtk` is not installed or version-controlled here.** If you rely on it,
-   install it (and its Claude hook) separately on each machine.
-3. **GitNexus** must be indexed per project (`npx gitnexus analyze`).
-4. **CI workflow** (`.github/workflows/ci.yml`) is not pushed yet — it needs a
+1. **lean-ctx is portable on both sides.** Cursor gets the rule, MCP server, and
+   hooks; Claude gets the MCP server plus hooks + permissions merged into
+   `~/.claude/settings.json` (your machine-local `env`, e.g. a proxy URL, is
+   preserved). The `lean-ctx` binary is installed by `bin/bootstrap.sh`.
+2. **`rtk`** is installed by `bin/bootstrap.sh` (Homebrew core). There is no
+   separate rtk hook — on machines running lean-ctx, its rewrite hook wraps shell
+   commands; see the tool-precedence section in `AGENTS.md`.
+3. **`ANTHROPIC_BASE_URL`** and other machine-local `env` are intentionally not
+   vendored — set them per machine in `~/.claude/settings.json`.
+4. **GitNexus** must be indexed per project (`npx gitnexus analyze`).
+5. **CI workflow** (`.github/workflows/ci.yml`) is not pushed yet — it needs a
    gh token with the `workflow` scope (`gh auth refresh -h github.com -s workflow`).
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how the repo is wired internally.

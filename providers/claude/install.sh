@@ -42,7 +42,7 @@ install_claude_md() {
     cp "$out" "${out}.bak.$(date +%s)"
   fi
   {
-    cat "$stub"
+    sed "s#__AGENTIC_ROOT__#${AGENTIC_ROOT}#g" "$stub"
     cat "$agents"
     echo ""
     echo "## User rules"
@@ -53,7 +53,7 @@ install_claude_md() {
       cat "$f"
     done
   } >"$out"
-  log "wrote $out"
+  log "wrote $out (root: ${AGENTIC_ROOT})"
 }
 
 install_mcp() {
@@ -69,23 +69,22 @@ install_mcp() {
   fi
 }
 
-install_settings_template() {
-  local template="${AGENTIC_ROOT}/providers/claude/settings.json.template"
+install_settings() {
+  local fragment="${AGENTIC_ROOT}/providers/claude/settings.hooks.json"
   local out="${HOME}/.claude/settings.json"
-  if [[ -f "$out" ]]; then
-    log "settings.json exists — skip (edit manually or use settings.local.json)"
+  run mkdir -p "${HOME}/.claude"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "[dry-run] merge lean-ctx hooks + permissions -> $out (preserving env)"
     return 0
   fi
-  if [[ "$DRY_RUN" == "1" ]]; then
-    log "[dry-run] copy settings template -> $out"
-  else
-    run cp "$template" "$out"
-    log "created $out from template"
+  if [[ -f "$out" ]]; then
+    cp "$out" "${out}.bak.$(date +%s)"
   fi
+  python3 "${AGENTIC_ROOT}/providers/shared/merge-settings.py" "$fragment" "$out"
 }
 
 link_skills
 install_claude_md
 install_mcp
-install_settings_template
+install_settings
 log "done"

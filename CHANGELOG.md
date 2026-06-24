@@ -2,6 +2,29 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.6.0] — 2026-06-24
+
+### Added
+- `bin/bootstrap.sh` — one command installs every dependency (Homebrew, git,
+  python3, node, gh, rtk, lean-ctx) and then runs the installer + doctor.
+- Claude-side lean-ctx: `providers/claude/settings.hooks.json` (hooks +
+  permissions) merged into `~/.claude/settings.json` by the new
+  `providers/shared/merge-settings.py`, which preserves machine-local `env`
+  (e.g. `ANTHROPIC_BASE_URL`).
+
+### Changed
+- De-hardcoded machine paths. `merge-mcp.py` now resolves `npx` / `lean-ctx` /
+  node module root per machine (`which`, `npm root -g`) instead of assuming
+  Homebrew locations; `secrets/.env` still overrides. `.env.example` paths are
+  now commented optional overrides.
+- The generated `~/.claude/CLAUDE.md` gets the real repo path injected via an
+  `__AGENTIC_ROOT__` placeholder, so the repo can be cloned anywhere. `AGENTS.md`
+  no longer hardcodes a path.
+
+### Removed
+- Empty `providers/claude/settings.json.template` (superseded by the hooks
+  fragment + merge).
+
 ## [0.5.0] — 2026-06-24
 
 ### Added

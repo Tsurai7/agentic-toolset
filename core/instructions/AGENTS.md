@@ -4,7 +4,7 @@ Synced to Claude via `~/.claude/CLAUDE.md`. Use as project `AGENTS.md` when adop
 
 ## Source of truth
 
-Personal agent config lives in **`~/Documents/GitHub/personal/agentic-cfg`**. Run `bin/install.sh --provider all` after pulling changes.
+This repo is the source of truth for personal agent config. Run `bin/install.sh --provider all` from the repo root after pulling changes; the install path is detected automatically and is not tied to any one machine.
 
 ## Global defaults
 

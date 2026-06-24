@@ -5,22 +5,38 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 
+def _which(name: str, fallback: str) -> str:
+    return shutil.which(name) or fallback
+
+
+def _node_path() -> str:
+    try:
+        out = subprocess.run(
+            ["npm", "root", "-g"], capture_output=True, text=True, timeout=10
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except Exception:
+        pass
+    return os.environ.get("NODE_PATH", "")
+
+
 def load_env(agentic_root: Path) -> dict[str, str]:
+    # Resolve tool locations on THIS machine rather than hardcoding Homebrew
+    # paths. secrets/.env (loaded below) still overrides anything here.
     env = {
-        "NPX": os.environ.get("NPX", "/opt/homebrew/bin/npx"),
-        "PATH": os.environ.get(
-            "PATH",
-            "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        ),
-        "NODE_PATH": os.environ.get("NODE_PATH", "/opt/homebrew/lib/node_modules"),
-        "LEAN_CTX": os.environ.get("LEAN_CTX", "/opt/homebrew/bin/lean-ctx"),
-        "LEAN_CTX_DATA_DIR": os.environ.get(
-            "LEAN_CTX_DATA_DIR", os.path.expanduser("~/.lean-ctx")
-        ),
+        "NPX": os.environ.get("NPX") or _which("npx", "npx"),
+        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+        "NODE_PATH": os.environ.get("NODE_PATH") or _node_path(),
+        "LEAN_CTX": os.environ.get("LEAN_CTX") or _which("lean-ctx", "lean-ctx"),
+        "LEAN_CTX_DATA_DIR": os.environ.get("LEAN_CTX_DATA_DIR")
+        or os.path.expanduser("~/.lean-ctx"),
     }
     dotenv = agentic_root / "secrets" / ".env"
     if dotenv.is_file():

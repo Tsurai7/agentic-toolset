@@ -10,13 +10,12 @@ This repo is the **source of truth**. Provider-specific paths are populated by `
 ## Quick start
 
 ```bash
-cd ~/Documents/GitHub/personal/agentic-cfg
-cp secrets/.env.example secrets/.env   # edit with your tokens/paths
-bin/install.sh --provider all
-bin/doctor.sh
+git clone https://github.com/Tsurai7/agentic-cfg.git && cd agentic-cfg
+bin/bootstrap.sh        # installs deps + config + runs doctor (macOS)
 ```
 
-Restart Cursor / Claude after install.
+Already have the deps? Just `bin/install.sh --provider all`. Either way, restart
+Cursor / Claude after install. Full walkthrough: [`SETUP.md`](SETUP.md).
 
 ## Layout
 
@@ -29,7 +28,7 @@ Restart Cursor / Claude after install.
 | `catalog/plugins.yaml` | Marketplace plugins to enable manually (not vendored) |
 | `providers/` | Per-provider install scripts and templates |
 | `evals/` | Behavioral evals — one case per global default, LLM-judge runner |
-| `bin/` | `install.sh`, `doctor.sh`, `ci-check.sh` |
+| `bin/` | `bootstrap.sh` (one-command setup), `install.sh`, `doctor.sh`, `ci-check.sh` |
 
 ## Providers (Phase 1)
 
