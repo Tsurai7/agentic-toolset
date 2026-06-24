@@ -48,6 +48,7 @@ else
 fi
 brew_install node
 brew_install gh
+brew_install ast-grep
 
 # 3. Optional enhancements (best-effort)
 brew_install rtk || warn "rtk install failed — skipping (it is optional)"

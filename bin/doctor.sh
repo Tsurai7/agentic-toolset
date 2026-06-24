@@ -119,6 +119,11 @@ if [[ "$DEEP" -eq 1 ]]; then
   else
     warn "lean-ctx not found — brew install yvgude/lean-ctx/lean-ctx"
   fi
+  if command -v ast-grep >/dev/null 2>&1; then
+    ok "ast-grep binary available"
+  else
+    warn "ast-grep not found — brew install ast-grep"
+  fi
   echo ""
 fi
 

@@ -17,6 +17,7 @@ Use marketplace plugins for full workflow libraries. This repo only documents **
 | `create-pr` | User asks to open or update a pull request |
 | `verification-before-completion` | About to claim work is complete or tests pass |
 | `gitnexus-navigation` | Structural code changes, refactors, impact analysis |
+| `ast-grep` | Searching/rewriting code by syntax pattern (instead of regex grep) |
 | `terminal-rtk` | Running shell commands on macOS |
 
 ## Decision flow
@@ -24,6 +25,6 @@ Use marketplace plugins for full workflow libraries. This repo only documents **
 1. **Bug or test failure** → superpowers `systematic-debugging`, then `verification-before-completion`
 2. **New feature** → superpowers `brainstorming` / `writing-plans`, then implement with `git-safety`
 3. **PR / CI** → `create-pr` + cursor-team-kit `fix-ci` or `loop-on-ci`
-4. **Cross-file refactor** → `gitnexus-navigation` before grep-heavy exploration
+4. **Cross-file refactor** → `gitnexus-navigation` for impact, then `ast-grep` for pattern search/rewrite (not regex grep)
 
 See [`catalog/plugins.yaml`](../../catalog/plugins.yaml) for install links.

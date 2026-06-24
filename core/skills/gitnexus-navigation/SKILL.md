@@ -37,9 +37,10 @@ Run from the repository root (or use MCP analyze tool if available).
 2. **Query polymorphism** — Interface implementations, inheritance
 3. **Fetch node** — Single function/class with immediate out-edges only
 
-## When grep is still OK
+## When not GitNexus
 
-- Exact string literals, log messages, config keys
+- **Code matching a syntactic pattern** → `ast-grep`, not regex grep (see skill `ast-grep`)
+- Exact string literals, log messages, config keys → `ctx_search` / `grep`
 - Needle queries for a known file path or unique identifier
 
 ## MCP

@@ -2,6 +2,15 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.7.0] — 2026-06-24
+
+### Added
+- `ast-grep` skill and global default: agents search source code structurally
+  with `ast-grep` (AST patterns) instead of regex grep. Wired into the AGENTS.md
+  tool-precedence table, installed by `bin/bootstrap.sh`, checked by
+  `doctor.sh --deep`, and covered by an eval case. grep/`ctx_search` remain the
+  fallback for non-code text and unsupported languages.
+
 ## [0.6.0] — 2026-06-24
 
 ### Added
