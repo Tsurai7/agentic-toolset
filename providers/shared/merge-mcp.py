@@ -17,6 +17,10 @@ def load_env(agentic_root: Path) -> dict[str, str]:
             "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         ),
         "NODE_PATH": os.environ.get("NODE_PATH", "/opt/homebrew/lib/node_modules"),
+        "LEAN_CTX": os.environ.get("LEAN_CTX", "/opt/homebrew/bin/lean-ctx"),
+        "LEAN_CTX_DATA_DIR": os.environ.get(
+            "LEAN_CTX_DATA_DIR", os.path.expanduser("~/.lean-ctx")
+        ),
     }
     dotenv = agentic_root / "secrets" / ".env"
     if dotenv.is_file():
@@ -25,17 +29,15 @@ def load_env(agentic_root: Path) -> dict[str, str]:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, _, value = line.partition("=")
-            env[key.strip()] = value.strip().strip('"').strip("'")
+            env[key.strip()] = os.path.expanduser(value.strip().strip('"').strip("'"))
     return env
 
 
 def substitute(obj: object, env: dict[str, str]) -> object:
     if isinstance(obj, str):
-        return (
-            obj.replace("__NPX__", env["NPX"])
-            .replace("__PATH__", env["PATH"])
-            .replace("__NODE_PATH__", env["NODE_PATH"])
-        )
+        for key, value in env.items():
+            obj = obj.replace(f"__{key}__", value)
+        return obj
     if isinstance(obj, dict):
         return {k: substitute(v, env) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -75,10 +77,21 @@ def main() -> int:
         base = load_json(overlay_path)
     fragments = collect_fragments(agentic_root / "integrations")
     base.setdefault("mcpServers", {}).update(fragments.get("mcpServers", {}))
-    result = substitute(base, env)
+    managed = substitute(base, env)
+
+    # Merge into the existing config so servers we do not manage (e.g. work-only
+    # servers added by hand) are preserved. Repo-managed servers take precedence.
+    result: dict = load_json(output) if output.is_file() else {"mcpServers": {}}
+    result.setdefault("mcpServers", {})
+    result["mcpServers"].update(managed.get("mcpServers", {}))
+
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-    print(f"Wrote {output} ({len(result.get('mcpServers', {}))} server(s))")
+    managed_names = ", ".join(sorted(managed.get("mcpServers", {}))) or "none"
+    print(
+        f"Wrote {output} ({len(result['mcpServers'])} server(s) total; "
+        f"managed: {managed_names})"
+    )
     return 0
 
 

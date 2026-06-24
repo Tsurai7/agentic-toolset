@@ -42,6 +42,19 @@ install_mcp() {
   fi
 }
 
+install_hooks() {
+  local src="${AGENTIC_ROOT}/providers/cursor/hooks.json"
+  local out="${HOME}/.cursor/hooks.json"
+  [[ -f "$src" ]] || return 0
+  run mkdir -p "${HOME}/.cursor"
+  if [[ -f "$out" && "$DRY_RUN" != "1" ]]; then
+    cp "$out" "${out}.bak.$(date +%s)"
+    log "backed up existing hooks.json"
+  fi
+  run cp "$src" "$out"
+  log "hooks: $out"
+}
+
 install_rules() {
   local rules_src="${AGENTIC_ROOT}/core/rules"
   local rules_dst="${HOME}/.cursor/rules"
@@ -59,4 +72,5 @@ install_rules() {
 link_skills
 install_mcp
 install_rules
+install_hooks
 log "done"

@@ -2,6 +2,22 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.4.0] — 2026-06-24
+
+### Added
+- Full lean-ctx portability: `integrations/lean-ctx/` (MCP server fragment +
+  setup README) and `providers/cursor/hooks.json` (the observe/rewrite/redirect
+  hooks), installed via `providers/cursor/install.sh`. `secrets/.env.example`
+  gained `LEAN_CTX` / `LEAN_CTX_DATA_DIR`, and `doctor.sh --deep` checks for the
+  binary.
+
+### Changed
+- `merge-mcp.py` now **merges into** the existing `mcp.json` instead of
+  overwriting it, so hand-added, work-only servers (e.g. `dora`, `grafana-*`)
+  survive a re-install. Repo-managed servers still take precedence.
+- Placeholder substitution is now generic over every key in the environment
+  (any `__KEY__`), and `~` in `.env` values is expanded.
+
 ## [0.3.0] — 2026-06-24
 
 ### Added
