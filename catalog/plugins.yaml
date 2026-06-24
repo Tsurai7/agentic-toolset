@@ -1,0 +1,150 @@
+# Marketplace plugins — catalog only (install via each provider's marketplace).
+# Do not vendor plugin skill trees into this repo.
+
+version: 1
+
+recommended_baselines:
+  - id: superpowers
+    reason: TDD, systematic debugging, planning, verification workflows
+  - id: cursor-team-kit
+    reason: CI fix, PR review, compiler checks, team kit skills
+
+plugins:
+  - id: mongodb
+    name: MongoDB
+    cursor:
+      marketplace: cursor-public
+      plugin: mongodb
+    claude:
+      marketplace: claude
+      plugin: mongodb
+    mcp: true
+    required_env:
+      - MDB_MCP_CONNECTION_STRING  # or Atlas API / local Docker per plugin docs
+    setup_doc_url: https://www.mongodb.com/docs/cursor/
+    notes: Use mongodb-mcp-setup skill after enabling.
+
+  - id: atlassian
+    name: Atlassian
+    cursor:
+      marketplace: cursor-public
+      plugin: atlassian
+    claude:
+      marketplace: claude
+      plugin: atlassian
+    mcp: true
+    required_env: []
+    setup_doc_url: https://developer.atlassian.com/
+    notes: OAuth via plugin UI; remote SSE may need mcp-remote for non-Cursor clients.
+
+  - id: slack
+    name: Slack
+    cursor:
+      marketplace: cursor-public
+      plugin: slack
+    claude:
+      plugin: null
+    mcp: true
+    required_env: []
+    setup_doc_url: https://github.com/slackapi/slack-mcp-server
+    notes: Cursor only in current setup; OAuth via MCP auth flow.
+
+  - id: context7
+    name: Context7
+    cursor:
+      marketplace: cursor-public
+      plugin: context7-plugin
+    claude:
+      marketplace: claude
+      plugin: context7-plugin
+    mcp: true
+    required_env: []
+    setup_doc_url: https://context7.com
+    notes: Library/framework documentation lookup.
+
+  - id: deploy-on-aws
+    name: Deploy on AWS
+    cursor:
+      marketplace: cursor-public
+      plugin: deploy-on-aws
+    claude:
+      marketplace: claude
+      plugin: deploy-on-aws
+    mcp: true
+    required_env: []
+    setup_doc_url: https://aws.amazon.com/
+    notes: AWS knowledge / deployment guidance.
+
+  - id: grafana-assistant
+    name: Grafana Assistant
+    cursor:
+      marketplace: cursor-public
+      plugin: grafana-assistant
+    claude:
+      marketplace: claude
+      plugin: grafana-assistant
+    mcp: true
+    required_env: []
+    setup_doc_url: https://grafana.com/docs/
+    notes: Grafana MCP tools; configure instance access per plugin README.
+
+  - id: parallel
+    name: Parallel
+    cursor:
+      marketplace: cursor-public
+      plugin: parallel
+    claude:
+      plugin: null
+    mcp: false
+    required_env: []
+    setup_doc_url: https://parallel.ai
+    notes: Web search / research skills; Cursor-focused.
+
+  - id: cursor-team-kit
+    name: Cursor Team Kit
+    cursor:
+      marketplace: cursor-public
+      plugin: cursor-team-kit
+    claude:
+      plugin: null
+    mcp: false
+    required_env: []
+    setup_doc_url: https://cursor.com/docs
+    notes: fix-ci, review-and-ship, check-compiler-errors, etc.
+
+  - id: superpowers
+    name: Superpowers
+    cursor:
+      marketplace: cursor-public
+      plugin: superpowers
+    claude:
+      marketplace: claude
+      plugin: superpowers
+    mcp: false
+    required_env: []
+    setup_doc_url: https://github.com/obra/superpowers
+    notes: Core workflow skills (TDD, debugging, brainstorming).
+
+  - id: continual-learning
+    name: Continual Learning
+    cursor:
+      marketplace: cursor-public
+      plugin: continual-learning
+    claude:
+      plugin: null
+    mcp: false
+    required_env: []
+    setup_doc_url: https://cursor.com/docs
+    notes: Cursor plugin for learning from sessions.
+
+  - id: cursor-builtins
+    name: Cursor built-in MCP
+    cursor:
+      builtin: true
+    claude:
+      plugin: null
+    mcp: true
+    servers:
+      - cursor-app-control
+      - cursor-backend-control
+    notes: IDE control; Cursor only, not portable to Claude.
