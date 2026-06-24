@@ -4,7 +4,7 @@ Synced to Claude via `~/.claude/CLAUDE.md`. Use as project `AGENTS.md` when adop
 
 ## Source of truth
 
-Personal agent config lives in **`~/Documents/GitHub/personal/agentic`**. Run `bin/install.sh --provider all` after pulling changes.
+Personal agent config lives in **`~/Documents/GitHub/personal/agentic-cfg`**. Run `bin/install.sh --provider all` after pulling changes.
 
 ## Global defaults
 
@@ -13,6 +13,28 @@ Personal agent config lives in **`~/Documents/GitHub/personal/agentic`**. Run `b
 3. **Git commits** — Only when the user explicitly asks; follow skill `git-safety`.
 4. **Pull requests** — Use `gh` per skill `create-pr`.
 5. **Done means verified** — Before claiming success, run checks per skill `verification-before-completion`.
+
+## Tool precedence (resolve overlaps)
+
+Three layers can address the same action (shell, search, file reads). When more than
+one is available, follow this order. Each layer is optional — degrade to the next when
+the tool is absent (e.g. Cursor or a team repo without lean-ctx).
+
+| Action | 1st choice | 2nd choice | Last resort |
+|--------|-----------|------------|-------------|
+| Structural code nav (who calls / implements, impact) | GitNexus (`gitnexus-navigation`) | `ctx_semantic_search` | — |
+| Text / concept search | lean-ctx `ctx_search` | GitNexus needle query | `grep` (literals only) |
+| Run a shell command | lean-ctx `ctx_shell` | native terminal **prefixed with `rtk`** | — |
+| Read a file | lean-ctx `ctx_read` | native read | — |
+
+Rules:
+
+- **Do not double-wrap.** `rtk` is a native-terminal prefix; `ctx_shell` already compresses
+  output, so never nest `rtk` inside `ctx_shell` or vice versa.
+- When lean-ctx is connected, its `ctx_*` tools win for shell / search / read (see the user's
+  global lean-ctx rules). `rtk` applies only on the native terminal path, where its hook fires.
+- GitNexus is for the **graph** question (structure, polymorphism, blast radius); `ctx_search`
+  and `grep` are for **text**. Pick by question type, not habit.
 
 ## Detailed rules
 

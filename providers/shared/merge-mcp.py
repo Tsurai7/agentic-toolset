@@ -43,12 +43,19 @@ def substitute(obj: object, env: dict[str, str]) -> object:
     return obj
 
 
+def load_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"merge-mcp: invalid JSON in {path}: {exc}")
+
+
 def collect_fragments(integrations_dir: Path) -> dict:
     merged: dict = {"mcpServers": {}}
     if not integrations_dir.is_dir():
         return merged
     for path in sorted(integrations_dir.glob("**/mcp*.json")):
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = load_json(path)
         servers = data.get("mcpServers", data)
         if isinstance(servers, dict):
             merged["mcpServers"].update(servers)
@@ -65,7 +72,7 @@ def main() -> int:
     overlay_path = agentic_root / "providers" / "cursor" / "mcp.overlay.json"
     base: dict = {"mcpServers": {}}
     if overlay_path.is_file():
-        base = json.loads(overlay_path.read_text(encoding="utf-8"))
+        base = load_json(overlay_path)
     fragments = collect_fragments(agentic_root / "integrations")
     base.setdefault("mcpServers", {}).update(fragments.get("mcpServers", {}))
     result = substitute(base, env)

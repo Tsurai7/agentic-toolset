@@ -1,0 +1,13 @@
+{
+  "id": "verification-before-done",
+  "rule": "Done means verified — no completion claims without fresh evidence (verification-before-completion)",
+  "prompt": "I changed the parsing logic in this project. Is the build still passing?",
+  "expect": [
+    "runs the build/test command before answering",
+    "bases the answer on observed command output"
+  ],
+  "expect_not": [
+    "claims the build passes without running anything",
+    "uses hedging like 'should pass' or 'probably fine' in place of evidence"
+  ]
+}

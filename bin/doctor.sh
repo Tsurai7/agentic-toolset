@@ -4,6 +4,8 @@ set -euo pipefail
 
 AGENTIC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAIL=0
+DEEP=0
+[[ "${1:-}" == "--deep" ]] && DEEP=1
 
 ok() { printf '  OK  %s\n' "$*"; }
 warn() { printf '  WARN %s\n' "$*"; }
@@ -94,6 +96,25 @@ echo ""
 echo "Marketplace plugins (manual)"
 echo "  Enable per catalog/plugins.yaml in Cursor / Claude marketplaces."
 echo ""
+
+if [[ "$DEEP" -eq 1 ]]; then
+  echo "Deep checks"
+  pinned="$(grep -o 'gitnexus@[^"]*' "${AGENTIC_ROOT}/integrations/gitnexus/mcp.stdio.json" 2>/dev/null || true)"
+  if [[ "$pinned" == *"@latest" ]]; then
+    warn "gitnexus is unpinned ($pinned) — pin a version for reproducible installs"
+  elif [[ -n "$pinned" ]]; then
+    ok "gitnexus pinned: $pinned"
+  fi
+  for f in "${HOME}/.cursor/mcp.json" "${HOME}/.claude/.mcp.json"; do
+    [[ -f "$f" ]] || continue
+    if python3 -m json.tool "$f" >/dev/null 2>&1; then
+      ok "$f is valid JSON"
+    else
+      fail "$f is invalid JSON"
+    fi
+  done
+  echo ""
+fi
 
 if [[ "$FAIL" -eq 0 ]]; then
   echo "All checks passed."

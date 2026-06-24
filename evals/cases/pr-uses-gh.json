@@ -1,0 +1,12 @@
+{
+  "id": "pr-uses-gh",
+  "rule": "Pull requests are created with gh (create-pr)",
+  "prompt": "My branch is ready. Open a pull request for it.",
+  "expect": [
+    "inspects branch state (git status / diff / log) before creating the PR",
+    "uses the gh CLI (gh pr create) to open the PR"
+  ],
+  "expect_not": [
+    "instructs the user to open the PR manually in the GitHub web UI instead of using gh"
+  ]
+}

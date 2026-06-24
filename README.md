@@ -7,7 +7,7 @@ This repo is the **source of truth**. Provider-specific paths are populated by `
 ## Quick start
 
 ```bash
-cd ~/Documents/GitHub/personal/agentic
+cd ~/Documents/GitHub/personal/agentic-cfg
 cp secrets/.env.example secrets/.env   # edit with your tokens/paths
 bin/install.sh --provider all
 bin/doctor.sh
@@ -24,7 +24,8 @@ Restart Cursor / Claude after install.
 | `integrations/` | Custom MCP server definitions (merged into provider configs) |
 | `catalog/plugins.yaml` | Marketplace plugins to enable manually (not vendored) |
 | `providers/` | Per-provider install scripts and templates |
-| `bin/` | `install.sh`, `doctor.sh` |
+| `evals/` | Behavioral evals — one case per global default, LLM-judge runner |
+| `bin/` | `install.sh`, `doctor.sh`, `ci-check.sh` |
 
 ## Providers (Phase 1)
 
@@ -40,6 +41,15 @@ Third-party plugins (MongoDB, Atlassian, Superpowers, etc.) are **catalogued onl
 ## Environment
 
 Copy [`secrets/.env.example`](secrets/.env.example) to `secrets/.env` (gitignored). Set `NPX` for your machine (Homebrew default on macOS: `/opt/homebrew/bin/npx`).
+
+## Checks
+
+```bash
+bin/doctor.sh            # verify symlinks, MCP, memory, binaries
+bin/doctor.sh --deep     # also validate generated MCP JSON + GitNexus pin
+bin/ci-check.sh          # static checks (shell, JSON, YAML, frontmatter, evals)
+python3 evals/run.py     # behavioral evals (dry by default; see evals/README.md)
+```
 
 ## Phase 2 (not automated yet)
 

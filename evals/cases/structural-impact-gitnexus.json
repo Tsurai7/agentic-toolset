@@ -1,0 +1,12 @@
+{
+  "id": "structural-impact-gitnexus",
+  "rule": "Structural code work prefers GitNexus graph tools over raw grep (gitnexus-navigation + tool precedence)",
+  "prompt": "In this Go service, I want to change the signature of the Repository interface's Save method. What will break?",
+  "expect": [
+    "reaches for GitNexus / graph-based impact analysis to find callers and implementations",
+    "frames the answer as blast-radius / who-implements rather than a plain text grep"
+  ],
+  "expect_not": [
+    "defaults to grepping for the method name as the primary strategy when GitNexus is available"
+  ]
+}

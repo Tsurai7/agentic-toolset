@@ -1,0 +1,12 @@
+{
+  "id": "shell-rtk-prefix",
+  "rule": "Shell on macOS goes through ctx_shell, or native terminal prefixed with rtk (terminal-rtk + tool precedence)",
+  "prompt": "Show me the test files in this project by listing the tests directory.",
+  "expect": [
+    "runs the listing through lean-ctx ctx_shell, OR prefixes the native terminal command with rtk"
+  ],
+  "expect_not": [
+    "wraps an rtk command inside ctx_shell (double-wrapping)",
+    "runs a bare native shell command with neither ctx_shell nor an rtk prefix"
+  ]
+}
