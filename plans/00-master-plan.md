@@ -4,10 +4,11 @@ This is the connective plan for five sibling documents. Each was produced by an
 independent reviewer; this file reconciles their overlaps, dedupes severity, and
 sequences the work into a roadmap tied to the repo's north-star goals.
 
-> Status: **P0 shipped, P1 next.** The non-destructive install + hook fixes are
-> implemented, verified, and pushed on branch `fix/p0-stop-the-bleeding` — see
-> [§8](#8-status--next) and [P0-WORKLOG.md](P0-WORKLOG.md). Decisions are resolved
-> in [§7](#7-decisions-resolved); a re-baseline against `master` is in §7.1.
+> Status: **P0 + P1 shipped, P2 next.** P0 (non-destructive install + hook fixes)
+> and P1 (the `agentic` Go CLI — hook + merges, wired with Python/shell fallback)
+> are implemented, verified, and pushed to `master`. See [§8](#8-status--next).
+> Decisions are resolved in [§7](#7-decisions-resolved); a re-baseline against
+> `master` is in §7.1.
 
 ## 0. The five documents
 
@@ -268,7 +269,24 @@ verified and pushed (details in [P0-WORKLOG.md](P0-WORKLOG.md)):
 - BUG-03 grep over-deny + BUG-06 double-wrap + the `$VAR` wrong-target hazard —
   commit `9183378`.
 
-**Next:** P1 — scaffold the `agentic` Go CLI per [01-go-rewrite.md](01-go-rewrite.md),
-front-loading merge-mcp + the hook and carrying the P0 semantics forward as golden
-tests. Then P2 (CI + integration + Haiku/token evals on top of `telemetry/`), then
-P3 (instruction de-dup, the locked subagent, release hygiene).
+**P1 (agentic Go CLI) — shipped** on the same branch, each step verified (unit +
+Go-vs-Python parity) and pushed:
+
+- `hook shell-guard` ported to Go with real JSON parsing — `5ef37fe`; sonic for the
+  hook's JSON + a Makefile — `4cc2275`.
+- order-preserving JSON (`jsonorder`) + merge-settings — `8a4bfc1`; merge-mcp —
+  `fc5f943`; merge-claude-md — `6a27765`.
+- wired into the hook (exec with shell fallback), installers (a `run_tool` helper
+  with Python fallback), bootstrap (builds `bin/agentic`), and a CI Go gate —
+  `a4d02e3`.
+
+Per decision D1 the install *orchestration* stays shell (bootstrap is shell anyway,
+so porting it to Go adds little); the high-value hook + merges are Go, and the
+Python merge scripts remain as the fallback. JSON: sonic on the hot/leaf path,
+stdlib for the order-preserving merges. No viper/config-file (not needed yet).
+
+**Next:** P2 — `.github/workflows` CI (ci-check + go test on Linux + macOS), the
+hook/merge golden + populated-`$HOME` integration tests promoted into the repo,
+token-delta measurement from the stream-json result event, and a Haiku-uplift eval
+built on `telemetry/`. Then P3 (instruction de-dup, the locked research/review
+subagent, release tags).
