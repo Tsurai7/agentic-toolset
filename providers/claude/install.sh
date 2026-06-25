@@ -32,15 +32,17 @@ link_skills() {
 
 install_claude_md() {
   local out="${HOME}/.claude/CLAUDE.md"
+  local generated="${HOME}/.claude/agentic-cfg.generated.md"
   local stub="${AGENTIC_ROOT}/providers/claude/CLAUDE.md.stub"
   local agents="${AGENTIC_ROOT}/core/instructions/AGENTS.md"
   if [[ "$DRY_RUN" == "1" ]]; then
-    log "[dry-run] write $out from stub + AGENTS.md"
+    log "[dry-run] write $generated from stub + AGENTS.md; ensure @import block in $out"
     return 0
   fi
-  if [[ -f "$out" ]]; then
-    cp "$out" "${out}.bak.$(date +%s)"
-  fi
+  run mkdir -p "${HOME}/.claude"
+  # The full instruction block lives in a repo-owned generated file we overwrite
+  # freely; CLAUDE.md only carries a small managed @import block (PORT-01) so any
+  # hand-written user content in CLAUDE.md survives installs.
   {
     sed "s#__AGENTIC_ROOT__#${AGENTIC_ROOT}#g" "$stub"
     cat "$agents"
@@ -60,8 +62,12 @@ install_claude_md() {
       echo "### $(basename "$f" .md)"
       cat "$f"
     done
-  } >"$out"
-  log "wrote $out (root: ${AGENTIC_ROOT})"
+  } >"$generated"
+  if [[ -f "$out" ]]; then
+    cp "$out" "${out}.bak.$(date +%s)"
+  fi
+  python3 "${AGENTIC_ROOT}/providers/shared/merge-claude-md.py" "$generated" "$out"
+  log "wrote $generated; ensured @import in $out (root: ${AGENTIC_ROOT})"
 }
 
 install_mcp() {
