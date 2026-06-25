@@ -1,65 +1,97 @@
 # Evals
 
-A rule in this repo is worth only as much as it provably changes agent behavior.
-These evals turn each global default in [`core/instructions/AGENTS.md`](../core/instructions/AGENTS.md)
-into a behavioral assertion you can run headless and re-run as a regression check.
+A skill or rule in this repo is worth only as much as it provably changes agent
+behavior **for the better**. These evals turn each artifact under `core/` into a
+runnable, re-runnable assertion — the discipline Anthropic ("Building Effective
+Agents"), OpenAI ("A Practical Guide to Building Agents"), and Cursor (CursorBench)
+all put at the center of agent work: iterate against measurements, not impressions.
 
-This is the discipline both Anthropic ("Building Effective Agents") and OpenAI
-("A Practical Guide to Building Agents") put at the center of agent work: iterate
-against measurements, not impressions.
+The loop for adding and maintaining cases lives in **[PLAYBOOK.md](PLAYBOOK.md)**.
+Measured results live in **[BENCHMARKS.md](BENCHMARKS.md)** (generated, per model).
+
+## Two tracks
+
+- **Conformance** ([`conformance/cases/`](conformance/cases/)) — does a rule change
+  behavior, and does a skill trigger when it should (and stay quiet when it
+  shouldn't)? One transcript, graded PASS/FAIL by an LLM judge against
+  `expect` / `expect_not`.
+- **Value** ([`value/cases/`](value/cases/)) — does the artifact make the *outcome*
+  better or cheaper? An A/B: the same prompt is run **with** the artifact
+  (treatment) and **without** it (control), and a pairwise judge picks the better
+  transcript. This is the part that proves a tool is *worth its place*, not just
+  that it fires.
 
 ## How it works
 
-1. Each case in [`cases/`](cases/) is a JSON spec: an `id`, the `rule` it guards, a
-   `prompt` to send to the agent, and an `expect` list of behaviors a judge must
-   confirm (or `expect_not` for things the agent must *not* do).
-2. [`run.py`](run.py) sends each prompt to the agent headless (`claude -p`), captures
-   the transcript **including tool calls**, then asks an LLM judge to score the
-   transcript against `expect` / `expect_not`.
-3. It tallies pass/fail and exits non-zero on any failure (CI-friendly).
+1. Cases are JSON specs (schemas and templates in [PLAYBOOK.md](PLAYBOOK.md)).
+2. [`run.py`](run.py) sends each prompt to the agent headless (`claude -p`),
+   capturing the transcript **including tool calls**.
+   - Conformance: one run, judged PASS/FAIL.
+   - Value: treatment and control arms, judged **pairwise in both orders** to
+     control for the judge's position bias. The **flip rate** across orders is
+     reported; above 10% the verdict is stamped `UNRELIABLE`. Efficiency metrics
+     (tool-call count, transcript size) are captured for free from each transcript.
+3. Value results are written per model to `results/<model>/` (gitignored);
+   [`report.py`](report.py) rolls them into the committed [BENCHMARKS.md](BENCHMARKS.md).
+
+The harness is agent-agnostic — the agent is the `AGENTIC_EVAL_AGENT_CMD` string,
+so a Cursor or other headless CLI can be swapped in. Today it is exercised with
+`claude -p`.
 
 ## Running
 
 Evals spend tokens and the agent may take actions, so they are **dry by default**.
+Run real evals from a throwaway scratch repo so a misbehaving case cannot touch
+real work.
 
 ```bash
 # Dry run — prints what would be sent, runs nothing:
-python3 evals/run.py
+python3 evals/run.py --track all
 
-# Real run — set the confirmation flag, and run from a throwaway scratch repo
-# so a misbehaving case cannot touch real work:
-AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py
+# Conformance, for real:
+AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance
+
+# Value A/B for one tool, under a chosen model (records to results/<model>/):
+AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value --filter rtk --model claude-opus-4-8
+
+# Refresh the committed summary table:
+python3 evals/report.py
 ```
 
-Override the agent command if your CLI differs:
+Override the agent/judge command if your CLI differs:
 
 ```bash
 AGENTIC_EVAL_AGENT_CMD='claude -p' AGENTIC_EVAL_JUDGE_CMD='claude -p' \
-  AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py
+  AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value
 ```
+
+### Arm isolation for value A/B
+
+The control arm must run the same prompt with the artifact removed. Two strategies,
+chosen automatically (details in [PLAYBOOK.md](PLAYBOOK.md#reading-verdicts-honestly-judge-biases)):
+
+- **config-dir** (high confidence) — renders an isolated `CLAUDE_CONFIG_DIR` with
+  the skill physically absent. Needs env-based auth (`ANTHROPIC_API_KEY`); opt in
+  with `AGENTIC_EVAL_ISOLATION=config-dir`.
+- **prompt** (medium confidence, default) — both arms share the real config and the
+  control arm is instructed to ignore the artifact. Used automatically under
+  OAuth/Keychain auth, where relocating the config dir breaks authentication.
+
+## Static checks (zero tokens, CI on every PR)
+
+```bash
+python3 evals/lint.py        # schema, unique ids, ablate targets exist, skill coverage
+python3 evals/selftest.py    # harness logic (pairwise order-swap, verdict thresholds)
+```
+
+`lint.py` is what mechanically enforces the loop: every skill under `core/skills/`
+must be covered by at least one case, or the build fails. Both run inside
+[`bin/ci-check.sh`](../bin/ci-check.sh).
 
 ## Adding a case
 
-Drop a new JSON file in [`cases/`](cases/):
-
-```json
-{
-  "id": "short-kebab-id",
-  "rule": "which global default this guards",
-  "prompt": "the message sent to the agent",
-  "expect": ["behavior the agent SHOULD exhibit"],
-  "expect_not": ["behavior the agent must NOT exhibit"]
-}
-```
-
-Keep one assertion per behavior so a failure points at exactly one rule.
-
-## Skill-trigger cases
-
-To test that a skill fires when it should — and stays quiet when it shouldn't —
-write paired cases. A **positive** case asserts the skill is used
-(`expect: ["surfaces or invokes the <skill> skill"]`); a **negative** case guards
-against over-triggering on unrelated prompts
-(`expect_not: ["invokes the <skill> skill"]`, with an empty `expect`). The judge
-reads the transcript, which includes tool calls, to decide. Trigger matching is
-probabilistic — run these several times and look at stability, not a single pass.
+See **[PLAYBOOK.md](PLAYBOOK.md)** — it has the definition of done, the
+decision tree for which track to use, the JSON templates, and the review checklist.
+Keep one assertion per behavior so a failure points at exactly one cause. Trigger
+and outcome matching are probabilistic — run several times and look at stability,
+not a single pass.

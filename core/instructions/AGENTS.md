@@ -49,6 +49,11 @@ Rules:
 | Communication & citations | [user-rules/communication.md](user-rules/communication.md) |
 | Code change principles | [user-rules/coding-principles.md](user-rules/coding-principles.md) |
 | Cursor rules pointer | [user-rules/cursor-rules-pointer.md](user-rules/cursor-rules-pointer.md) |
+| Proving a new skill/rule is worth it (eval loop) | [`evals/PLAYBOOK.md`](../../evals/PLAYBOOK.md) |
+
+When you add or change a skill/rule under `core/`, follow the eval loop: ship a
+conformance case (it fires) and a value case (firing helps). `evals/lint.py` fails
+CI if a skill has no eval.
 
 ## Skills (invoke or auto-discover)
 

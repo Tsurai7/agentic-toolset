@@ -60,7 +60,7 @@ flowchart LR
 | `providers/claude/CLAUDE.md.stub`, `settings.hooks.json` | Claude scaffolding (`__AGENTIC_ROOT__` injected at install; lean-ctx hooks fragment). |
 | `bin/bootstrap.sh` | One-command: install deps (Homebrew, git, python3, node, gh, rtk, lean-ctx) then run the installer. |
 | `secrets/.env` | Machine-local values (gitignored). Only `.env.example` is tracked. |
-| `evals/` | Behavioral eval harness — one case per global default + LLM-judge runner. |
+| `evals/` | Behavioral eval harness — two tracks (conformance + value A/B), LLM-judge runner, per-model `results/` → `BENCHMARKS.md`. The loop for adding cases is [`evals/PLAYBOOK.md`](evals/PLAYBOOK.md). |
 | `bin/install.sh` | Entry point. `--provider cursor\|claude\|all`, `--dry-run`. |
 | `bin/doctor.sh` | Health check. `--deep` validates generated JSON + binaries. |
 | `bin/ci-check.sh` | Static checks (shell, JSON, YAML, frontmatter, evals). |

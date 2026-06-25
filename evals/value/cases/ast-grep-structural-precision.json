@@ -1,0 +1,14 @@
+{
+  "id": "ast-grep-structural-precision",
+  "skill": "ast-grep",
+  "hypothesis": "With the ast-grep skill, the agent searches code structurally (matching call sites) instead of with regex grep, so it avoids false positives from comments, strings, and unrelated identifiers and gives a more precise, complete answer.",
+  "prompt": "In a TypeScript project, find every place that actually CALLS the function `fetchUser(` — real call sites only, not the definition, not mentions inside comments or string literals, not a different `userFetchUser` identifier. List the file:line of each true call site and explain how you made sure the matches are real call sites and not text coincidences.",
+  "ablate": ["ast-grep"],
+  "rubric": [
+    "distinguishes real call sites from comments, strings, and substring identifier matches",
+    "uses a structural/AST search (e.g. ast-grep `sg -p`) rather than a plain regex over text",
+    "the final answer is precise (no false positives) and complete"
+  ],
+  "pass_condition": "treatment_preferred",
+  "n": 3
+}
