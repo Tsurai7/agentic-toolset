@@ -2,6 +2,27 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.12.1] — 2026-06-25
+
+### Fixed
+- `shell-guard.sh` now fails open on complex commands — multi-line scripts, `cd`
+  chains, and command substitution join heredocs in the passthrough list, since
+  none can be safely re-quoted inside `lean-ctx -c '…'` or after an `rtk` prefix
+  without changing their meaning. Prevents the hook from mangling such commands.
+
+### Changed
+- `AGENTS.md` shell rule now forbids stripping the compression hook (no
+  `env -u BASH_ENV -u LEAN_CTX_AGENT …` bypass): if a command breaks under the
+  hook, report and ask instead of routing around it; put complex logic in a script
+  file run with a single `bash script.sh`.
+
+### Note
+- The operative breakage was in `~/.bashenv` (the lean-ctx shell hook, installed by
+  `lean-ctx onboard` and **not** vendored here), which unconditionally does
+  `exec lean-ctx -c "$BASH_EXECUTION_STRING"` with no complex-string guard. That is
+  a machine-local / upstream fix, tracked in the repo issue; this changelog covers
+  only the repo-owned defense-in-depth.
+
 ## [0.12.0] — 2026-06-25
 
 ### Added

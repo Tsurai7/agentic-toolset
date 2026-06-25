@@ -41,10 +41,12 @@ case "$CMD" in
   lean-ctx\ *|rtk\ *) exit 0 ;;
 esac
 
-# Heredoc / here-string — the body cannot be safely re-quoted inside
-# `lean-ctx -c '…'` or after an `rtk` prefix, so run the command untouched.
+# Complex commands cannot be safely re-quoted inside `lean-ctx -c '…'` or after an
+# `rtk` prefix without changing their meaning, so run them untouched (fail-open)
+# rather than mangle them. Covers heredocs, multi-line scripts, `cd` chains (whose
+# working directory must be preserved), and command substitution.
 case "$CMD" in
-  *'<<'*) exit 0 ;;
+  *'<<'* | *$'\n'* | 'cd '* | *'&& cd '* | *'; cd '* | *'$('* | *'`'*) exit 0 ;;
 esac
 
 # --- 1. ast-grep guard -------------------------------------------------------

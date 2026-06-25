@@ -10,7 +10,7 @@ This repo is the source of truth for personal agent config. Run `bin/install.sh 
 
 1. **Structural code work** — Prefer GitNexus graph tools over raw grep/file reads when changing interfaces or tracing impact. See skill `gitnexus-navigation`.
 2. **Code search** — Search source code with `ast-grep` (AST patterns), never regex grep. Use grep only for non-code text. See skill `ast-grep`.
-3. **Shell on macOS** — Prefix terminal commands with `rtk` (e.g. `rtk npm test`). See skill `terminal-rtk`.
+3. **Shell on macOS** — Prefix terminal commands with `rtk` (e.g. `rtk npm test`). See skill `terminal-rtk`. **Never strip the compression hook** — do not run commands via `env -u BASH_ENV -u LEAN_CTX_AGENT …` or otherwise disable lean-ctx/rtk to dodge it. If a command breaks under the hook, report the failure and ask, don't bypass; for complex commands, put the logic in a script file and run it with a single `bash script.sh` (which the hook passes through unmangled).
 4. **Git commits** — Only when the user explicitly asks; follow skill `git-safety`.
 5. **Pull requests** — Use `gh` per skill `create-pr`.
 6. **Done means verified** — Before claiming success, run checks per skill `verification-before-completion`.
