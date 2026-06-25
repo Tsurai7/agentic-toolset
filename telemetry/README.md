@@ -38,6 +38,29 @@ python3 telemetry/report.py --json         # machine-readable
 - Cost uses the per-message `model` and the 1h/5m cache-write breakdown when the
   transcript records it, falling back to 5m pricing for older records.
 
+## Regression gate (Phase 3)
+
+`gate.py` turns the metric into a pass/fail check — a cheap, zero-LLM guard
+against a change that wrecks cache reuse.
+
+```bash
+python3 telemetry/gate.py                  # fail if weighted hit rate < 80%
+python3 telemetry/gate.py --min-hit-rate 0.85 --last 30
+python3 telemetry/gate.py --json
+```
+
+It uses the **token-weighted** hit rate (`sum(cache_read) / sum(total_input)`)
+over the last N sessions, not a per-session average, so cold-start noise from
+short sessions doesn't trip it. Exit codes: `0` pass or insufficient data
+(skipped), `1` regression, `2` bad usage. The `--min-tokens` guard skips rather
+than fails when the window is too small to judge.
+
+The default `0.80` floor is calibrated from the observed range (86.7%–95.1%
+across project windows) with margin; a real cache-busting regression lands far
+below it. This gate is **local-only** — it reads `~/.claude` transcripts, which
+do not exist in GitHub CI. See [INTEGRATION.md](INTEGRATION.md) for folding it
+into the `evals/` framework as a `metric` track.
+
 ## Why this is Phase 0
 
 Every other token-economy change (trimming always-loaded tool schemas, fixing
