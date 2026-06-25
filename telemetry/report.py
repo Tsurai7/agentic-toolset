@@ -68,12 +68,30 @@ class SessionStats:
         }
         self.cost = 0.0
         self.tools: Counter = Counter()
+        self._seen_msgs: set[str] = set()
 
     def add_assistant(self, rec: dict) -> None:
         msg = rec.get("message") or {}
+
+        # Claude Code writes one transcript record per content block (thinking,
+        # text, each tool_use) and repeats the full message-level usage on every
+        # one. Tool-use blocks are distinct per record, so count them on every
+        # record; but usage must be counted ONCE per message.id or tokens and
+        # cost inflate by the number of blocks.
+        content = msg.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    self.tools[block.get("name", "?")] += 1
+
         usage = msg.get("usage") or {}
         if not usage:
             return
+        mid = msg.get("id")
+        if mid:
+            if mid in self._seen_msgs:
+                return
+            self._seen_msgs.add(mid)
         self.assistant_turns += 1
         model = msg.get("model") or ""
         if model:
@@ -105,12 +123,6 @@ class SessionStats:
             + cw_5m * r["cache_5m"]
             + out * r["out"]
         ) / 1_000_000
-
-        content = msg.get("content")
-        if isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "tool_use":
-                    self.tools[block.get("name", "?")] += 1
 
     def add_meta(self, rec: dict) -> None:
         self.session_id = self.session_id or rec.get("sessionId", "")
