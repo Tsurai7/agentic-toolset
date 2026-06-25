@@ -81,6 +81,16 @@ else
   fi
 fi
 
+# 3b. Build the agentic CLI from the checkout (used by the hook + installers).
+brew list go >/dev/null 2>&1 || brew install go
+if command -v go >/dev/null 2>&1; then
+  log "building bin/agentic"
+  (cd "$AGENTIC_ROOT" && go build -o bin/agentic ./cmd/agentic) \
+    || warn "agentic build failed — installers will fall back to the Python scripts"
+else
+  warn "go not available — skipping agentic build (Python fallback will be used)"
+fi
+
 # 4. Install the config
 log "running install.sh --provider ${PROVIDER}"
 bash "${AGENTIC_ROOT}/bin/install.sh" --provider "$PROVIDER"

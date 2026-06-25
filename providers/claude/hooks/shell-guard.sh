@@ -15,6 +15,14 @@
 # At most one of these fires per command, so there is no double-wrapping.
 set -euo pipefail
 
+# Prefer the Go binary when it has been built — it does real JSON parsing and is
+# faster. Fall back to the shell implementation below otherwise. exec preserves
+# stdin (the unread hook JSON) and stdout.
+__SG_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd)"
+if [ -n "${__SG_ROOT:-}" ] && [ -x "${__SG_ROOT}/bin/agentic" ]; then
+  exec "${__SG_ROOT}/bin/agentic" hook shell-guard
+fi
+
 INPUT=$(cat)
 
 extract() {

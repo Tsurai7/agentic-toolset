@@ -14,6 +14,17 @@ run() {
   fi
 }
 
+AGENTIC_BIN="${AGENTIC_ROOT}/bin/agentic"
+# Prefer the built Go binary; fall back to the Python scripts during transition.
+run_tool() {
+  local sub="$1"; shift
+  if [[ -x "$AGENTIC_BIN" ]]; then
+    "$AGENTIC_BIN" "$sub" "$@"
+  else
+    python3 "${AGENTIC_ROOT}/providers/shared/${sub}.py" "$@"
+  fi
+}
+
 link_skills() {
   local target="${HOME}/.claude/skills"
   local source="${AGENTIC_ROOT}/core/skills"
@@ -66,7 +77,7 @@ install_claude_md() {
   if [[ -f "$out" ]]; then
     cp "$out" "${out}.bak.$(date +%s)"
   fi
-  python3 "${AGENTIC_ROOT}/providers/shared/merge-claude-md.py" "$generated" "$out"
+  run_tool merge-claude-md "$generated" "$out"
   log "wrote $generated; ensured @import in $out (root: ${AGENTIC_ROOT})"
 }
 
@@ -75,11 +86,7 @@ install_mcp() {
   # `claude` CLI), NOT ~/.claude/.mcp.json. Register through the CLI so servers
   # like gitnexus actually load (PORT-03).
   run mkdir -p "${HOME}/.claude"
-  if [[ "$DRY_RUN" == "1" ]]; then
-    DRY_RUN=1 python3 "${AGENTIC_ROOT}/providers/shared/merge-mcp.py" "$AGENTIC_ROOT" --register-claude-user
-  else
-    python3 "${AGENTIC_ROOT}/providers/shared/merge-mcp.py" "$AGENTIC_ROOT" --register-claude-user
-  fi
+  DRY_RUN="$DRY_RUN" run_tool merge-mcp "$AGENTIC_ROOT" --register-claude-user
 }
 
 install_settings() {
@@ -100,7 +107,7 @@ install_settings() {
   local resolved
   resolved="$(mktemp)"
   sed "s#__AGENTIC_ROOT__#${AGENTIC_ROOT}#g" "$fragment" >"$resolved"
-  python3 "${AGENTIC_ROOT}/providers/shared/merge-settings.py" "$resolved" "$out"
+  run_tool merge-settings "$resolved" "$out"
   rm -f "$resolved"
 }
 

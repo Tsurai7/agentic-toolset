@@ -14,6 +14,17 @@ run() {
   fi
 }
 
+AGENTIC_BIN="${AGENTIC_ROOT}/bin/agentic"
+# Prefer the built Go binary; fall back to the Python scripts during transition.
+run_tool() {
+  local sub="$1"; shift
+  if [[ -x "$AGENTIC_BIN" ]]; then
+    "$AGENTIC_BIN" "$sub" "$@"
+  else
+    python3 "${AGENTIC_ROOT}/providers/shared/${sub}.py" "$@"
+  fi
+}
+
 link_skills() {
   local target="${HOME}/.cursor/skills"
   local source="${AGENTIC_ROOT}/core/skills"
@@ -39,7 +50,7 @@ install_mcp() {
   if [[ "$DRY_RUN" == "1" ]]; then
     log "[dry-run] merge-mcp -> $out"
   else
-    python3 "${AGENTIC_ROOT}/providers/shared/merge-mcp.py" "$AGENTIC_ROOT" "$out"
+    run_tool merge-mcp "$AGENTIC_ROOT" "$out"
   fi
 }
 

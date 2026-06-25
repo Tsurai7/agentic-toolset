@@ -91,6 +91,18 @@ echo "== memory hygiene (seeds) =="
 if python3 core/memory/lint.py >/dev/null 2>&1; then ok "memory seeds lint"; else err "core/memory/lint.py failed"; fi
 echo ""
 
+echo "== Go (fmt, vet, test, build) =="
+if command -v go >/dev/null 2>&1; then
+  unformatted="$(gofmt -l cmd internal 2>/dev/null)"
+  if [[ -n "$unformatted" ]]; then err "gofmt needed: ${unformatted//$'\n'/ }"; else ok "gofmt"; fi
+  if go vet ./... >/dev/null 2>&1; then ok "go vet"; else err "go vet failed"; fi
+  if go test ./... >/dev/null 2>&1; then ok "go test"; else err "go test failed"; fi
+  if go build -o bin/agentic ./cmd/agentic >/dev/null 2>&1; then ok "go build"; else err "go build failed"; fi
+else
+  warn "go not installed — skipping Go checks"
+fi
+echo ""
+
 if [[ "$FAIL" -eq 0 ]]; then
   echo "All static checks passed."
   exit 0
