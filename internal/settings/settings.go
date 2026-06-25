@@ -1,0 +1,172 @@
+// Package settings ports providers/shared/merge-settings.py. It merges the repo's
+// own hook entries and permission allow-list into a provider settings.json while
+// preserving user-added hooks, machine-local env, and every other key.
+package settings
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+
+	"github.com/Tsurai7/agentic-cfg/internal/jsonorder"
+)
+
+// Merge merges the fragment at fragmentPath into the settings at outPath (read if
+// present) and writes the result. Mirrors merge-settings.py.
+func Merge(fragmentPath, outPath string) error {
+	frag, err := jsonorder.ReadFile(fragmentPath)
+	if err != nil {
+		return fmt.Errorf("merge-settings: invalid JSON in %s: %w", fragmentPath, err)
+	}
+	out := jsonorder.New()
+	if b, err := os.ReadFile(outPath); err == nil {
+		if err := json.Unmarshal(b, out); err != nil {
+			return fmt.Errorf("merge-settings: invalid JSON in %s: %w", outPath, err)
+		}
+	}
+	mergeInto(out, frag)
+	return jsonorder.WriteFile(outPath, out)
+}
+
+func mergeInto(out, frag *jsonorder.Map) {
+	// $schema: only carry over a non-null fragment value, and only if absent.
+	if raw, ok := frag.GetRaw("$schema"); ok && strings.TrimSpace(string(raw)) != "null" {
+		if !out.Has("$schema") {
+			out.SetRaw("$schema", raw)
+		}
+	}
+	// hooks: deep-merge by event, preserving user-added hooks.
+	if fragHooks, ok := frag.GetRaw("hooks"); ok {
+		existing, _ := out.GetRaw("hooks")
+		out.SetRaw("hooks", mergeHooks(existing, fragHooks))
+	}
+	// permissions: union allow, keep existing deny and any other keys.
+	mergePermissions(out, frag)
+}
+
+// mergeHooks replaces the repo's own hook groups and preserves every user-added
+// hook. Events the fragment does not mention are left untouched; within an event,
+// only fully-managed groups are dropped before the fragment's groups are appended.
+func mergeHooks(existingRaw, fragRaw json.RawMessage) json.RawMessage {
+	frag := jsonorder.New()
+	_ = json.Unmarshal(fragRaw, frag)
+	existing := jsonorder.New()
+	if len(existingRaw) > 0 {
+		_ = json.Unmarshal(existingRaw, existing)
+	}
+	managed := managedCommands(frag)
+	result := existing.Clone() // preserve user events and their order
+	for _, event := range frag.Keys() {
+		var fragGroups []json.RawMessage
+		if r, ok := frag.GetRaw(event); ok {
+			_ = json.Unmarshal(r, &fragGroups)
+		}
+		var kept []json.RawMessage
+		if r, ok := existing.GetRaw(event); ok {
+			var existingGroups []json.RawMessage
+			_ = json.Unmarshal(r, &existingGroups)
+			for _, g := range existingGroups {
+				if !isManagedGroup(g, managed) {
+					kept = append(kept, g)
+				}
+			}
+		}
+		combined := append(kept, fragGroups...)
+		cb, _ := json.Marshal(combined)
+		result.SetRaw(event, cb)
+	}
+	rb, _ := json.Marshal(result)
+	return rb
+}
+
+func managedCommands(frag *jsonorder.Map) map[string]bool {
+	set := map[string]bool{}
+	for _, event := range frag.Keys() {
+		var groups []json.RawMessage
+		if r, ok := frag.GetRaw(event); ok {
+			_ = json.Unmarshal(r, &groups)
+		}
+		for _, g := range groups {
+			for _, c := range groupCommands(g) {
+				if c != "" {
+					set[c] = true
+				}
+			}
+		}
+	}
+	return set
+}
+
+func groupCommands(g json.RawMessage) []string {
+	var grp struct {
+		Hooks []struct {
+			Command string `json:"command"`
+		} `json:"hooks"`
+	}
+	_ = json.Unmarshal(g, &grp)
+	out := make([]string, 0, len(grp.Hooks))
+	for _, h := range grp.Hooks {
+		out = append(out, h.Command)
+	}
+	return out
+}
+
+// isManagedGroup is true only if every command in the group is one the repo owns,
+// so it is safe to replace. A group containing any user command is left untouched.
+func isManagedGroup(g json.RawMessage, managed map[string]bool) bool {
+	cmds := groupCommands(g)
+	if len(cmds) == 0 {
+		return false
+	}
+	for _, c := range cmds {
+		switch {
+		case managed[c]:
+		case strings.Contains(c, "/providers/claude/hooks/"):
+		case strings.HasPrefix(c, "lean-ctx hook "):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func mergePermissions(out, frag *jsonorder.Map) {
+	perms := jsonorder.New()
+	if r, ok := out.GetRaw("permissions"); ok {
+		_ = json.Unmarshal(r, perms)
+	}
+	allow := map[string]bool{}
+	for _, a := range permAllow(perms) {
+		allow[a] = true
+	}
+	if r, ok := frag.GetRaw("permissions"); ok {
+		fp := jsonorder.New()
+		_ = json.Unmarshal(r, fp)
+		for _, a := range permAllow(fp) {
+			allow[a] = true
+		}
+	}
+	list := make([]string, 0, len(allow))
+	for a := range allow {
+		list = append(list, a)
+	}
+	sort.Strings(list)
+	ab, _ := json.Marshal(list)
+	perms.SetRaw("allow", ab)
+	if !perms.Has("deny") {
+		perms.SetRaw("deny", json.RawMessage("[]"))
+	}
+	pb, _ := json.Marshal(perms)
+	out.SetRaw("permissions", pb)
+}
+
+func permAllow(m *jsonorder.Map) []string {
+	if r, ok := m.GetRaw("allow"); ok {
+		var a []string
+		_ = json.Unmarshal(r, &a)
+		return a
+	}
+	return nil
+}
