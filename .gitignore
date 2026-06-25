@@ -15,6 +15,9 @@ core/skills/no-mistakes/
 evals/results/
 __pycache__/
 
+# Go build artifact — bootstrap builds bin/agentic from the checkout (not vendored)
+/bin/agentic
+
 # Editor
 .idea/
 .vscode/
