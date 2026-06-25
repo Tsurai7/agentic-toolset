@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/Tsurai7/agentic-cfg/internal/hook"
+	"github.com/Tsurai7/agentic-cfg/internal/mcpmerge"
 	"github.com/Tsurai7/agentic-cfg/internal/settings"
 )
 
@@ -23,6 +24,8 @@ func main() {
 		os.Exit(hook.Main(os.Args[2:]))
 	case "merge-settings":
 		os.Exit(mergeSettings(os.Args[2:]))
+	case "merge-mcp":
+		os.Exit(mergeMCP(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(0)
@@ -45,11 +48,32 @@ func mergeSettings(args []string) int {
 	return 0
 }
 
+func mergeMCP(args []string) int {
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: agentic merge-mcp <agentic_root> <output_mcp.json | --register-claude-user>")
+		return 1
+	}
+	root := args[0]
+	var err error
+	if args[1] == "--register-claude-user" {
+		err = mcpmerge.RegisterClaudeUser(root)
+	} else {
+		err = mcpmerge.MergeCursor(root, args[1])
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
+}
+
 func usage() {
 	fmt.Fprint(os.Stderr, `usage: agentic <command> [args]
 
 commands:
   hook shell-guard                      PreToolUse Bash hook (shell + code-search precedence)
   merge-settings <fragment> <out>       merge hooks + permissions into a settings.json
+  merge-mcp <root> <out>                merge managed MCP servers into a mcp.json (Cursor)
+  merge-mcp <root> --register-claude-user   register managed MCP servers at Claude user scope
 `)
 }
