@@ -2,6 +2,26 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.11.0] — 2026-06-25
+
+### Added
+- `prompt-caching-playbook` skill (with `references/` for Anthropic/OpenAI/Gemini/
+  vLLM, OSS agents, benchmarks): structuring prompts for prompt-cache reuse. Added
+  to the AGENTS.md skills inventory.
+- Eval coverage: three positive trigger cases, two negative (over-trigger guard)
+  cases, and one content/anti-pattern case under `evals/cases/`. `evals/README.md`
+  documents the skill-trigger case pattern.
+- `bin/ci-check.sh` now verifies that `references/*.md` links in any SKILL.md
+  resolve (no dangling reference files).
+
+### Changed
+- Trimmed the skill's `description` (~250 → ~60 words) for trigger precision and a
+  leaner skill index, keeping the high-signal keywords and Russian phrases.
+- Added a freshness disclaimer: the playbook's structural rules are stable, but its
+  pricing/threshold/TTL/model-ID numbers are point-in-time (2026-05) and must be
+  verified against live provider docs before being quoted — per the honesty
+  principle.
+
 ## [0.10.0] — 2026-06-24
 
 ### Added

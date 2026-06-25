@@ -53,3 +53,13 @@ Drop a new JSON file in [`cases/`](cases/):
 ```
 
 Keep one assertion per behavior so a failure points at exactly one rule.
+
+## Skill-trigger cases
+
+To test that a skill fires when it should — and stays quiet when it shouldn't —
+write paired cases. A **positive** case asserts the skill is used
+(`expect: ["surfaces or invokes the <skill> skill"]`); a **negative** case guards
+against over-triggering on unrelated prompts
+(`expect_not: ["invokes the <skill> skill"]`, with an empty `expect`). The judge
+reads the transcript, which includes tool calls, to decide. Trigger matching is
+probabilistic — run these several times and look at stability, not a single pass.

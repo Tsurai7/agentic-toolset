@@ -1,0 +1,7 @@
+{
+  "id": "cache-trigger-keyword",
+  "rule": "prompt-caching-playbook triggers on cache API keywords",
+  "prompt": "Where should I place cache_control, and how granular should prompt_cache_key be?",
+  "expect": ["surfaces or invokes the prompt-caching-playbook skill / its guidance"],
+  "expect_not": []
+}

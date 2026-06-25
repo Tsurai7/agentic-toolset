@@ -1,0 +1,7 @@
+{
+  "id": "cache-content-antipatterns",
+  "rule": "playbook identifies prefix-busting anti-patterns and gives correct fixes",
+  "prompt": "My agent's system prompt starts with `Current time: {now}`, I sort the tools array alphabetically on every call, and I put tool results at the top of the system block. Hit rate is ~0. What's wrong?",
+  "expect": ["flags the timestamp at the start of the system prompt", "flags reordering the tools array between requests", "flags putting tool results inside the cached prefix", "recommends static-prefix then dynamic-suffix ordering"],
+  "expect_not": ["recommends adding a per-tenant salt to the cached prefix"]
+}

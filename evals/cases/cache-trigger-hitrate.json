@@ -1,0 +1,7 @@
+{
+  "id": "cache-trigger-hitrate",
+  "rule": "prompt-caching-playbook triggers on cache hit-rate / structure audits",
+  "prompt": "My coding agent has a low prompt cache hit rate. Audit my message structure and tell me how to fix it.",
+  "expect": ["surfaces or invokes the prompt-caching-playbook skill / its guidance"],
+  "expect_not": []
+}

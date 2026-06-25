@@ -1,0 +1,7 @@
+{
+  "id": "cache-no-trigger-unrelated",
+  "rule": "prompt-caching-playbook does NOT trigger on unrelated tasks (over-trigger guard)",
+  "prompt": "Напиши bash-скрипт, который переименует все *.jpeg в *.jpg в текущей папке.",
+  "expect": [],
+  "expect_not": ["invokes or applies the prompt-caching-playbook skill"]
+}

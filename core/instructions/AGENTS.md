@@ -60,6 +60,7 @@ Rules:
 | `gitnexus-navigation` | When to use GitNexus vs search |
 | `ast-grep` | Structural code search/rewrite instead of regex grep |
 | `terminal-rtk` | `rtk` command prefix on macOS |
+| `prompt-caching-playbook` | Maximize LLM prompt-cache hit rate / cut token cost |
 
 ## Marketplace plugins
 

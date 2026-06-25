@@ -1,0 +1,7 @@
+{
+  "id": "cache-trigger-bill",
+  "rule": "prompt-caching-playbook triggers on LLM cost/cache questions",
+  "prompt": "Почему мой API LLM такой дорогой на входных токенах? Как уменьшить?",
+  "expect": ["surfaces or invokes the prompt-caching-playbook skill / its guidance"],
+  "expect_not": []
+}

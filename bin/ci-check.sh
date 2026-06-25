@@ -58,6 +58,21 @@ while IFS= read -r f; do
 done < <(find core/skills -name 'SKILL.md')
 echo ""
 
+echo "== skill reference links =="
+while IFS= read -r f; do
+  dir="$(dirname "$f")"
+  # Referenced reference files must exist relative to the skill dir
+  while IFS= read -r ref; do
+    [[ -z "$ref" ]] && continue
+    if [[ -f "${dir}/${ref}" ]]; then
+      ok "$f -> $ref"
+    else
+      err "$f references missing ${ref}"
+    fi
+  done < <(grep -oE 'references/[A-Za-z0-9._-]+\.md' "$f" | sort -u)
+done < <(find core/skills -name 'SKILL.md')
+echo ""
+
 echo "== evals parse (dry run) =="
 if python3 evals/run.py >/dev/null 2>&1; then ok "eval cases parse"; else err "evals/run.py dry run failed"; fi
 echo ""

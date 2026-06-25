@@ -1,0 +1,7 @@
+{
+  "id": "cache-no-trigger-generic-llm",
+  "rule": "prompt-caching-playbook does NOT trigger on generic LLM questions without a caching/cost angle",
+  "prompt": "Which Claude model should I use for summarizing short support tickets?",
+  "expect": [],
+  "expect_not": ["invokes or applies the prompt-caching-playbook skill"]
+}
