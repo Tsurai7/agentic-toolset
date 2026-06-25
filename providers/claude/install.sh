@@ -71,15 +71,14 @@ install_claude_md() {
 }
 
 install_mcp() {
-  local out="${HOME}/.claude/.mcp.json"
+  # Claude Code reads user-scope MCP servers from ~/.claude.json (managed via the
+  # `claude` CLI), NOT ~/.claude/.mcp.json. Register through the CLI so servers
+  # like gitnexus actually load (PORT-03).
   run mkdir -p "${HOME}/.claude"
-  if [[ -f "$out" && "$DRY_RUN" != "1" ]]; then
-    cp "$out" "${out}.bak.$(date +%s)"
-  fi
   if [[ "$DRY_RUN" == "1" ]]; then
-    log "[dry-run] merge-mcp -> $out"
+    DRY_RUN=1 python3 "${AGENTIC_ROOT}/providers/shared/merge-mcp.py" "$AGENTIC_ROOT" --register-claude-user
   else
-    python3 "${AGENTIC_ROOT}/providers/shared/merge-mcp.py" "$AGENTIC_ROOT" "$out"
+    python3 "${AGENTIC_ROOT}/providers/shared/merge-mcp.py" "$AGENTIC_ROOT" --register-claude-user
   fi
 }
 

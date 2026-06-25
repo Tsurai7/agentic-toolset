@@ -80,11 +80,73 @@ def collect_fragments(integrations_dir: Path) -> dict:
     return merged
 
 
+CLAUDE_SERVER_KEYS = ("command", "args", "env", "type", "url", "headers")
+
+
+def _claude_server_config(config: object) -> dict:
+    """Keep only the fields Claude Code understands, dropping e.g. Cursor's
+    `autoApprove` (Claude handles auto-approval via settings permissions)."""
+    if not isinstance(config, dict):
+        return {}
+    return {k: v for k, v in config.items() if k in CLAUDE_SERVER_KEYS}
+
+
+def register_claude_user(agentic_root: Path) -> int:
+    """Register repo-managed MCP servers at Claude Code *user* scope via the
+    `claude` CLI, which writes ~/.claude.json — the file Claude Code actually
+    reads for user-scope servers. Replaces the dead ~/.claude/.mcp.json write so
+    servers like gitnexus actually load (PORT-03). Idempotent: each server is
+    removed then re-added; user-added servers and other keys are left untouched.
+    """
+    claude = shutil.which("claude")
+    if not claude:
+        print(
+            "merge-mcp: 'claude' CLI not on PATH — skipping user-scope MCP "
+            "registration (add the servers manually with `claude mcp add-json`)",
+            file=sys.stderr,
+        )
+        return 0
+    env = load_env(agentic_root)
+    fragments = collect_fragments(agentic_root / "integrations")
+    managed = substitute(fragments, env).get("mcpServers", {})
+    dry = os.environ.get("DRY_RUN") == "1"
+    done = []
+    for name, config in managed.items():
+        payload = json.dumps(_claude_server_config(config))
+        if dry:
+            print(f"[dry-run] claude mcp add-json {name} <json> --scope user")
+            done.append(name)
+            continue
+        subprocess.run(
+            [claude, "mcp", "remove", name, "--scope", "user"],
+            capture_output=True, text=True,
+        )  # ignore failure: server may not exist yet
+        added = subprocess.run(
+            [claude, "mcp", "add-json", name, payload, "--scope", "user"],
+            capture_output=True, text=True,
+        )
+        if added.returncode != 0:
+            detail = (added.stderr or added.stdout).strip()
+            print(f"merge-mcp: failed to register {name}: {detail}", file=sys.stderr)
+            return 1
+        done.append(name)
+    print(
+        f"Registered {len(done)} Claude user-scope MCP server(s): "
+        f"{', '.join(sorted(done)) or 'none'}"
+    )
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) < 3:
-        print("Usage: merge-mcp.py <agentic_root> <output_mcp.json>", file=sys.stderr)
+        print(
+            "Usage: merge-mcp.py <agentic_root> <output_mcp.json | --register-claude-user>",
+            file=sys.stderr,
+        )
         return 1
     agentic_root = Path(sys.argv[1]).resolve()
+    if sys.argv[2] == "--register-claude-user":
+        return register_claude_user(agentic_root)
     output = Path(sys.argv[2]).resolve()
     env = load_env(agentic_root)
     overlay_path = agentic_root / "providers" / "cursor" / "mcp.overlay.json"
