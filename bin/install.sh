@@ -70,6 +70,16 @@ case "$PROVIDER" in
     ;;
 esac
 
+# Distribute cross-project memory seeds into active projects (merge-by-name,
+# never clobbers local facts). Honors --dry-run.
+echo ""
+echo "Syncing cross-project memory seeds..."
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  python3 "${AGENTIC_ROOT}/core/memory/sync.py"
+else
+  python3 "${AGENTIC_ROOT}/core/memory/sync.py" --apply
+fi
+
 echo ""
 echo "Install complete. Restart Cursor / Claude Code to pick up MCP and skills."
 echo "Optional: add Cursor User Rule per core/instructions/user-rules/cursor-rules-pointer.md"
