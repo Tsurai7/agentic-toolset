@@ -11,12 +11,13 @@ package hook
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+
+	"github.com/bytedance/sonic"
 )
 
 // Main dispatches `agentic hook <name>`.
@@ -79,7 +80,7 @@ func shellGuard(stdin io.Reader, stdout io.Writer) int {
 		return 0
 	}
 	var in hookInput
-	if err := json.Unmarshal(raw, &in); err != nil {
+	if err := sonic.Unmarshal(raw, &in); err != nil {
 		return 0 // unparseable input: fail open
 	}
 	switch in.ToolName {
@@ -159,7 +160,7 @@ func writeDeny(w io.Writer) {
 	e.HookSpecificOutput.HookEventName = "PreToolUse"
 	e.HookSpecificOutput.PermissionDecision = "deny"
 	e.HookSpecificOutput.PermissionDecisionReason = astGrepReason
-	b, _ := json.Marshal(e)
+	b, _ := sonic.Marshal(e)
 	_, _ = w.Write(b)
 }
 
@@ -168,6 +169,6 @@ func writeRewrite(w io.Writer, command string) {
 	e.HookSpecificOutput.HookEventName = "PreToolUse"
 	e.HookSpecificOutput.PermissionDecision = "allow"
 	e.HookSpecificOutput.UpdatedInput = &updatedInput{Command: command}
-	b, _ := json.Marshal(e)
+	b, _ := sonic.Marshal(e)
 	_, _ = w.Write(b)
 }
