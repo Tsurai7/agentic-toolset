@@ -85,6 +85,12 @@ echo "== evals parse (dry run) =="
 if python3 evals/run.py --track all >/dev/null 2>&1; then ok "eval cases parse"; else err "evals/run.py dry run failed"; fi
 echo ""
 
+echo "== memory hygiene (seeds) =="
+# Lints the version-controlled seeds only. The --live path needs ~/.claude
+# transcripts and must not run in CI.
+if python3 core/memory/lint.py >/dev/null 2>&1; then ok "memory seeds lint"; else err "core/memory/lint.py failed"; fi
+echo ""
+
 if [[ "$FAIL" -eq 0 ]]; then
   echo "All static checks passed."
   exit 0
