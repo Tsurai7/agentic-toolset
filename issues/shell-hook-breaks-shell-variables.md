@@ -2,9 +2,10 @@
 id: shell-hook-breaks-shell-variables
 title: Shell hook breaks variable expansion (and sometimes cd) in Bash tool calls
 severity: high
-status: mitigated
+status: fixed
 area: shell-hook
 discovered: 2026-06-25
+resolved: 2026-06-26
 ---
 
 ## Summary
@@ -55,3 +56,16 @@ The PreToolUse Bash hook (shell-guard delegating to `lean-ctx hook rewrite` /
 rtk) rewrites the command before execution; the rewrite appears to drop or
 re-quote the assignment context so `$VAR` is unset when the real command runs.
 Not fully diagnosed — the mitigation (literal paths) is reliable in practice.
+
+## Resolution (2026-06-26)
+Root cause was shell-guard's rtk fallback prefixing a naive `rtk <cmd>` onto a
+command with a leading variable assignment: `rtk FOO=x; echo $FOO` scopes the
+assignment to rtk's subshell, so `$FOO` is empty for the rest of the command.
+Fixed in `providers/claude/hooks/shell-guard.sh` — the rtk fallback now passes a
+command with a leading `VAR=` assignment through untouched. Verified through the
+live hook: `FOO=hello; echo "[$FOO]"` → `[hello]` (was `[]`). lean-ctx already
+wraps the commands it handles as a single string, so those were never affected.
+
+Note: variables set in one Bash tool call still do not persist into a *separate*
+call — each call is a fresh shell. For cross-call targets, keep using literal
+absolute paths (e.g. `git -C /abs/path …`).

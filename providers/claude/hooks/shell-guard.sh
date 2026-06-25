@@ -8,10 +8,11 @@
 #   2. lean-ctx delegate — hand the command to `lean-ctx hook rewrite`. If
 #      lean-ctx decides to wrap it (e.g. `git …` -> `lean-ctx -c "git …"`),
 #      honor that verbatim.
-#   3. rtk fallback — for anything lean-ctx leaves bare (e.g. `python3 …`),
-#      prefix `rtk` so no native command escapes token compression.
+#   3. rtk fallback — for simple commands lean-ctx leaves bare (e.g. `python3 …`),
+#      prefix `rtk` for token compression. A command a bare prefix would mangle
+#      (a leading `VAR=` assignment) passes through untouched instead.
 #
-# Exactly one of these fires per command, so there is no double-wrapping.
+# At most one of these fires per command, so there is no double-wrapping.
 set -euo pipefail
 
 INPUT=$(cat)
@@ -53,8 +54,12 @@ esac
 # Deny only when grep/rg clearly targets code (a code-file extension appears as
 # a glob, an --include, or a path arg). Text/log greps fall through.
 CODE_EXT='go|cs|py|js|jsx|ts|tsx|java|kt|rb|rs|c|h|cc|cpp|hpp|php|swift|scala|sql|vue'
+# Test with quoted substrings removed, so a code extension that appears only inside
+# the search pattern (e.g. grep "foo.py" data.csv) is not mistaken for a code-file
+# target (BUG-03); only an unquoted .ext argument triggers the deny.
+UNQUOTED=$(printf '%s' "$CMD" | sed -e "s/'[^']*'//g" -e 's/"[^"]*"//g')
 if printf '%s' "$CMD" | grep -qE '(^|[|&;]| )(grep|egrep|fgrep|rg)( |$)' \
-   && printf '%s' "$CMD" | grep -qE "\.($CODE_EXT)(\b|['\"]|$)"; then
+   && printf '%s' "$UNQUOTED" | grep -qE "\.($CODE_EXT)(\b|['\"]|$)"; then
   REASON="Use ast-grep for structural code search: sg -p '<pattern>' -l <lang>. Plain grep is only for non-code text/logs (see the ast-grep + tool-precedence rules)."
   JSON_REASON=$(printf '%s' "$REASON" | sed 's/\\/\\\\/g;s/"/\\"/g')
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}' "$JSON_REASON"
@@ -73,7 +78,16 @@ if command -v lean-ctx >/dev/null 2>&1; then
 fi
 
 # --- 3. rtk fallback ---------------------------------------------------------
+# A naive `rtk <cmd>` prefix only wraps the first segment, so a leading variable
+# assignment (`FOO=x …`) would be scoped to rtk's subshell and lost from the rest
+# of the command — a wrong-target hazard (see issues/shell-hook-breaks-shell-
+# variables.md). lean-ctx safely wraps whole commands above; here, pass such a
+# command through untouched rather than mangle it (this also avoids re-wrapping
+# an already-wrapped `FOO=1 rtk …`).
 command -v rtk >/dev/null 2>&1 || exit 0
+if [[ "$CMD" =~ ^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*= ]]; then
+  exit 0
+fi
 REWRITE="rtk $CMD"
 JSON_CMD=$(printf '%s' "$REWRITE" | sed 's/\\/\\\\/g;s/"/\\"/g')
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"command":"%s"}}}' "$JSON_CMD"
