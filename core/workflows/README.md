@@ -24,7 +24,7 @@ Use marketplace plugins for full workflow libraries. This repo only documents **
 
 1. **Bug or test failure** → superpowers `systematic-debugging`, then `verification-before-completion`
 2. **New feature** → superpowers `brainstorming` / `writing-plans`, then implement with `git-safety`
-3. **PR / CI** → `create-pr` + cursor-team-kit `fix-ci` or `loop-on-ci`
+3. **PR / CI** → full gated PR (review/test/docs/lint + CI auto-fix) via `no-mistakes` (see [`integrations/no-mistakes/`](../../integrations/no-mistakes/)); plain PR with no gate via `create-pr`
 4. **Cross-file refactor** → `gitnexus-navigation` for impact, then `ast-grep` for pattern search/rewrite (not regex grep)
 
 See [`catalog/plugins.yaml`](../../catalog/plugins.yaml) for install links.

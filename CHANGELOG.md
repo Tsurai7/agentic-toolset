@@ -2,6 +2,17 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.10.0] — 2026-06-24
+
+### Added
+- no-mistakes integration: `integrations/no-mistakes/README.md` documents the
+  clean-PR gate (local git proxy + AI pipeline). `bin/bootstrap.sh` installs the
+  binary via `go install`, `doctor.sh --deep` checks for it, and the workflows
+  decision flow distinguishes the full gated PR (`no-mistakes`) from a plain PR
+  (`create-pr`). The tool-generated `/no-mistakes` skill lands in `core/skills/`
+  via the skills symlink and is gitignored (the binary owns it, per-repo
+  `no-mistakes init`).
+
 ## [0.9.0] — 2026-06-24
 
 ### Added

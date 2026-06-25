@@ -62,6 +62,25 @@ else
     || warn "lean-ctx install failed — if it is an 'untrusted tap', run: brew trust yvgude/lean-ctx && brew install yvgude/lean-ctx/lean-ctx"
 fi
 
+# no-mistakes: clean-PR gate (go install). See integrations/no-mistakes/.
+if command -v no-mistakes >/dev/null 2>&1; then
+  log "no-mistakes already installed"
+else
+  brew list go >/dev/null 2>&1 || brew install go
+  if command -v go >/dev/null 2>&1; then
+    log "installing no-mistakes (go install)"
+    if go install github.com/kunchenguid/no-mistakes/cmd/no-mistakes@latest; then
+      gobin="$(go env GOBIN)"; [[ -z "$gobin" ]] && gobin="$(go env GOPATH)/bin"
+      command -v no-mistakes >/dev/null 2>&1 \
+        || warn "no-mistakes installed to ${gobin} — add it to PATH (e.g. export PATH=\"${gobin}:\$PATH\")"
+    else
+      warn "no-mistakes install failed — skipping (it is optional)"
+    fi
+  else
+    warn "go not available — skipping no-mistakes"
+  fi
+fi
+
 # 4. Install the config
 log "running install.sh --provider ${PROVIDER}"
 bash "${AGENTIC_ROOT}/bin/install.sh" --provider "$PROVIDER"

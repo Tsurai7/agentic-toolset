@@ -124,6 +124,11 @@ if [[ "$DEEP" -eq 1 ]]; then
   else
     warn "ast-grep not found — brew install ast-grep"
   fi
+  if command -v no-mistakes >/dev/null 2>&1; then
+    ok "no-mistakes binary available"
+  else
+    warn "no-mistakes not found — see integrations/no-mistakes/README.md"
+  fi
   echo ""
 fi
 
