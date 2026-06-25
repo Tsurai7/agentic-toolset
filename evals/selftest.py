@@ -52,6 +52,17 @@ def test_value_verdict_thresholds():
     assert vv(notworse, {"treatment": 0, "control": 3, "tie": 0}, 0.0) == "FAIL"
 
 
+def test_metric_verdict():
+    # judge_metric is pure threshold logic — the boundary is inclusive for >=.
+    ge = {"metric": "weighted_cache_hit_rate", "op": ">=", "threshold": 0.80}
+    assert judge.judge_metric(ge, 0.95)["verdict"] == "PASS"
+    assert judge.judge_metric(ge, 0.80)["verdict"] == "PASS"
+    assert judge.judge_metric(ge, 0.75)["verdict"] == "FAIL"
+    le = {"metric": "x", "op": "<=", "threshold": 0.10}
+    assert judge.judge_metric(le, 0.05)["verdict"] == "PASS"
+    assert judge.judge_metric(le, 0.20)["verdict"] == "FAIL"
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -12,12 +12,14 @@ from pathlib import Path
 EVALS_DIR = Path(__file__).resolve().parent.parent
 CONFORMANCE_DIR = EVALS_DIR / "conformance" / "cases"
 VALUE_DIR = EVALS_DIR / "value" / "cases"
+METRIC_DIR = EVALS_DIR / "metric" / "cases"
 
 PASS_CONDITIONS = {"treatment_preferred", "treatment_not_worse"}
+METRIC_OPS = {">=", "<=", ">", "<"}
 
 
 def _track_dir(track: str) -> Path:
-    return {"conformance": CONFORMANCE_DIR, "value": VALUE_DIR}[track]
+    return {"conformance": CONFORMANCE_DIR, "value": VALUE_DIR, "metric": METRIC_DIR}[track]
 
 
 def load(track: str) -> list[dict]:
@@ -42,14 +44,15 @@ def validate(case: dict, track: str) -> list[str]:
             errors.append(f"key '{key}' must be {typ.__name__}")
 
     require("id", str)
-    require("prompt", str)
 
     if track == "conformance":
+        require("prompt", str)
         require("rule", str)
         has_expect = bool(case.get("expect")) or bool(case.get("expect_not"))
         if not has_expect:
             errors.append("conformance case needs a non-empty 'expect' or 'expect_not'")
     elif track == "value":
+        require("prompt", str)
         require("hypothesis", str)
         require("skill", str)
         require("ablate", list)
@@ -61,6 +64,16 @@ def validate(case: dict, track: str) -> list[str]:
             errors.append("value case needs a non-empty 'rubric'")
         if not case.get("ablate"):
             errors.append("value case needs a non-empty 'ablate' (what to remove for control)")
+    elif track == "metric":
+        # A metric case asserts a number from local telemetry against a
+        # threshold — no agent run, so no 'prompt'.
+        require("rule", str)
+        require("metric", str)
+        require("op", str)
+        if not isinstance(case.get("threshold"), (int, float)):
+            errors.append("metric case needs a numeric 'threshold'")
+        if case.get("op") not in METRIC_OPS:
+            errors.append(f"'op' must be one of {sorted(METRIC_OPS)}")
     else:
         errors.append(f"unknown track '{track}'")
 
