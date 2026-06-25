@@ -73,8 +73,16 @@ while IFS= read -r f; do
 done < <(find core/skills -name 'SKILL.md')
 echo ""
 
+echo "== evals lint (schema, ids, coverage) =="
+if python3 evals/lint.py; then ok "eval cases lint"; else err "evals/lint.py failed"; fi
+echo ""
+
+echo "== evals self-test (harness logic) =="
+if python3 evals/selftest.py; then ok "harness logic"; else err "evals/selftest.py failed"; fi
+echo ""
+
 echo "== evals parse (dry run) =="
-if python3 evals/run.py >/dev/null 2>&1; then ok "eval cases parse"; else err "evals/run.py dry run failed"; fi
+if python3 evals/run.py --track all >/dev/null 2>&1; then ok "eval cases parse"; else err "evals/run.py dry run failed"; fi
 echo ""
 
 if [[ "$FAIL" -eq 0 ]]; then

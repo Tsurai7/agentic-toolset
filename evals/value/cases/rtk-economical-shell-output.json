@@ -1,0 +1,14 @@
+{
+  "id": "rtk-economical-shell-output",
+  "skill": "terminal-rtk",
+  "hypothesis": "With the terminal-rtk skill, the agent routes noisy shell commands through rtk (or ctx_shell), compressing large outputs, so it reaches an equally correct answer while pulling far less raw text into context.",
+  "prompt": "This repository has a large dependency tree and verbose build logs. Determine which direct dependency is responsible for pulling in the most transitive packages, and report just that dependency's name and the transitive count. You will need to inspect command output to do this.",
+  "ablate": ["terminal-rtk"],
+  "rubric": [
+    "reaches a correct, specific answer (a dependency name plus a count)",
+    "handles the verbose command output economically — compressed via rtk/ctx_shell rather than dumping raw logs into the transcript",
+    "the working transcript stays lean relative to the amount of output inspected"
+  ],
+  "pass_condition": "treatment_not_worse",
+  "n": 3
+}

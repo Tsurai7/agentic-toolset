@@ -2,6 +2,42 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.12.0] — 2026-06-25
+
+### Added
+- **Value-eval track + the loop.** `evals/` is now two tracks: the existing
+  conformance/trigger cases (moved to `evals/conformance/cases/`) and a new
+  **value** track (`evals/value/cases/`) that measures whether a tool is *worth its
+  place* via A/B uplift — the same prompt run with the artifact (treatment) and with
+  it ablated (control), scored by a pairwise judge. Position bias is countered with
+  order-swap + a flip-rate guard (>10% ⇒ verdict `UNRELIABLE`); efficiency metrics
+  (tool-call count, transcript size) are captured for free per arm.
+- `evals/PLAYBOOK.md` — the documented loop: definition of done for a new
+  skill/rule (ship a conformance case *and* a value case), the decision tree, JSON
+  templates, the case-origin rule (cases come from observed weaknesses, à la
+  CursorBench), judge-bias handling, and set versioning.
+- Per-model results: value runs write `results/<model>/` (gitignored); `report.py`
+  rolls them into the committed `evals/BENCHMARKS.md`, linked from `README.md`.
+- `evals/lint.py` (schema, unique ids, ablate-target existence, **skill-coverage**)
+  and `evals/selftest.py` (pure-logic tests for the pairwise mapping and verdict
+  thresholds) — both zero-token, wired into `bin/ci-check.sh` for PR CI.
+- Two starter value cases: `ast-grep-structural-precision` (precision) and
+  `rtk-economical-shell-output` (economy).
+
+### Changed
+- `evals/run.py` is now a single CLI with `--track conformance|value|all`,
+  `--filter`, `--n`, `--model`, `--confirm`; shared harness code extracted to
+  `evals/lib/` (agent, judge, cases, render_config). The temporary `_run_cache.py`
+  driver is removed (use `--filter`).
+- `AGENTS.md`, `ARCHITECTURE.md`, and `README.md` point to the eval loop and the
+  benchmark results.
+
+### Known limitation
+- Clean `config-dir` arm isolation needs env-based auth (`ANTHROPIC_API_KEY`);
+  under OAuth/Keychain auth, relocating `CLAUDE_CONFIG_DIR` breaks authentication,
+  so value A/B falls back to prompt-level ablation (medium confidence, stamped on
+  each result). Verified empirically.
+
 ## [0.11.0] — 2026-06-25
 
 ### Added

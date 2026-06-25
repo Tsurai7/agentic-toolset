@@ -28,7 +28,7 @@ Cursor / Claude after install. Full walkthrough: [`SETUP.md`](SETUP.md).
 | `integrations/` | Custom MCP server definitions (merged into provider configs) |
 | `catalog/plugins.yaml` | Marketplace plugins to enable manually (not vendored) |
 | `providers/` | Per-provider install scripts and templates |
-| `evals/` | Behavioral evals — one case per global default, LLM-judge runner |
+| `evals/` | Behavioral evals — conformance (does it fire) + value A/B (is it worth it). Loop: [`evals/PLAYBOOK.md`](evals/PLAYBOOK.md); results: [`evals/BENCHMARKS.md`](evals/BENCHMARKS.md) |
 | `bin/` | `bootstrap.sh` (one-command setup), `install.sh`, `doctor.sh`, `ci-check.sh` |
 
 ## Providers (Phase 1)
@@ -51,9 +51,12 @@ Copy [`secrets/.env.example`](secrets/.env.example) to `secrets/.env` (gitignore
 ```bash
 bin/doctor.sh            # verify symlinks, MCP, memory, binaries
 bin/doctor.sh --deep     # also validate generated MCP JSON + GitNexus pin
-bin/ci-check.sh          # static checks (shell, JSON, YAML, frontmatter, evals)
-python3 evals/run.py     # behavioral evals (dry by default; see evals/README.md)
+bin/ci-check.sh          # static checks (shell, JSON, YAML, frontmatter, eval lint + self-test)
+python3 evals/run.py --track all   # behavioral evals (dry by default; see evals/README.md)
 ```
+
+Measured value-A/B results per model: [`evals/BENCHMARKS.md`](evals/BENCHMARKS.md).
+How to add and maintain cases: [`evals/PLAYBOOK.md`](evals/PLAYBOOK.md).
 
 ## Phase 2 (not automated yet)
 
