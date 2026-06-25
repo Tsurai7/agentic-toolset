@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Tsurai7/agentic-cfg/internal/claudemd"
 	"github.com/Tsurai7/agentic-cfg/internal/hook"
 	"github.com/Tsurai7/agentic-cfg/internal/mcpmerge"
 	"github.com/Tsurai7/agentic-cfg/internal/settings"
@@ -26,6 +27,8 @@ func main() {
 		os.Exit(mergeSettings(os.Args[2:]))
 	case "merge-mcp":
 		os.Exit(mergeMCP(os.Args[2:]))
+	case "merge-claude-md":
+		os.Exit(mergeClaudeMD(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(0)
@@ -67,13 +70,26 @@ func mergeMCP(args []string) int {
 	return 0
 }
 
+func mergeClaudeMD(args []string) int {
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: agentic merge-claude-md <generated_file> <claude_md>")
+		return 1
+	}
+	if err := claudemd.Ensure(args[0], args[1]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
+}
+
 func usage() {
 	fmt.Fprint(os.Stderr, `usage: agentic <command> [args]
 
 commands:
-  hook shell-guard                      PreToolUse Bash hook (shell + code-search precedence)
-  merge-settings <fragment> <out>       merge hooks + permissions into a settings.json
-  merge-mcp <root> <out>                merge managed MCP servers into a mcp.json (Cursor)
+  hook shell-guard                          PreToolUse Bash hook (shell + code-search precedence)
+  merge-settings <fragment> <out>           merge hooks + permissions into a settings.json
+  merge-mcp <root> <out>                    merge managed MCP servers into a mcp.json (Cursor)
   merge-mcp <root> --register-claude-user   register managed MCP servers at Claude user scope
+  merge-claude-md <generated> <claude_md>   ensure CLAUDE.md @imports the generated config
 `)
 }
