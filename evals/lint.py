@@ -31,7 +31,7 @@ def main() -> int:
     covered: set[str] = set()
     skills = _skill_names()
 
-    for track in ("conformance", "value"):
+    for track in ("conformance", "value", "metric"):
         for case in cases.load(track):
             cid = case.get("id", "<no-id>")
             loc = f"{track}:{cid}"

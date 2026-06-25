@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from datetime import date
@@ -117,11 +118,47 @@ def _value_verdict(case: dict, wins: dict, flip_rate: float) -> str:
     return "PASS" if wins["treatment"] / n > 0.5 else "FAIL"
 
 
+# --- metric track --------------------------------------------------------------
+
+def run_metric(cs: list[dict]) -> int:
+    """Assert local telemetry metrics against thresholds — no agent, no judge.
+
+    Reads the number from telemetry/gate.py (the same calibrated aggregation as
+    the standalone gate) and grades it with judge.judge_metric. Insufficient data
+    is a SKIP, not a failure, so it is safe where transcripts are sparse.
+    """
+    gate = Path(__file__).resolve().parent.parent / "telemetry" / "gate.py"
+    failures = 0
+    for c in cs:
+        print(f"== [metric] {c['id']} ==", flush=True)
+        if c.get("metric") != "weighted_cache_hit_rate":
+            print(f"  SKIP: unsupported metric '{c.get('metric')}'\n", flush=True)
+            continue
+        cmd = [sys.executable, str(gate), "--json", "--min-hit-rate", "0",
+               "--last", str(c.get("window_sessions", 20)),
+               "--min-tokens", str(c.get("min_tokens", 200_000))]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            data = json.loads(proc.stdout)
+        except (json.JSONDecodeError, ValueError):
+            failures += 1
+            print(f"  FAIL: telemetry gate error: {(proc.stderr or proc.stdout).strip()[:200]}\n", flush=True)
+            continue
+        if data.get("status") == "skip":
+            print(f"  SKIP: insufficient data ({data['total_input_tokens']} input tokens)\n", flush=True)
+            continue
+        verdict = judge.judge_metric(c, data["weighted_hit_rate"])
+        mark = verdict["verdict"]
+        failures += mark == "FAIL"
+        print(f"  {mark}: {verdict['reason']}\n", flush=True)
+    return failures
+
+
 # --- entrypoint ----------------------------------------------------------------
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Run agentic-cfg evals.")
-    p.add_argument("--track", choices=["conformance", "value", "all"], default="conformance")
+    p.add_argument("--track", choices=["conformance", "value", "metric", "all"], default="conformance")
     p.add_argument("--filter", dest="flt", help="substring match on case id")
     p.add_argument("--n", type=int, default=3, help="repeats per value case (default 3)")
     p.add_argument("--model", help="model passed to the agent (value track records per-model)")
@@ -152,6 +189,8 @@ def main() -> int:
         failures += run_conformance(selected["conformance"])
     if "value" in selected:
         failures += run_value(selected["value"], args.n, args.model)
+    if "metric" in selected:
+        failures += run_metric(selected["metric"])
 
     print(f"{total - failures}/{total} passed.")
     return 1 if failures else 0

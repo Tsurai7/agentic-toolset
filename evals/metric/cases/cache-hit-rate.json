@@ -1,0 +1,9 @@
+{
+  "id": "cache-hit-rate",
+  "rule": "Prompt-cache reuse must not regress (prompt-caching-playbook)",
+  "metric": "weighted_cache_hit_rate",
+  "op": ">=",
+  "threshold": 0.80,
+  "window_sessions": 20,
+  "min_tokens": 200000
+}

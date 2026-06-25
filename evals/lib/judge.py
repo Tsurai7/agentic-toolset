@@ -117,3 +117,23 @@ def judge_pairwise(case: dict, treatment: str, control: str, judge_cmd: str) -> 
         "flip_rate": 1.0 if flipped else 0.0,
         "reliable": not flipped,
     }
+
+
+# --- metric track (no LLM) -----------------------------------------------------
+
+_METRIC_OPS = {
+    ">=": lambda v, t: v >= t,
+    "<=": lambda v, t: v <= t,
+    ">": lambda v, t: v > t,
+    "<": lambda v, t: v < t,
+}
+
+
+def judge_metric(case: dict, value: float) -> dict:
+    """Grade a measured number against the case threshold. Pure logic, no judge."""
+    op, threshold = case["op"], case["threshold"]
+    ok = _METRIC_OPS[op](value, threshold)
+    return {
+        "verdict": "PASS" if ok else "FAIL",
+        "reason": f"{case['metric']}={value:.4f} {op} {threshold}",
+    }
