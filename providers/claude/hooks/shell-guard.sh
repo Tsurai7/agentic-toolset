@@ -17,11 +17,14 @@ set -euo pipefail
 INPUT=$(cat)
 
 extract() {
-  # $1 = JSON key. Pulls the first "key":"value" string, unescaping \" and \\.
+  # $1 = JSON key. Pulls the first "key": "value" string, tolerating optional
+  # whitespace around the colon, and unescaping \" and \\. A missing key yields
+  # an empty string rather than failing the pipeline (which set -e would abort).
   printf '%s' "$INPUT" \
-    | grep -oE "\"$1\":\"([^\"\\\\]|\\\\.)*\"" \
+    | grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]|\\\\.)*\"" \
     | head -1 \
-    | sed "s/^\"$1\":\"//;s/\"$//;s/\\\\\"/\"/g;s/\\\\\\\\/\\\\/g"
+    | sed "s/^\"$1\"[[:space:]]*:[[:space:]]*\"//;s/\"$//;s/\\\\\"/\"/g;s/\\\\\\\\/\\\\/g" \
+    || true
 }
 
 TOOL=$(extract tool_name)
@@ -36,6 +39,12 @@ CMD=$(extract command)
 # Already wrapped — never double-wrap.
 case "$CMD" in
   lean-ctx\ *|rtk\ *) exit 0 ;;
+esac
+
+# Heredoc / here-string — the body cannot be safely re-quoted inside
+# `lean-ctx -c '…'` or after an `rtk` prefix, so run the command untouched.
+case "$CMD" in
+  *'<<'*) exit 0 ;;
 esac
 
 # --- 1. ast-grep guard -------------------------------------------------------
