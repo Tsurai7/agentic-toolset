@@ -1,0 +1,9 @@
+{
+  "id": "gitnexus-graph-extraction",
+  "tool": "gitnexus",
+  "kind": "graph",
+  "label": "gitnexus typed code graph vs grep text matches on a Go sample",
+  "fixture": "evals/bench/fixtures/gn_sample",
+  "tool_cmd": ["gitnexus", "analyze", "--skip-git", "{fixture}"],
+  "baseline": ["grep", "-rn", "Add(", "{fixture}"]
+}

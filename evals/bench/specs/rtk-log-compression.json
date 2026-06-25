@@ -1,0 +1,9 @@
+{
+  "id": "rtk-log-compression",
+  "tool": "rtk",
+  "kind": "compression",
+  "label": "rtk log (dedup) vs cat on a 200k-line noisy log",
+  "setup": [["bash", "{bench}/fixtures/make_noise.sh", "{work}/noise.txt"]],
+  "baseline": ["cat", "{work}/noise.txt"],
+  "tool_cmd": ["rtk", "log", "{work}/noise.txt"]
+}

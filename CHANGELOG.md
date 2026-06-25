@@ -2,6 +2,33 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.13.0] — 2026-06-25
+
+### Added
+- **Deterministic tool benchmarks** (`evals/bench.py`, `evals/bench/`). Some tools
+  are fixed transforms, not agent choices, so an LLM-judge A/B is the wrong (or, for
+  hook-enforced `terminal-rtk`, actively misleading) instrument. These are now
+  measured by code-based grading against fixed fixtures, in concrete absolute
+  numbers. First results (`BENCHMARKS.md`):
+  - `rtk grep` and `lean-ctx grep` compress a 200k-line log from ~12.1 MB / ~3.0M
+    tokens down to ~2.5 KB / ~56 B respectively (×4,884 and ×215,872); `rtk log`
+    dedup → 169 B (×71,532).
+  - `ast-grep` finds the 4 true call sites with 0 false positives where regex grep
+    returns 12 (8 false positives).
+  - `gitnexus analyze` extracts 13 nodes / 21 edges / 2 clusters / 2 flows from a Go
+    sample that grep cannot represent as structure.
+- `bench/specs/*.json` (compression / precision / graph kinds), fixtures under
+  `bench/fixtures/` (a noisy-log generator, an ast-grep precision `.ts` file, a Go
+  sample for gitnexus), and a `report.py` "Deterministic tool benchmarks" section.
+- `lint.py` now schema-checks bench specs; `selftest.py` guards the gitnexus
+  summary parser.
+
+### Changed
+- Replaced the `rtk-economical-shell-output` value A/B case with the deterministic
+  rtk compression benches: its value is hook-enforced, so prompt-level ablation
+  could only ever return a noisy `UNRELIABLE` tie. `terminal-rtk` stays covered by
+  its conformance case.
+
 ## [0.12.0] — 2026-06-25
 
 ### Added

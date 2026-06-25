@@ -1,0 +1,9 @@
+{
+  "id": "leanctx-grep-compression",
+  "tool": "lean-ctx",
+  "kind": "compression",
+  "label": "lean-ctx grep vs grep on a 200k-line noisy log",
+  "setup": [["bash", "{bench}/fixtures/make_noise.sh", "{work}/noise.txt"]],
+  "baseline": ["grep", "INFO", "{work}/noise.txt"],
+  "tool_cmd": ["lean-ctx", "grep", "INFO", "{work}/noise.txt"]
+}

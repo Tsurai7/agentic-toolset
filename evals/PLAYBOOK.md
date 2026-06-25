@@ -45,6 +45,10 @@ skill is `no-mistakes` (tool-generated, gitignored).
 ```
 Adding/Changing an artifact in core/
         │
+        ├─ Is the artifact's value a FIXED TRANSFORM, not an agent choice
+        │  (e.g. a hook that compresses output, a structural matcher)?
+        │                                       → deterministic bench (evals/bench.py)
+        │
         ├─ Does it change WHETHER the agent does something
         │  (a behavior, a trigger)?            → conformance case (+ negative guard)
         │
@@ -52,8 +56,49 @@ Adding/Changing an artifact in core/
            the outcome is?                     → value case (A/B)
 ```
 
-Most artifacts want both: one conformance case that it fires, one value case that
-firing pays off.
+Most agent-facing artifacts want both: one conformance case that it fires, one
+value case that firing pays off.
+
+### Deterministic benchmarks — when A/B is the wrong instrument
+
+Some tools are not agent *choices* but deterministic transforms whose value is the
+same every run: `terminal-rtk` / `lean-ctx` compress command output (value =
+bytes/tokens saved), `ast-grep` matches structurally (value = no false positives),
+`gitnexus` extracts a typed code graph (value = structure grep cannot give).
+
+An LLM-judge A/B cannot measure these — and for hook-enforced tools like
+`terminal-rtk` it is actively misleading: the `shell-guard.sh` PreToolUse hook
+compresses output for *both* arms regardless of any prompt instruction, so
+prompt-level ablation can never separate them (the verdict comes back as a noisy
+tie / `UNRELIABLE`). The honest instrument is **code-based grading**: run the tool
+against a fixed fixture and count.
+
+Add a spec under `evals/bench/specs/*.json` and a fixture under
+`evals/bench/fixtures/`. `kind` is one of:
+
+- `compression` — `baseline` command vs `tool_cmd`; reports bytes / lines / approx
+  tokens for each and the reduction factor.
+- `precision` — grep (textual) vs the tool (structural); reports match counts and
+  false positives against the fixture's known `true_matches`.
+- `graph` — `gitnexus analyze` on a fixture; reports nodes / edges / clusters /
+  flows next to grep's flat text-match count.
+
+```json
+{
+  "id": "rtk-grep-compression",
+  "tool": "rtk",
+  "kind": "compression",
+  "label": "rtk grep vs grep on a 200k-line noisy log",
+  "setup": [["bash", "{bench}/fixtures/make_noise.sh", "{work}/noise.txt"]],
+  "baseline": ["grep", "INFO", "{work}/noise.txt"],
+  "tool_cmd": ["rtk", "grep", "INFO", "{work}/noise.txt"]
+}
+```
+
+`bench.py` runs the real binaries, so it runs **locally**, not in PR CI (the CI
+runner has no `rtk`/`lean-ctx`/`gitnexus`). `lint.py` still schema-checks the specs
+in CI. Run it with `python3 evals/bench.py`, then `python3 evals/report.py` to
+refresh the table in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Where a case comes from (do not invent synthetic tasks)
 
@@ -145,10 +190,13 @@ python3 evals/run.py --track all
 AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance
 
 # Value A/B for one tool under a specific model:
-AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value --filter rtk --model claude-opus-4-8
+AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value --filter ast-grep --model claude-opus-4-8
+
+# Deterministic tool benchmarks (concrete numbers; runs real binaries, local only):
+python3 evals/bench.py
 
 # Refresh the committed summary:
-python3 evals/report.py        # → evals/BENCHMARKS.md
+python3 evals/report.py        # → evals/BENCHMARKS.md (value + deterministic sections)
 ```
 
 Static, zero-token checks (run in CI on every PR via `bin/ci-check.sh`):

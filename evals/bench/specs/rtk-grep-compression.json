@@ -1,0 +1,9 @@
+{
+  "id": "rtk-grep-compression",
+  "tool": "rtk",
+  "kind": "compression",
+  "label": "rtk grep vs grep on a 200k-line noisy log",
+  "setup": [["bash", "{bench}/fixtures/make_noise.sh", "{work}/noise.txt"]],
+  "baseline": ["grep", "INFO", "{work}/noise.txt"],
+  "tool_cmd": ["rtk", "grep", "INFO", "{work}/noise.txt"]
+}

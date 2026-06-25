@@ -17,8 +17,8 @@ sys.path.insert(0, str(EVALS))
 from lib import judge  # noqa: E402
 
 
-def _load_run():
-    spec = importlib.util.spec_from_file_location("run", EVALS / "run.py")
+def _load(name: str):
+    spec = importlib.util.spec_from_file_location(name, EVALS / f"{name}.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -41,8 +41,14 @@ def test_pairwise_stable_preference():
     assert r["flip_rate"] == 0.0 and r["winner"] == "treatment" and r["reliable"], r
 
 
+def test_bench_graph_parse():
+    # The gitnexus summary line is parsed by a regex; guard its shape.
+    m = _load("bench")._GRAPH_RE.search("  13 nodes | 21 edges | 2 clusters | 2 flows")
+    assert m and (int(m[1]), int(m[2]), int(m[3]), int(m[4])) == (13, 21, 2, 2), m
+
+
 def test_value_verdict_thresholds():
-    vv = _load_run()._value_verdict
+    vv = _load("run")._value_verdict
     pref = {"pass_condition": "treatment_preferred"}
     notworse = {"pass_condition": "treatment_not_worse"}
     assert vv(pref, {"treatment": 3, "control": 0, "tie": 0}, 0.0) == "PASS"

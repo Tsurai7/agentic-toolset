@@ -20,6 +20,12 @@ Measured results live in **[BENCHMARKS.md](BENCHMARKS.md)** (generated, per mode
   (treatment) and **without** it (control), and a pairwise judge picks the better
   transcript. This is the part that proves a tool is *worth its place*, not just
   that it fires.
+- **Deterministic benchmarks** ([`bench/specs/`](bench/specs/), run by
+  [`bench.py`](bench.py)) — for tools whose value is a fixed transform rather than
+  an agent choice (`rtk`/`lean-ctx` output compression, `ast-grep` structural
+  precision, `gitnexus` code-graph extraction). Measured against a fixed fixture in
+  concrete absolute numbers (bytes, tokens, matches, false positives, nodes/edges),
+  no LLM judge. See [PLAYBOOK.md](PLAYBOOK.md#deterministic-benchmarks--when-ab-is-the-wrong-instrument).
 
 ## How it works
 

@@ -1,0 +1,12 @@
+{
+  "id": "ast-grep-call-precision",
+  "tool": "ast-grep",
+  "kind": "precision",
+  "label": "ast-grep structural call match vs regex grep on fetchUser(",
+  "fixture": "evals/bench/fixtures/calls.ts",
+  "baseline": ["grep", "-n", "fetchUser(", "{fixture}"],
+  "tool_cmd": ["sg", "-p", "fetchUser($$$)", "-l", "ts", "--json", "{fixture}"],
+  "baseline_count": "lines",
+  "tool_count": "json_len",
+  "true_matches": 4
+}
