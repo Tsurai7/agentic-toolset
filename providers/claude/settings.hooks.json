@@ -4,7 +4,7 @@
     "PreToolUse": [
       {
         "matcher": "Bash|bash",
-        "hooks": [{ "type": "command", "command": "lean-ctx hook rewrite" }]
+        "hooks": [{ "type": "command", "command": "__AGENTIC_ROOT__/providers/claude/hooks/shell-guard.sh" }]
       },
       {
         "matcher": "Read|read|ReadFile|read_file|View|view|Grep|grep|Search|search|ListFiles|list_files|ListDirectory|list_directory",

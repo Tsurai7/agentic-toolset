@@ -81,14 +81,22 @@ install_settings() {
   local fragment="${AGENTIC_ROOT}/providers/claude/settings.hooks.json"
   local out="${HOME}/.claude/settings.json"
   run mkdir -p "${HOME}/.claude"
+  # Repo-owned hook scripts must be executable to fire as PreToolUse commands.
+  run chmod +x "${AGENTIC_ROOT}/providers/claude/hooks/"*.sh
   if [[ "$DRY_RUN" == "1" ]]; then
-    log "[dry-run] merge lean-ctx hooks + permissions -> $out (preserving env)"
+    log "[dry-run] merge hooks + permissions -> $out (preserving env)"
     return 0
   fi
   if [[ -f "$out" ]]; then
     cp "$out" "${out}.bak.$(date +%s)"
   fi
-  python3 "${AGENTIC_ROOT}/providers/shared/merge-settings.py" "$fragment" "$out"
+  # Resolve __AGENTIC_ROOT__ to the absolute repo path before merging, so hook
+  # commands point at the repo-owned scripts regardless of install location.
+  local resolved
+  resolved="$(mktemp)"
+  sed "s#__AGENTIC_ROOT__#${AGENTIC_ROOT}#g" "$fragment" >"$resolved"
+  python3 "${AGENTIC_ROOT}/providers/shared/merge-settings.py" "$resolved" "$out"
+  rm -f "$resolved"
 }
 
 link_skills
