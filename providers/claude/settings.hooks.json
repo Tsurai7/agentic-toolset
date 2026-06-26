@@ -12,7 +12,11 @@
       }
     ],
     "PostToolUse": [
-      { "matcher": ".*", "hooks": [{ "type": "command", "command": "lean-ctx hook observe" }] }
+      { "matcher": ".*", "hooks": [{ "type": "command", "command": "lean-ctx hook observe" }] },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [{ "type": "command", "command": "__AGENTIC_ROOT__/providers/claude/hooks/edit-lint.sh" }]
+      }
     ],
     "PreCompact": [
       { "matcher": ".*", "hooks": [{ "type": "command", "command": "lean-ctx hook observe" }] }

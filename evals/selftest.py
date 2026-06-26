@@ -78,6 +78,65 @@ def test_metrics_parses_token_usage():
     assert m["total_input_tokens"] == 2400, m
 
 
+def test_metrics_overhead_fields():
+    # metrics() must also surface the overhead-instrument fields: the first turn's
+    # context (prefix proxy), repriced input (input + cache_creation), and the
+    # run-level cost/latency/turns from the result event.
+    raw = "\n".join([
+        '{"type":"assistant","message":{"usage":{"input_tokens":10,'
+        '"cache_creation_input_tokens":11000,"cache_read_input_tokens":17000,'
+        '"output_tokens":1},"content":[{"type":"tool_use","name":"Bash"}]}}',
+        '{"type":"result","result":"done","num_turns":4,"duration_ms":12345,'
+        '"total_cost_usd":0.0756,"usage":{"input_tokens":90,"output_tokens":2200,'
+        '"cache_read_input_tokens":320000,"cache_creation_input_tokens":15000}}',
+    ])
+    m = agent.metrics(raw)
+    assert m["prefix_turn1_ctx"] == 28010, m            # 10 + 11000 + 17000
+    assert m["repriced_input_tokens"] == 15090, m       # 90 + 15000
+    assert m["total_input_tokens"] == 335090, m         # 90 + 320000 + 15000
+    assert m["cost_usd"] == 0.0756 and m["num_turns"] == 4 and m["duration_ms"] == 12345, m
+    assert m["tool_calls"] == 1, m
+    # Negative: with no assistant-turn usage and a bare result, the optional fields
+    # are omitted (not defaulted) so a consumer can tell "absent" from "zero".
+    bare = ('{"type":"result","result":"x","usage":{"input_tokens":1,"output_tokens":1,'
+            '"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}')
+    mb = agent.metrics(bare)
+    assert "prefix_turn1_ctx" not in mb and "cost_usd" not in mb and "num_turns" not in mb, mb
+
+
+def test_overhead_ratios():
+    on = {"total_input_tokens": 300, "repriced_input_tokens": 15,
+          "output_tokens": 20, "cost_usd": 0.08, "tool_calls": 10}
+    off = {"total_input_tokens": 100, "repriced_input_tokens": 12,
+           "output_tokens": 10, "cost_usd": 0.04, "tool_calls": 5}
+    r = agent.overhead_ratios(on, off)
+    assert r["total_input_ratio"] == 3.0, r
+    assert r["cost_ratio"] == 2.0 and r["output_ratio"] == 2.0, r
+    assert r["tool_calls_ratio"] == 2.0, r
+    # A missing or zero OFF denominator yields None, not a crash.
+    assert agent.overhead_ratios({"cost_usd": 1.0}, {})["cost_ratio"] is None
+
+
+def test_overhead_verdict():
+    jo = judge.judge_overhead
+    # At the 1.5x boundary the easy gate passes (inclusive).
+    assert jo({"total_input_ratio": 1.5, "cost_ratio": 1.5,
+               "correct_on": True, "correct_off": True})["verdict"] == "PASS"
+    # The 2026-06-26 easy baseline (3.93x / 2.04x) fails the gate.
+    assert jo({"total_input_ratio": 3.93, "cost_ratio": 2.04,
+               "correct_on": True, "correct_off": True})["verdict"] == "FAIL"
+    # A correctness regression fails even when under budget.
+    assert jo({"total_input_ratio": 1.2, "cost_ratio": 1.1,
+               "correct_on": False, "correct_off": True})["verdict"] == "FAIL"
+    # Hard-regime guard: overhead must stay <= 1.0 where the toolset should pay off.
+    assert jo({"total_input_ratio": 1.2, "cost_ratio": 1.2,
+               "correct_on": True, "correct_off": True},
+              {"total_input_ratio": 1.3})["verdict"] == "FAIL"
+    assert jo({"total_input_ratio": 1.2, "cost_ratio": 1.2,
+               "correct_on": True, "correct_off": True},
+              {"total_input_ratio": 0.72})["verdict"] == "PASS"
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

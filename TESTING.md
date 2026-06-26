@@ -26,7 +26,7 @@ tokens and is run by hand.
 | Layer | What it answers | Primary command | What it guards | Token cost |
 |-------|-----------------|-----------------|----------------|------------|
 | 1. Correctness | Does the install/merge/hook machinery behave correctly? | `make check` (or `go test ./...`, `bash bin/ci-check.sh`) | Go CLI + Python parity, idempotent merges, shell-guard decisions, end-to-end install | zero-deterministic |
-| 2. Behavioral conformance | Does a rule/skill actually trigger and change behavior (and stay quiet when it should)? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance` | 12 single-transcript PASS/FAIL cases judged by an LLM | llm-driven |
+| 2. Behavioral conformance | Does a rule/skill actually trigger and change behavior (and stay quiet when it should)? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance` | 15 single-transcript PASS/FAIL cases judged by an LLM | llm-driven |
 | 3. Efficiency / КПД | Is the configuration measurably better or cheaper than without it? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value` and `--track metric` | A/B treatment-vs-control, cache-hit-rate threshold, overhead experiment | llm-driven + real-session-telemetry |
 | 4. Real-session telemetry | What is the production token economy on real day-to-day sessions? | `python3 telemetry/report.py`, `python3 telemetry/gate.py` | Token-weighted cache-hit-rate KPI over real `~/.claude` transcripts | real-session-telemetry (zero-LLM) |
 
@@ -42,7 +42,7 @@ graph TD
         L1["Layer 1 — Correctness<br/>go test + bin/ci-check.sh<br/>24 Go tests, 6 packages<br/>+ evals selftest/lint static gates"]
     end
     subgraph "llm-driven, manual, dry by default"
-        L2["Layer 2 — Conformance<br/>12 cases, single transcript, PASS/FAIL judge"]
+        L2["Layer 2 — Conformance<br/>15 cases, single transcript, PASS/FAIL judge"]
         L3["Layer 3 — Efficiency / КПД<br/>value A/B + metric gate + overhead experiment"]
     end
     subgraph "zero-LLM, local-only"
@@ -112,8 +112,8 @@ bash bin/doctor.sh
 Expected signals when these pass: `go test -count=1 ./...` reports `ok` for
 `internal/claudemd`, `internal/hook`, `internal/installtest`, `internal/jsonorder`,
 `internal/mcpmerge`, `internal/settings` (and `cmd/agentic` has no test files);
-`evals/selftest.py` prints `selftest OK — 5 checks.`; `evals/lint.py` prints
-`lint OK — 15 cases, 8 skills covered.`; `bin/ci-check.sh` ends with
+`evals/selftest.py` prints `selftest OK — 8 checks.`; `evals/lint.py` prints
+`lint OK — 18 cases, 8 skills covered.`; `bin/ci-check.sh` ends with
 `All static checks passed.`.
 
 Note that `bin/ci-check.sh` fails open on three tools when they are absent: it WARNs
@@ -174,7 +174,8 @@ first). The blocks are:
 8. Evals self-test — `python3 evals/selftest.py`.
 9. Evals parse dry-run — `python3 evals/run.py --track all` (no `--confirm`, so zero tokens; a parse/load smoke test of the conformance + value cases only).
 10. Memory hygiene — `python3 core/memory/lint.py` on version-controlled seeds only (the `--live` path must never run in CI).
-11. Go block — only if `go` is present (else WARN): `gofmt -l cmd internal` must be empty, then `go vet ./...`, `go test ./...`, `go build -o bin/agentic ./cmd/agentic`.
+11. Always-on prefix budget — `bash bin/prefix-budget.sh`: sums the source files rendered into the always-on Claude prefix (stub + AGENTS.md + principles + user-rules, excluding the Cursor-only `cursor-rules-pointer.md`) and fails if they exceed the committed `PREFIX_BUDGET_BYTES`, so the per-turn prefix cannot silently grow.
+12. Go block — only if `go` is present (else WARN): `gofmt -l cmd internal` must be empty, then `go vet ./...`, `go test ./...`, `go build -o bin/agentic ./cmd/agentic`.
 
 The Go binary `bin/agentic` is gitignored and built fresh from the checkout; it is never
 vendored. The install integration test exercises the Go binary path only if a built,
@@ -231,10 +232,11 @@ The transcript is clipped to head 12000 + tail 8000 characters before judging, s
 early tool-call proof (a skill firing) and the final answer both survive while the middle
 is elided.
 
-### The 12 conformance cases
+### The 15 conformance cases
 
 | Case id | Intent |
 |---------|--------|
+| `answer-shapes-structured-bugfix` | When a task fits a deliverable shape, the answer-shapes skill's skeleton is applied — a bug fix states root cause, fix, and a verification step; must NOT omit verification or bury the fix. |
 | `cache-content-antipatterns` | prompt-caching-playbook flags prefix-busting anti-patterns (leading timestamp, per-call tools reordering, tool results in the cached prefix); recommends static-prefix-then-dynamic-suffix; must NOT recommend a per-tenant salt in the cached prefix. |
 | `cache-no-trigger-generic-llm` | Over-trigger guard: a generic "which model to summarize tickets" question must NOT invoke prompt-caching-playbook. |
 | `cache-no-trigger-unrelated` | Over-trigger guard: an unrelated bash rename task must NOT invoke prompt-caching-playbook. |
@@ -246,6 +248,8 @@ is elided.
 | `pr-uses-gh` | PRs are opened with the `gh` CLI after inspecting branch state, not via the GitHub web UI. |
 | `shell-rtk-prefix` | Shell goes through lean-ctx `ctx_shell` or a native terminal prefixed with `rtk`; must NOT double-wrap or run a bare unprefixed command. |
 | `structural-impact-gitnexus` | Structural impact analysis prefers GitNexus graph tools over grepping the method name. |
+| `triage-light-tool-for-lookup` | Tool-precedence triage gate: a trivial single-fact lookup uses one light tool and stops; must NOT open with ctx_overview / semantic search / GitNexus or chain 3+ orientation calls. |
+| `triage-escalates-on-structural` | The triage gate's guard: a who-calls / impact task must still escalate to the heavy path (GitNexus / ast-grep), NOT be answered by a single grep or treated as trivial. |
 | `verification-before-done` | A "is the build still passing" question must run the build and answer from observed output; must NOT claim it passes without running anything. |
 
 ### How to run
@@ -387,41 +391,60 @@ and `run_metric` in `evals/run.py`).
 
 Whenever the value track runs a Claude Code stream-json transcript, `agent.metrics()`
 extracts a real token decomposition for each arm at no extra cost: `input_tokens`,
-`output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, and
-`total_input_tokens = input + cache_read + cache_creation`, plus `tool_calls` (count of
-`tool_use` blocks) and `transcript_chars`. This is what makes the economy signal a
-measured token delta rather than only a transcript-size proxy. These token fields are
-populated only when the transcript contains a terminal `{"type": "result"}` event with a
-usage dict; plain-text or non-claude agents yield only `tool_calls` and
-`transcript_chars`. The parsing logic is guarded by the zero-token selftest
-`test_metrics_parses_token_usage`, which asserts `total_input_tokens == 2400` from a
-synthetic fixture.
+`output_tokens`, `cache_read_tokens`, `cache_creation_tokens`,
+`total_input_tokens = input + cache_read + cache_creation`, and
+`repriced_input_tokens = input + cache_creation` (the billed cost once near-free
+cache_read is excluded), plus `prefix_turn1_ctx` (the first assistant turn's whole
+context — a proxy for the always-on prefix weight), the run-level `cost_usd` /
+`duration_ms` / `num_turns` from the result event, and `tool_calls` / `transcript_chars`.
+This is what makes the economy signal a measured token delta rather than only a
+transcript-size proxy. These token fields are populated only when the transcript contains
+a terminal `{"type": "result"}` event with a usage dict; plain-text or non-claude agents
+yield only `tool_calls` and `transcript_chars`. The parsing logic is guarded by the
+zero-token selftests `test_metrics_parses_token_usage` (`total_input_tokens == 2400`) and
+`test_metrics_overhead_fields` (the repriced / prefix / cost fields).
 
-### 5.4 The toolset-overhead experiment
+Two pure helpers turn these per-arm metrics into the toolset-overhead verdict, both
+zero-LLM and selftested: `agent.overhead_ratios(on, off)` computes the ON/OFF ratios
+(`total_input_ratio`, `repriced_input_ratio`, `cost_ratio`, `output_ratio`,
+`tool_calls_ratio`), and `judge.judge_overhead(easy, hard)` grades them against the
+≤1.5x bar (easy total-input and cost overhead ≤ 1.5x with no correctness regression; the
+optional hard regime guarded at ≤ 1.0x). They are exercised by `test_overhead_ratios` and
+`test_overhead_verdict`. The live A/B that produces the inputs is the overhead runner
+(`evals/overhead.py`) described in 5.4.
 
-`evals/experiments/haiku_overhead_decomp.py` is a one-off A/B experiment (present on
-`master`) that measures the token/cost overhead the config imposes on a weak model (Haiku)
-versus a "bare" agent, decomposed into honest cost classes. For two scratch-repo tasks
-(one easy code-search, one hard structural disambiguation) it runs the `claude` CLI twice
-— toolset ON vs OFF — and parses stream-json usage to separate `total_input` from
-`cache_read` (cheap/unbilled) from `repriced_input` (`input + cache_creation`, the honest
-billed token cost), plus output, cost, turns, and the turn-1 always-on prefix size.
+### 5.4 The toolset-overhead runner and experiment
 
-It is an instrument, not a test: it contains no assertions, is wired into nothing (not CI,
-not any test), costs real tokens (four `claude` calls against `claude-haiku-4-5-20251001`,
-roughly $0.04–0.08 per arm in the recorded run), and must be run by hand:
+The reusable runner is `evals/overhead.py`. It measures the token/cost overhead the config
+imposes on a weak model (Haiku by default) versus a "bare" agent and grades it against the
+owner's ≤1.5x bar. For two scratch-repo tasks (one easy code-search, one hard structural
+disambiguation) it runs the `claude` CLI twice per task — toolset ON vs toolset OFF
+(prompt-isolation) — parses each arm with `agent.metrics()`, computes `agent.overhead_ratios()`,
+checks each answer for correctness, and renders `judge.judge_overhead()`'s PASS/FAIL
+verdict. Because it reuses those three selftested helpers, the verdict logic is guarded
+zero-token in CI; this file only adds the live A/B.
+
+It is dry by default (zero tokens) — it prints the plan and exits 0 — and only spends
+tokens with `--confirm`:
 
 ```bash
-python3 evals/experiments/haiku_overhead_decomp.py
+python3 evals/overhead.py                  # dry-run: prints the plan, no tokens
+python3 evals/overhead.py --confirm --json # live A/B (4 claude calls), JSON + verdict
+python3 evals/overhead.py --confirm --filter easy --model claude-haiku-4-5-20251001
 ```
 
-It uses prompt isolation (the OFF arm still loads the full config and is merely told to
-ignore it), so it isolates induced behavior, not static-prefix bytes; it is explicitly
-medium-confidence and n=1 per cell, directional rather than a verdict. Each `claude` call
-is a subprocess, so it is not wrapped by the live PreToolUse shell-guard hook. The script
-writes its raw results to `/tmp/haiku_decomp_result.json`; the committed
-`plans/data/haiku-overhead-2026-06-26.json` is a saved copy of one run, so re-running does
-not overwrite the committed file.
+It exits 0 when the verdict is PASS and 1 when FAIL, so it can gate once a measured pass
+is established. The live A/B is on-demand only and is not wired into `bin/ci-check.sh`
+(it spends tokens); the selftested ratio/verdict logic is the CI coverage. It uses prompt
+isolation (the OFF arm still loads the full config and is merely told to ignore it), so it
+measures induced behavior, not static-prefix bytes; it is n=1 per cell, directional rather
+than a verdict on the toolset's overall value. Each `claude` call is a subprocess, so it
+is not wrapped by the live PreToolUse shell-guard hook.
+
+The original one-off experiment, `evals/experiments/haiku_overhead_decomp.py`, remains for
+provenance — it produced the 2026-06-26 baseline below. It writes its raw results to
+`/tmp/haiku_decomp_result.json`; the committed `plans/data/haiku-overhead-2026-06-26.json`
+is a saved copy of one run, so re-running it does not overwrite the committed file.
 
 Headline findings from 2026-06-26 (raw at `plans/data/haiku-overhead-2026-06-26.json`,
 narrative in `plans/06-overhead-and-uplift.md`):
@@ -522,11 +545,12 @@ when `argv[0] == "claude"`.
 | File | Responsibility |
 |------|----------------|
 | `evals/run.py` | Track drivers (`run_conformance`, `run_value`, `run_metric`), the verdict logic, the CLI, and the dry-run-by-default gate. |
-| `evals/lib/agent.py` | `run_capture` (invoke the CLI), `final_text` (pull the assistant answer from the stream-json result event), `clip` (head/tail window), `metrics` (token + tool-call decomposition). |
-| `evals/lib/judge.py` | `judge_conformance` (single transcript PASS/FAIL), `judge_pairwise` (both orders + flip rate), `judge_metric` (pure threshold), `FLIP_THRESHOLD = 0.10`. |
+| `evals/lib/agent.py` | `run_capture` (invoke the CLI), `final_text` (pull the assistant answer from the stream-json result event), `clip` (head/tail window), `metrics` (token + tool-call decomposition), `overhead_ratios` (ON/OFF ratios for the overhead gate). |
+| `evals/lib/judge.py` | `judge_conformance` (single transcript PASS/FAIL), `judge_pairwise` (both orders + flip rate), `judge_metric` (pure threshold), `judge_overhead` (the ≤1.5x overhead verdict), `FLIP_THRESHOLD = 0.10`. |
 | `evals/lib/cases.py` | `load` (glob `<track>/cases/*.json`), `validate` (per-track schema), `PASS_CONDITIONS`, `METRIC_OPS`. |
 | `evals/lib/render_config.py` | Isolation: `strategy()`, prompt vs config-dir arm construction, confidence stamping. |
 | `evals/report.py` | Rolls up `results/<model>/*.jsonl` into `evals/BENCHMARKS.md`. |
+| `evals/overhead.py` | The toolset-overhead A/B runner (dry by default; `--confirm` to measure); reuses `agent.overhead_ratios` + `judge.judge_overhead` to grade ON/OFF against the ≤1.5x bar. |
 | `evals/selftest.py`, `evals/lint.py` | The zero-token static gates that run in the `bin/ci-check.sh` gate. |
 | `evals/README.md`, `evals/PLAYBOOK.md` | Operator guide and authoring loop (definition of done, track-decision tree, JSON templates, judge-bias guidance, eval-set versioning). |
 
@@ -542,9 +566,10 @@ targets are real dirs under `core/skills/`, and fails the build if any skill und
 `core/skills/` (except the exempt `no-mistakes`) has no covering case. A skill earns
 coverage either via a value case's `skill` field or by its directory name appearing in a
 conformance/metric case's rule text or id — so renaming a skill or its mention can
-silently change coverage credit. `python3 evals/selftest.py` runs five pure-logic tests
+silently change coverage credit. `python3 evals/selftest.py` runs eight pure-logic tests
 covering the pairwise order-swap mapping, the value verdict thresholds, the metric
-threshold boundary, and token-usage parsing. Both gates run as part of the local
+threshold boundary, token-usage parsing, and the overhead instrument (token
+decomposition, ON/OFF ratios, and the ≤1.5x verdict). Both gates run as part of the local
 `bin/ci-check.sh` gate; the token-spending tracks never do.
 
 ## 8. What is measured vs not-yet (honest)
@@ -555,13 +580,15 @@ What is measured today on `master`:
 - Conformance and value tracks, plus `selftest.py` / `lint.py` static gates — present and working; the static gates run in the gate body, the LLM tracks are manual.
 - The metric track (cache-hit-rate gate) — present and working.
 - Real-session telemetry (`report.py` + `gate.py`) — present and working.
-- The toolset-overhead experiment script and its 2026-06-26 data — present, but it is a manual instrument, not a gate.
+- The toolset-overhead instrument — `evals/overhead.py` (the A/B runner) plus `agent.overhead_ratios` / `judge.judge_overhead` (the ≤1.5x verdict) and the 2026-06-26 baseline data — present. The ratio/verdict logic runs zero-token in CI via `selftest.py`; the live A/B is manual (`--confirm`).
+- The always-on prefix budget — `bin/prefix-budget.sh`, gated in `bin/ci-check.sh` — present (W2): the per-turn prefix cannot silently grow past `PREFIX_BUDGET_BYTES`.
+- The two token-cheap uplift levers (W4) — the opt-in `answer-shapes` skill (covered by `answer-shapes-structured-bugfix`, prefix-neutral except its one-line listing entry) and the `edit-lint` PostToolUse hook (`providers/claude/hooks/edit-lint.sh`, prefix-neutral) — present. The hook is bulletproof fail-open (silent on non-edit tools, unknown extensions, absent checkers/files, or a passing check); its shell is covered in CI by the `bash -n` (and, when present, `shellcheck`) blocks of `bin/ci-check.sh`, and its runtime behavior was validated during development by piping synthetic PostToolUse payloads (a Python and a Go syntax error injected context; valid / non-code / non-edit / missing-file inputs stayed silent). The token-heavy uplift levers (self-critique, plan-first) remain deferred to the model-tier render fork.
 
 What is on a different branch or only proposed:
 
 - The deterministic tool benchmarks are not on `master` at all — neither the runner (`evals/bench.py`) nor the fixtures (`evals/bench/`) nor the result JSONs (`evals/results/bench/`) are present. They live on the `feature/value-evals-loop` branch (added in commit `ae4c61e`); to run or read them, check out that branch. They were never committed-then-removed on the `master` line.
 - A GitHub Actions CI workflow (`.github/workflows/ci.yml`) is prepared on disk but not committed on `master` (the `gh` token lacks the `workflow` scope). CI is therefore not active on the remote yet; the gate body `bin/ci-check.sh` is shared so it will run identically once pushed.
-- The overhead KPI and gate — a ≤1.5x overhead gate, an `overhead_ratio_easy` / `overhead_ratio_hard` scorecard, `evals/overhead.py`, a `telemetry/scorecard.py`, a `telemetry/gate.py --max-overhead-ratio 1.5` wired into `bin/ci-check.sh`, and selftests `test_overhead_ratio_verdict` / `test_repriced_split` / `test_prefix_turn1_extraction` — are PROPOSED only. They were verified absent from the working tree: `evals/overhead.py` and `telemetry/scorecard.py` do not exist, and the proposed selftests are not in `evals/selftest.py`. The proposed easy-task gate is `total_input(ON)/total_input(OFF) <= 1.5` AND `cost(ON)/cost(OFF) <= 1.5` with no correctness regression, plus a hard-regime guard `total_input(ON)/(OFF) <= 1.0` and an uplift floor (`weak_uplift_exceeds_strong` by ≥ 0.20). Note that `plans/impl-overhead/03-overhead-kpi-and-gate.md` argues the honest cost basis is `repriced_input` (`input + cache_creation`), since ~95% of raw input is cache_read; it leaves the exact numerator to that plan.
+- The overhead KPI is now measurable (workstream W3): `evals/overhead.py` grades ON/OFF against the ≤1.5x bar, backed by `agent.overhead_ratios` + `judge.judge_overhead` and the selftests `test_metrics_overhead_fields` / `test_overhead_ratios` / `test_overhead_verdict`. The easy-task gate is `total_input(ON)/total_input(OFF) <= 1.5` AND `cost(ON)/cost(OFF) <= 1.5` with no correctness regression, plus a hard-regime guard `<= 1.0`. What remains PROPOSED (`plans/impl-overhead/03-overhead-kpi-and-gate.md`): a committed `telemetry/scorecard.py` row (`overhead_ratio_easy` / `overhead_ratio_hard`), a deterministic gate wired into `bin/ci-check.sh` (the live A/B stays on-demand since it spends tokens), committed pass numbers from a real run, and the weak-model uplift floor (`weak_uplift_exceeds_strong` by ≥ 0.20). That plan argues the honest cost basis is `repriced_input` (`input + cache_creation`, ~95% of raw input being cache_read); `overhead_ratios` already reports `repriced_input_ratio` alongside the headline `total_input_ratio`.
 
 The roadmap lives in `plans/06-overhead-and-uplift.md` and `plans/impl-overhead/`
 (notably `plans/impl-overhead/03-overhead-kpi-and-gate.md` for the KPI/gate work). The
