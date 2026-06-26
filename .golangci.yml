@@ -1,0 +1,154 @@
+# golangci-lint v2 configuration for the agentic CLI (Go 1.26).
+#
+# Goal: a strict, production-grade gate that nudges every contributor — human or
+# agent — toward idiomatic, consistent, bug-free Go. Linters are grouped by intent
+# (correctness, security, idiom/consistency, complexity) so the rationale for each
+# is legible. Tests relax the noisier style/complexity linters but keep the
+# correctness ones.
+#
+# Run locally with `make lint`; verify the schema with `golangci-lint config verify`.
+
+version: "2"
+
+run:
+  # Lint test files too — agents touch them as much as production code.
+  tests: true
+  # Fail if go.mod/go.sum would change; keep CI hermetic.
+  modules-download-mode: readonly
+
+linters:
+  # Start from golangci-lint's curated standard set
+  # (errcheck, govet, ineffassign, staticcheck, unused) and layer strictness on top.
+  default: standard
+  enable:
+    # --- correctness / bug-catchers ---
+    - asasalint              # []any passed to variadic any-slices by mistake
+    - bidichk                # dangerous bidirectional unicode sequences
+    - bodyclose              # HTTP response bodies are closed
+    - contextcheck           # a non-inherited context is never used
+    - copyloopvar            # redundant loop-var copies (Go 1.22+ semantics)
+    - durationcheck          # multiplying two durations is almost always a bug
+    - errorlint              # correct error wrapping/comparison (errors.Is/As, %w)
+    - forcetypeassert        # unchecked type assertions
+    - gocheckcompilerdirectives # malformed //go: directives
+    - intrange               # use range-over-int (Go 1.22+) where it applies
+    - makezero               # make([]T, len) then append surprises
+    - nilerr                 # returning nil after a non-nil error check
+    - nilnil                 # returning (nil, nil) from an error-returning func
+    - noctx                  # HTTP requests sent without a context
+    - reassign               # reassigning values to package-level vars from other pkgs
+    - rowserrcheck           # sql.Rows.Err() checked (no-op until DB code lands)
+    - sqlclosecheck          # sql.Rows/Stmt closed (no-op until DB code lands)
+    - wastedassign           # assignments whose value is never used
+
+    # --- security ---
+    - gosec                  # common security mistakes (perms, subprocess, crypto)
+
+    # --- idiom / consistency ---
+    - gocritic               # broad diagnostic/style/performance checks
+    - misspell               # commonly misspelled English words
+    - nakedret               # naked returns only in genuinely short functions
+    - nolintlint             # //nolint directives must be specific and explained
+    - perfsprint             # fmt.Sprintf where a cheaper stdlib call exists
+    - predeclared            # shadowing predeclared identifiers (len, error, ...)
+    - revive                 # configurable golint successor (see settings)
+    - testifylint            # idiomatic testify assertions
+    - thelper                # test helpers call t.Helper()
+    - tparallel              # correct t.Parallel() usage
+    - unconvert              # unnecessary type conversions
+    - unparam                # unused function parameters/results
+    - usestdlibvars          # stdlib constants instead of magic strings
+    - whitespace             # leading/trailing whitespace in blocks
+
+    # --- complexity guards ---
+    - gocyclo                # cyclomatic complexity ceiling
+    - nestif                 # deeply nested if blocks
+
+  settings:
+    errcheck:
+      # Catch unchecked type assertions (x := v.(T) can panic) — high value.
+      check-type-assertions: true
+      # Leave blank-identifier discards (_ = f()) alone: an explicit `_` is the
+      # idiomatic Go signal for "deliberately ignored" and is used throughout for
+      # fire-and-forget writes and re-unmarshaling already-validated JSON.
+      check-blank: false
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment     # memory-layout micro-tuning hurts readability here
+        - shadow             # intentional err shadowing is idiomatic; too noisy
+    gocyclo:
+      min-complexity: 20
+    nestif:
+      min-complexity: 6
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    gosec:
+      excludes:
+        - G104               # unchecked errors — errcheck owns this with more nuance
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: var-declaration
+        - name: var-naming
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Tests may use magic numbers, complex table setups, and bare assertions,
+      # and shell out without a context.
+      - path: _test\.go
+        linters:
+          - gosec
+          - gocyclo
+          - nestif
+          - unparam
+          - forcetypeassert
+          - noctx
+      # forcetypeassert is already relaxed in tests (above); errcheck's
+      # check-type-assertions overlaps it. Relax only the type-assertion message
+      # in tests — unchecked function-call errors stay flagged everywhere.
+      - path: _test\.go
+        linters:
+          - errcheck
+        text: Error return value is not checked$
+
+formatters:
+  enable:
+    - gofumpt                # stricter, deterministic gofmt
+    - goimports              # group + sort imports, local prefix last
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/Tsurai7/agentic-cfg

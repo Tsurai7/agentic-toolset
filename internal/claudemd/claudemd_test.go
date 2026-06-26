@@ -1,8 +1,9 @@
 package claudemd
 
-import "strings"
-
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFreshFile(t *testing.T) {
 	got := Render("", "/home/u/.claude/agentic-cfg.generated.md")

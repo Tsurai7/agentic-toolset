@@ -8,7 +8,7 @@ import (
 
 // decide runs the hook over a Bash command and returns ("PASS"|"DENY"|"REWRITE",
 // rewrittenCommand). External deps (lean-ctx, rtk) are stubbed by the caller.
-func decide(command string) (string, string) {
+func decide(command string) (decision, rewritten string) {
 	raw, _ := json.Marshal(map[string]any{
 		"tool_name":  "Bash",
 		"tool_input": map[string]any{"command": command},

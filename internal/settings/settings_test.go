@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -51,7 +52,7 @@ func eventCommands(m map[string]any, event string) []string {
 
 func contains(ss []string, sub string) bool {
 	for _, s := range ss {
-		if s == sub || (len(sub) > 0 && len(s) >= len(sub) && containsStr(s, sub)) {
+		if s == sub || (sub != "" && len(s) >= len(sub) && containsStr(s, sub)) {
 			return true
 		}
 	}
@@ -72,13 +73,17 @@ var fragment = map[string]any{
 	"hooks": map[string]any{
 		"PreToolUse": []any{
 			map[string]any{"matcher": "Bash|bash", "hooks": []any{
-				map[string]any{"type": "command", "command": "ROOT/providers/claude/hooks/shell-guard.sh"}}},
+				map[string]any{"type": "command", "command": "ROOT/providers/claude/hooks/shell-guard.sh"},
+			}},
 			map[string]any{"matcher": "Read", "hooks": []any{
-				map[string]any{"type": "command", "command": "lean-ctx hook redirect"}}},
+				map[string]any{"type": "command", "command": "lean-ctx hook redirect"},
+			}},
 		},
 		"Stop": []any{
 			map[string]any{"matcher": ".*", "hooks": []any{
-				map[string]any{"type": "command", "command": "lean-ctx hook observe"}}}},
+				map[string]any{"type": "command", "command": "lean-ctx hook observe"},
+			}},
+		},
 	},
 	"permissions": map[string]any{"allow": []string{"mcp__lean-ctx__ctx_read"}},
 }
@@ -113,7 +118,9 @@ func TestNoNullSchema(t *testing.T) {
 	}
 	b, _ := os.ReadFile(out)
 	var m map[string]json.RawMessage
-	json.Unmarshal(b, &m)
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("output is not valid JSON: %v", err)
+	}
 	if v, ok := m["$schema"]; ok && string(v) == "null" {
 		t.Error(`emitted "$schema": null`)
 	}
@@ -131,13 +138,17 @@ func TestPreservesUserConfig(t *testing.T) {
 			"PreToolUse": []any{
 				map[string]any{"matcher": "Bash|bash", "hooks": []any{
 					map[string]any{"type": "command", "command": "/old/providers/claude/hooks/shell-guard.sh"},
-					map[string]any{"type": "command", "command": "lean-ctx hook rewrite"}}},
+					map[string]any{"type": "command", "command": "lean-ctx hook rewrite"},
+				}},
 				map[string]any{"matcher": "Write", "hooks": []any{
-					map[string]any{"type": "command", "command": "/home/u/my-audit.sh"}}},
+					map[string]any{"type": "command", "command": "/home/u/my-audit.sh"},
+				}},
 			},
 			"Notification": []any{
 				map[string]any{"matcher": ".*", "hooks": []any{
-					map[string]any{"type": "command", "command": "/home/u/notify.sh"}}}},
+					map[string]any{"type": "command", "command": "/home/u/notify.sh"},
+				}},
+			},
 		},
 		"permissions": map[string]any{"allow": []string{"mcp__custom__x"}, "deny": []string{"Bash(rm -rf /)"}},
 	})
@@ -198,7 +209,7 @@ func TestIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	second, _ := os.ReadFile(out)
-	if string(first) != string(second) {
+	if !bytes.Equal(first, second) {
 		t.Errorf("not idempotent:\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
 	m := read(t, out)
