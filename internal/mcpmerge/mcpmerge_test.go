@@ -1,6 +1,7 @@
 package mcpmerge
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -119,7 +120,7 @@ func TestMergeCursorIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	second, _ := os.ReadFile(out)
-	if string(first) != string(second) {
+	if !bytes.Equal(first, second) {
 		t.Errorf("not idempotent:\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
 }

@@ -48,5 +48,6 @@ func Ensure(generatedPath, claudeMdPath string) error {
 	if err := os.MkdirAll(filepath.Dir(claudeMdPath), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(claudeMdPath, []byte(Render(existing, abs)), 0o644)
+	// G306: CLAUDE.md is non-secret user config; 0644 matches the install convention.
+	return os.WriteFile(claudeMdPath, []byte(Render(existing, abs)), 0o644) //nolint:gosec // non-secret user config; 0644 is intentional
 }

@@ -18,8 +18,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Tsurai7/agentic-cfg/internal/jsonorder"
 	"github.com/bytedance/sonic"
+
+	"github.com/Tsurai7/agentic-cfg/internal/jsonorder"
 )
 
 // LoadEnv resolves tool locations on THIS machine (rather than hardcoding paths),
@@ -56,7 +57,7 @@ func which(name, fallback string) string {
 }
 
 func nodePath() string {
-	if out, err := exec.Command("npm", "root", "-g").Output(); err == nil {
+	if out, err := exec.Command("npm", "root", "-g").Output(); err == nil { //nolint:noctx // one-shot synchronous subprocess; no cancellation context flows through this CLI path
 		if s := strings.TrimSpace(string(out)); s != "" {
 			return s
 		}
@@ -114,7 +115,7 @@ func collectFragments(integrationsDir string) (*jsonorder.Map, error) {
 	var files []string
 	_ = filepath.WalkDir(integrationsDir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // best-effort walk: skip unreadable entries and keep walking
 		}
 		if strings.HasPrefix(d.Name(), "mcp") && strings.HasSuffix(d.Name(), ".json") {
 			files = append(files, p)
@@ -236,7 +237,7 @@ func RegisterClaudeUser(root string) error {
 	claude, err := exec.LookPath("claude")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "merge-mcp: 'claude' CLI not on PATH — skipping user-scope MCP registration")
-		return nil
+		return nil //nolint:nilerr // optional dependency: skip user-scope registration when the 'claude' CLI is absent
 	}
 	managed, err := resolveManaged(root, false)
 	if err != nil {
@@ -255,8 +256,8 @@ func RegisterClaudeUser(root string) error {
 			done = append(done, name)
 			continue
 		}
-		_ = exec.Command(claude, "mcp", "remove", name, "--scope", "user").Run()
-		if out, err := exec.Command(claude, "mcp", "add-json", name, string(payload), "--scope", "user").CombinedOutput(); err != nil {
+		_ = exec.Command(claude, "mcp", "remove", name, "--scope", "user").Run()                                                        //nolint:noctx // one-shot synchronous CLI call; no cancellation context flows here
+		if out, err := exec.Command(claude, "mcp", "add-json", name, string(payload), "--scope", "user").CombinedOutput(); err != nil { //nolint:noctx // one-shot synchronous CLI call; no cancellation context flows here
 			return fmt.Errorf("merge-mcp: failed to register %s: %s", name, strings.TrimSpace(string(out)))
 		}
 		done = append(done, name)

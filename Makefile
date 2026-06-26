@@ -18,10 +18,11 @@ test: ## Run Go unit tests
 vet: ## Run go vet
 	go vet ./...
 
-fmt: ## Format Go sources
-	gofmt -w cmd internal
+fmt: ## Format Go sources (gofumpt + goimports, per .golangci.yml)
+	golangci-lint fmt
 
-lint: fmt vet ## Format, then vet
+lint: ## Lint with golangci-lint (strict gate; see .golangci.yml)
+	golangci-lint run
 
 check: ## Full gate: repo static checks + Go tests
 	bash bin/ci-check.sh

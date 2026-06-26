@@ -73,8 +73,8 @@ func mergeHooks(existingRaw, fragRaw json.RawMessage) json.RawMessage {
 				}
 			}
 		}
-		combined := append(kept, fragGroups...)
-		cb, _ := json.Marshal(combined)
+		kept = append(kept, fragGroups...)
+		cb, _ := json.Marshal(kept)
 		result.SetRaw(event, cb)
 	}
 	rb, _ := json.Marshal(result)

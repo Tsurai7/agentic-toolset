@@ -55,6 +55,13 @@ func readStr(t *testing.T, path string) string {
 	return string(b)
 }
 
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 var atLineRe = regexp.MustCompile(`(?m)^@.*$`)
 
 func TestSettingsParityWithPython(t *testing.T) {
@@ -68,8 +75,8 @@ func TestSettingsParityWithPython(t *testing.T) {
 		`"permissions":{"allow":["mcp__c__x"],"deny":["Bash(rm -rf /)"]}}`
 	d := t.TempDir()
 	goF, pyF := filepath.Join(d, "go.json"), filepath.Join(d, "py.json")
-	os.WriteFile(goF, []byte(existing), 0o644)
-	os.WriteFile(pyF, []byte(existing), 0o644)
+	mustWrite(t, goF, existing)
+	mustWrite(t, pyF, existing)
 
 	if err := settings.Merge(frag, goF); err != nil {
 		t.Fatal(err)
@@ -87,8 +94,8 @@ func TestMcpParityWithPython(t *testing.T) {
 	seed := `{"mcpServers":{"dora":{"command":"dora"}},"other":1}`
 	d := t.TempDir()
 	goF, pyF := filepath.Join(d, "go.json"), filepath.Join(d, "py.json")
-	os.WriteFile(goF, []byte(seed), 0o644)
-	os.WriteFile(pyF, []byte(seed), 0o644)
+	mustWrite(t, goF, seed)
+	mustWrite(t, pyF, seed)
 
 	if err := mcpmerge.MergeCursor(root, goF); err != nil {
 		t.Fatal(err)
@@ -105,7 +112,7 @@ func TestClaudeMdParityWithPython(t *testing.T) {
 	root := repoRoot(t)
 	d := t.TempDir()
 	gen := filepath.Join(d, "agentic-cfg.generated.md")
-	os.WriteFile(gen, []byte("GENERATED\n"), 0o644)
+	mustWrite(t, gen, "GENERATED\n")
 
 	cases := map[string]string{
 		"fresh":  "",
@@ -118,7 +125,7 @@ func TestClaudeMdParityWithPython(t *testing.T) {
 			if existing == "" {
 				os.Remove(f)
 			} else {
-				os.WriteFile(f, []byte(existing), 0o644)
+				mustWrite(t, f, existing)
 			}
 		}
 		if err := claudemd.Ensure(gen, goF); err != nil {
