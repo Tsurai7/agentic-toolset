@@ -406,34 +406,41 @@ zero-LLM and selftested: `agent.overhead_ratios(on, off)` computes the ON/OFF ra
 `tool_calls_ratio`), and `judge.judge_overhead(easy, hard)` grades them against the
 ≤1.5x bar (easy total-input and cost overhead ≤ 1.5x with no correctness regression; the
 optional hard regime guarded at ≤ 1.0x). They are exercised by `test_overhead_ratios` and
-`test_overhead_verdict`. The live A/B that produces the inputs is the overhead experiment
-in 5.4.
+`test_overhead_verdict`. The live A/B that produces the inputs is the overhead runner
+(`evals/overhead.py`) described in 5.4.
 
-### 5.4 The toolset-overhead experiment
+### 5.4 The toolset-overhead runner and experiment
 
-`evals/experiments/haiku_overhead_decomp.py` is a one-off A/B experiment (present on
-`master`) that measures the token/cost overhead the config imposes on a weak model (Haiku)
-versus a "bare" agent, decomposed into honest cost classes. For two scratch-repo tasks
-(one easy code-search, one hard structural disambiguation) it runs the `claude` CLI twice
-— toolset ON vs OFF — and parses stream-json usage to separate `total_input` from
-`cache_read` (cheap/unbilled) from `repriced_input` (`input + cache_creation`, the honest
-billed token cost), plus output, cost, turns, and the turn-1 always-on prefix size.
+The reusable runner is `evals/overhead.py`. It measures the token/cost overhead the config
+imposes on a weak model (Haiku by default) versus a "bare" agent and grades it against the
+owner's ≤1.5x bar. For two scratch-repo tasks (one easy code-search, one hard structural
+disambiguation) it runs the `claude` CLI twice per task — toolset ON vs toolset OFF
+(prompt-isolation) — parses each arm with `agent.metrics()`, computes `agent.overhead_ratios()`,
+checks each answer for correctness, and renders `judge.judge_overhead()`'s PASS/FAIL
+verdict. Because it reuses those three selftested helpers, the verdict logic is guarded
+zero-token in CI; this file only adds the live A/B.
 
-It is an instrument, not a test: it contains no assertions, is wired into nothing (not CI,
-not any test), costs real tokens (four `claude` calls against `claude-haiku-4-5-20251001`,
-roughly $0.04–0.08 per arm in the recorded run), and must be run by hand:
+It is dry by default (zero tokens) — it prints the plan and exits 0 — and only spends
+tokens with `--confirm`:
 
 ```bash
-python3 evals/experiments/haiku_overhead_decomp.py
+python3 evals/overhead.py                  # dry-run: prints the plan, no tokens
+python3 evals/overhead.py --confirm --json # live A/B (4 claude calls), JSON + verdict
+python3 evals/overhead.py --confirm --filter easy --model claude-haiku-4-5-20251001
 ```
 
-It uses prompt isolation (the OFF arm still loads the full config and is merely told to
-ignore it), so it isolates induced behavior, not static-prefix bytes; it is explicitly
-medium-confidence and n=1 per cell, directional rather than a verdict. Each `claude` call
-is a subprocess, so it is not wrapped by the live PreToolUse shell-guard hook. The script
-writes its raw results to `/tmp/haiku_decomp_result.json`; the committed
-`plans/data/haiku-overhead-2026-06-26.json` is a saved copy of one run, so re-running does
-not overwrite the committed file.
+It exits 0 when the verdict is PASS and 1 when FAIL, so it can gate once a measured pass
+is established. The live A/B is on-demand only and is not wired into `bin/ci-check.sh`
+(it spends tokens); the selftested ratio/verdict logic is the CI coverage. It uses prompt
+isolation (the OFF arm still loads the full config and is merely told to ignore it), so it
+measures induced behavior, not static-prefix bytes; it is n=1 per cell, directional rather
+than a verdict on the toolset's overall value. Each `claude` call is a subprocess, so it
+is not wrapped by the live PreToolUse shell-guard hook.
+
+The original one-off experiment, `evals/experiments/haiku_overhead_decomp.py`, remains for
+provenance — it produced the 2026-06-26 baseline below. It writes its raw results to
+`/tmp/haiku_decomp_result.json`; the committed `plans/data/haiku-overhead-2026-06-26.json`
+is a saved copy of one run, so re-running it does not overwrite the committed file.
 
 Headline findings from 2026-06-26 (raw at `plans/data/haiku-overhead-2026-06-26.json`,
 narrative in `plans/06-overhead-and-uplift.md`):
@@ -539,6 +546,7 @@ when `argv[0] == "claude"`.
 | `evals/lib/cases.py` | `load` (glob `<track>/cases/*.json`), `validate` (per-track schema), `PASS_CONDITIONS`, `METRIC_OPS`. |
 | `evals/lib/render_config.py` | Isolation: `strategy()`, prompt vs config-dir arm construction, confidence stamping. |
 | `evals/report.py` | Rolls up `results/<model>/*.jsonl` into `evals/BENCHMARKS.md`. |
+| `evals/overhead.py` | The toolset-overhead A/B runner (dry by default; `--confirm` to measure); reuses `agent.overhead_ratios` + `judge.judge_overhead` to grade ON/OFF against the ≤1.5x bar. |
 | `evals/selftest.py`, `evals/lint.py` | The zero-token static gates that run in the `bin/ci-check.sh` gate. |
 | `evals/README.md`, `evals/PLAYBOOK.md` | Operator guide and authoring loop (definition of done, track-decision tree, JSON templates, judge-bias guidance, eval-set versioning). |
 
@@ -568,13 +576,13 @@ What is measured today on `master`:
 - Conformance and value tracks, plus `selftest.py` / `lint.py` static gates — present and working; the static gates run in the gate body, the LLM tracks are manual.
 - The metric track (cache-hit-rate gate) — present and working.
 - Real-session telemetry (`report.py` + `gate.py`) — present and working.
-- The toolset-overhead experiment script and its 2026-06-26 data — present, but it is a manual instrument, not a gate.
+- The toolset-overhead instrument — `evals/overhead.py` (the A/B runner) plus `agent.overhead_ratios` / `judge.judge_overhead` (the ≤1.5x verdict) and the 2026-06-26 baseline data — present. The ratio/verdict logic runs zero-token in CI via `selftest.py`; the live A/B is manual (`--confirm`).
 
 What is on a different branch or only proposed:
 
 - The deterministic tool benchmarks are not on `master` at all — neither the runner (`evals/bench.py`) nor the fixtures (`evals/bench/`) nor the result JSONs (`evals/results/bench/`) are present. They live on the `feature/value-evals-loop` branch (added in commit `ae4c61e`); to run or read them, check out that branch. They were never committed-then-removed on the `master` line.
 - A GitHub Actions CI workflow (`.github/workflows/ci.yml`) is prepared on disk but not committed on `master` (the `gh` token lacks the `workflow` scope). CI is therefore not active on the remote yet; the gate body `bin/ci-check.sh` is shared so it will run identically once pushed.
-- The overhead KPI and gate — a ≤1.5x overhead gate, an `overhead_ratio_easy` / `overhead_ratio_hard` scorecard, `evals/overhead.py`, a `telemetry/scorecard.py`, a `telemetry/gate.py --max-overhead-ratio 1.5` wired into `bin/ci-check.sh`, and selftests `test_overhead_ratio_verdict` / `test_repriced_split` / `test_prefix_turn1_extraction` — are PROPOSED only. They were verified absent from the working tree: `evals/overhead.py` and `telemetry/scorecard.py` do not exist, and the proposed selftests are not in `evals/selftest.py`. The proposed easy-task gate is `total_input(ON)/total_input(OFF) <= 1.5` AND `cost(ON)/cost(OFF) <= 1.5` with no correctness regression, plus a hard-regime guard `total_input(ON)/(OFF) <= 1.0` and an uplift floor (`weak_uplift_exceeds_strong` by ≥ 0.20). Note that `plans/impl-overhead/03-overhead-kpi-and-gate.md` argues the honest cost basis is `repriced_input` (`input + cache_creation`), since ~95% of raw input is cache_read; it leaves the exact numerator to that plan.
+- The overhead KPI is now measurable (workstream W3): `evals/overhead.py` grades ON/OFF against the ≤1.5x bar, backed by `agent.overhead_ratios` + `judge.judge_overhead` and the selftests `test_metrics_overhead_fields` / `test_overhead_ratios` / `test_overhead_verdict`. The easy-task gate is `total_input(ON)/total_input(OFF) <= 1.5` AND `cost(ON)/cost(OFF) <= 1.5` with no correctness regression, plus a hard-regime guard `<= 1.0`. What remains PROPOSED (`plans/impl-overhead/03-overhead-kpi-and-gate.md`): a committed `telemetry/scorecard.py` row (`overhead_ratio_easy` / `overhead_ratio_hard`), a deterministic gate wired into `bin/ci-check.sh` (the live A/B stays on-demand since it spends tokens), committed pass numbers from a real run, and the weak-model uplift floor (`weak_uplift_exceeds_strong` by ≥ 0.20). That plan argues the honest cost basis is `repriced_input` (`input + cache_creation`, ~95% of raw input being cache_read); `overhead_ratios` already reports `repriced_input_ratio` alongside the headline `total_input_ratio`.
 
 The roadmap lives in `plans/06-overhead-and-uplift.md` and `plans/impl-overhead/`
 (notably `plans/impl-overhead/03-overhead-kpi-and-gate.md` for the KPI/gate work). The
