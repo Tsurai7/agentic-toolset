@@ -92,21 +92,41 @@ worth its cost for any weak-model use at all. Resolve with a judged, n≥3 hard-
   or go fully vanilla? (The ablation decides.)
 - Default tier (recommend strong, weak opt-in).
 
-## Status — implemented & validated (2026-06-26)
+## Status — implemented; n=3 correction (the n=1 result was a fluke)
 
-**Validated.** The ablation (W3 instrument, Haiku, swap-measure-restore on the live
-`~/.claude`, n=1, prompt-isolation) confirmed the minimal cut and pinpointed that it needs
-both removals:
+**Honest correction.** The first ablation was n=1 and showed the weak profile at easy
+0.59× (PASS). Re-run at **n=3 (median of 3 reps)** — and on **Opus 4.8** as well as Haiku
+— that PASS does **not** hold. Haiku's easy-task turn count is bimodal (sometimes 4, often
+12–16), so a single run is not trustworthy. The n=3 matrix (all arms 100% correct,
+prompt-isolation, `evals/overhead.py --reps 3`, raw in
+[../data/overhead-n3-2026-06-26.json](../data/overhead-n3-2026-06-26.json)):
 
-| config | easy total_input | easy turns ON/OFF | hard total_input | verdict |
-|--------|---:|---:|---:|--|
-| full (baseline) | 5.33× | 16 / 4 | 0.79× | FAIL |
-| drop redirect hook only (keep MCP) | 0.20× | 1 / 6 | **1.83×** | FAIL (hard) |
-| **minimal: drop redirect hook + lean-ctx MCP** | **0.59×** | **4 / 6** | **0.93×** | **PASS** |
+| model / config | easy | hard | hard2 |
+|----------------|---:|---:|---:|
+| Haiku, full | **3.15× FAIL** | 0.65× | 1.00× |
+| Haiku, weak | **2.27× FAIL** | 0.93× | 1.00× |
+| Opus 4.8, full | 1.00× | 0.99× | 1.34× |
 
-Removing only the redirect hook fixes the easy task but the lingering MCP over-orients the
-hard task; removing both lands both regimes under the gate. The weak profile therefore
-drops both.
+What this actually shows:
+
+- **Over-tooling is weak-model + trivial-task specific.** Opus 4.8 never exceeds 1.34×
+  (all PASS) — the strong/default tier has no overhead problem and needs no change. Only
+  Haiku's *easy* task fails the bar.
+- **Hard tasks are fine for everyone** — no overhead, both arms always correct. The
+  earlier "hard 1.83× FAIL" was n=1 noise (median is 0.65–0.99×).
+- **The weak profile only *partially* mitigates** Haiku's easy-task overhead (median
+  3.15× → 2.27×) and is harmless to hard tasks and to Opus, but it does **not** reliably
+  reach ≤1.5×. The lean-ctx removal isn't enough on its own: the remaining layer (the
+  gitnexus MCP + the tool-pushing CLAUDE.md prefix + rtk) still triggers a variable
+  orientation dance.
+- **So the ≤1.5× target is not met for Haiku trivial tasks.** Reaching it reliably would
+  need a more aggressive minimal/near-vanilla weak profile (also drop gitnexus and trim
+  the tool-pushing prefix for the weak tier). And since the custom layer is merely
+  *neutral* (not a win) for weak models even on hard tasks, the open question — is it worth
+  its cost for weak models at all? — is now sharper.
+
+The profile below is therefore shipped as an honest **partial mitigation + a measurement
+finding**, not as "≤1.5× achieved".
 
 **Implemented** as an `AGENTIC_TIER` switch on the Claude install (`strong` default):
 
