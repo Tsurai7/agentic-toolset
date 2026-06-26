@@ -1,6 +1,6 @@
 module github.com/Tsurai7/agentic-cfg
 
-go 1.23
+go 1.26
 
 require github.com/bytedance/sonic v1.15.2
 
