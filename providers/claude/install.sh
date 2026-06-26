@@ -69,6 +69,9 @@ install_claude_md() {
     echo "## User rules"
     for f in "${AGENTIC_ROOT}/core/instructions/user-rules"/*.md; do
       [[ -f "$f" ]] || continue
+      # cursor-rules-pointer is Cursor-setup meta, not runtime guidance for a Claude
+      # session — keep it out of the always-on Claude prefix (still linked from AGENTS.md).
+      [[ "$(basename "$f")" == "cursor-rules-pointer.md" ]] && continue
       echo ""
       echo "### $(basename "$f" .md)"
       cat "$f"

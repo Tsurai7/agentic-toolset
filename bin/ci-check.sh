@@ -91,6 +91,10 @@ echo "== memory hygiene (seeds) =="
 if python3 core/memory/lint.py >/dev/null 2>&1; then ok "memory seeds lint"; else err "core/memory/lint.py failed"; fi
 echo ""
 
+echo "== always-on prefix budget =="
+if bash "$(dirname "$0")/prefix-budget.sh" >/dev/null 2>&1; then ok "prefix budget"; else err "always-on prefix over budget (run bin/prefix-budget.sh)"; fi
+echo ""
+
 echo "== Go (fmt, vet, test, build) =="
 if command -v go >/dev/null 2>&1; then
   unformatted="$(gofmt -l cmd internal 2>/dev/null)"

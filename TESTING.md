@@ -174,7 +174,8 @@ first). The blocks are:
 8. Evals self-test — `python3 evals/selftest.py`.
 9. Evals parse dry-run — `python3 evals/run.py --track all` (no `--confirm`, so zero tokens; a parse/load smoke test of the conformance + value cases only).
 10. Memory hygiene — `python3 core/memory/lint.py` on version-controlled seeds only (the `--live` path must never run in CI).
-11. Go block — only if `go` is present (else WARN): `gofmt -l cmd internal` must be empty, then `go vet ./...`, `go test ./...`, `go build -o bin/agentic ./cmd/agentic`.
+11. Always-on prefix budget — `bash bin/prefix-budget.sh`: sums the source files rendered into the always-on Claude prefix (stub + AGENTS.md + principles + user-rules, excluding the Cursor-only `cursor-rules-pointer.md`) and fails if they exceed the committed `PREFIX_BUDGET_BYTES`, so the per-turn prefix cannot silently grow.
+12. Go block — only if `go` is present (else WARN): `gofmt -l cmd internal` must be empty, then `go vet ./...`, `go test ./...`, `go build -o bin/agentic ./cmd/agentic`.
 
 The Go binary `bin/agentic` is gitignored and built fresh from the checkout; it is never
 vendored. The install integration test exercises the Go binary path only if a built,

@@ -8,12 +8,11 @@ This repo is the source of truth for personal agent config. Run `bin/install.sh 
 
 ## Global defaults
 
-1. **Structural code work** — Prefer GitNexus graph tools over raw grep/file reads when changing interfaces or tracing impact. See skill `gitnexus-navigation`.
-2. **Code search** — Search source code with `ast-grep` (AST patterns), never regex grep. Use grep only for non-code text. See skill `ast-grep`.
-3. **Shell on macOS** — Prefix terminal commands with `rtk` (e.g. `rtk npm test`). See skill `terminal-rtk`. **Never strip the compression hook** — do not run commands via `env -u BASH_ENV -u LEAN_CTX_AGENT …` or otherwise disable lean-ctx/rtk to dodge it. If a command breaks under the hook, report the failure and ask, don't bypass; for complex commands, put the logic in a script file and run it with a single `bash script.sh` (which the hook passes through unmangled).
-4. **Git commits** — Only when the user explicitly asks; follow skill `git-safety`.
-5. **Pull requests** — Use `gh` per skill `create-pr`.
-6. **Done means verified** — Before claiming success, run checks per skill `verification-before-completion`.
+1. **Tool choice** — Right-size tooling to the task, then follow the precedence table below: GitNexus for structural/impact work, `ast-grep` for code search (never regex-grep source), lean-ctx / `rtk` for shell and reads. See skills `gitnexus-navigation`, `ast-grep`.
+2. **Shell on macOS** — Prefix terminal commands with `rtk` (e.g. `rtk npm test`). See skill `terminal-rtk`. **Never strip the compression hook** — do not run commands via `env -u BASH_ENV -u LEAN_CTX_AGENT …` or otherwise disable lean-ctx/rtk to dodge it. If a command breaks under the hook, report the failure and ask, don't bypass; for complex commands, put the logic in a script file and run it with a single `bash script.sh` (which the hook passes through unmangled).
+3. **Git commits** — Only when the user explicitly asks; follow skill `git-safety`.
+4. **Pull requests** — Use `gh` per skill `create-pr`.
+5. **Done means verified** — Before claiming success, run checks per skill `verification-before-completion`.
 
 ## Tool precedence (resolve overlaps)
 
@@ -27,7 +26,7 @@ as heavy and escalate (the toolset earns its cost on hard tasks). This gate deci
 *whether* a task is heavy — not *which* tool you reach for once it is: the Global defaults
 still hold (lead with GitNexus for structural work, `ast-grep` for code search, not grep).
 Once a read-only lookup is answered, stop — don't re-run tools to re-confirm a fact you
-already retrieved (this does not relax "Done means verified" for changes you make, default 6).
+already retrieved (this does not relax the "Done means verified" default for changes you make).
 
 When you do need a class of action, three layers can address it (shell, search, file
 reads); prefer them in this order. Each layer is optional — degrade to the next when the
