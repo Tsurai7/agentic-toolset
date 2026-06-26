@@ -1,0 +1,72 @@
+{
+  "easy": {
+    "expect": "expected A,B,D,E = 4",
+    "on": {
+      "tool_calls": 10,
+      "result": {
+        "input": 94,
+        "cache_creation": 15913,
+        "cache_read": 323277,
+        "output": 2263,
+        "cost_usd": 0.07556270000000002,
+        "duration_ms": 65561,
+        "num_turns": 12
+      },
+      "prefix_turn1_ctx": 28290,
+      "total_input_tokens": 339284,
+      "repriced_input_tokens": 16007,
+      "final": "Based on my search of the repository, here are all Go functions whose last return type is `error`:  **Functions with error as last return type:** 1. `A()` \u2014 returns `error` 2. `B()` \u2014 returns `(int, error)` 3. `D()` \u2014 returns `error` 4. `E()` \u2014 returns `error`  **Total count: 4**"
+    },
+    "off": {
+      "tool_calls": 3,
+      "result": {
+        "input": 26,
+        "cache_creation": 12776,
+        "cache_read": 73496,
+        "output": 839,
+        "cost_usd": 0.0371226,
+        "duration_ms": 14403,
+        "num_turns": 4
+      },
+      "prefix_turn1_ctx": 28327,
+      "total_input_tokens": 86298,
+      "repriced_input_tokens": 12802,
+      "final": "Based on my analysis of the Go files in the repository, here are the functions whose last return type is `error`:  **Functions with last return type `error`:** 1. `A` 2. `B` 3. `D` 4. `E`  **Total count: 4**  These functions are distributed as follows: - pkg/a.go: `A()`, `B()`, `D()` - pkg/b.go: `E()`  The functions `C()` (returns `string`) and `F()` (returns `int`) do not have `error` as their la"
+    }
+  },
+  "hard": {
+    "expect": "expected a.go,b.go,d.go = 3",
+    "on": {
+      "tool_calls": 4,
+      "result": {
+        "input": 44,
+        "cache_creation": 14327,
+        "cache_read": 134476,
+        "output": 1157,
+        "cost_usd": 0.047930600000000004,
+        "duration_ms": 24538,
+        "num_turns": 6
+      },
+      "prefix_turn1_ctx": 28341,
+      "total_input_tokens": 148847,
+      "repriced_input_tokens": 14371,
+      "final": "**Call sites of the package-level `Send` function:**  | File | Total | |------|-------| | app/a.go | 1 | | app/b.go | 1 | | app/d.go | 1 | | **Total** | **3** |  The package-level `Send` function (defined in `app/mailer.go`) is called 3 times across 3 files. These are distinct from the `Notifier.Send` method defined in `app/notifier.go`."
+    },
+    "off": {
+      "tool_calls": 10,
+      "result": {
+        "input": 58,
+        "cache_creation": 14149,
+        "cache_read": 191350,
+        "output": 2001,
+        "cost_usd": 0.057496,
+        "duration_ms": 34331,
+        "num_turns": 11
+      },
+      "prefix_turn1_ctx": 28379,
+      "total_input_tokens": 205557,
+      "repriced_input_tokens": 14207,
+      "final": "Based on my analysis of all Go files in the repository:  **Call sites of the package-level `Send` function:**  1. **a.go** (line 2): `Send(\"hi\")` 2. **b.go** (line 2): `Send(x)` 3. **d.go** (line 2): `Send(\"z\")`  **Not counted:** - **c.go** (line 3): `n.Send(\"the Send report\")` \u2014 this is a method call on the `Notifier` type, not the package-level function - **c.go** (line 2): The comment mentionin"
+    }
+  }
+}
