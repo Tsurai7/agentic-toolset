@@ -77,6 +77,7 @@ CI if a skill has no eval.
 | `ast-grep` | Structural code search/rewrite instead of regex grep |
 | `terminal-rtk` | `rtk` command prefix on macOS |
 | `prompt-caching-playbook` | Maximize LLM prompt-cache hit rate / cut token cost |
+| `answer-shapes` | Optional output skeletons (bug fix / review / investigation) for complete, parseable answers |
 
 ## Marketplace plugins
 

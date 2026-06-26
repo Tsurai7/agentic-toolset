@@ -26,7 +26,7 @@ tokens and is run by hand.
 | Layer | What it answers | Primary command | What it guards | Token cost |
 |-------|-----------------|-----------------|----------------|------------|
 | 1. Correctness | Does the install/merge/hook machinery behave correctly? | `make check` (or `go test ./...`, `bash bin/ci-check.sh`) | Go CLI + Python parity, idempotent merges, shell-guard decisions, end-to-end install | zero-deterministic |
-| 2. Behavioral conformance | Does a rule/skill actually trigger and change behavior (and stay quiet when it should)? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance` | 14 single-transcript PASS/FAIL cases judged by an LLM | llm-driven |
+| 2. Behavioral conformance | Does a rule/skill actually trigger and change behavior (and stay quiet when it should)? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance` | 15 single-transcript PASS/FAIL cases judged by an LLM | llm-driven |
 | 3. Efficiency / КПД | Is the configuration measurably better or cheaper than without it? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value` and `--track metric` | A/B treatment-vs-control, cache-hit-rate threshold, overhead experiment | llm-driven + real-session-telemetry |
 | 4. Real-session telemetry | What is the production token economy on real day-to-day sessions? | `python3 telemetry/report.py`, `python3 telemetry/gate.py` | Token-weighted cache-hit-rate KPI over real `~/.claude` transcripts | real-session-telemetry (zero-LLM) |
 
@@ -42,7 +42,7 @@ graph TD
         L1["Layer 1 — Correctness<br/>go test + bin/ci-check.sh<br/>24 Go tests, 6 packages<br/>+ evals selftest/lint static gates"]
     end
     subgraph "llm-driven, manual, dry by default"
-        L2["Layer 2 — Conformance<br/>14 cases, single transcript, PASS/FAIL judge"]
+        L2["Layer 2 — Conformance<br/>15 cases, single transcript, PASS/FAIL judge"]
         L3["Layer 3 — Efficiency / КПД<br/>value A/B + metric gate + overhead experiment"]
     end
     subgraph "zero-LLM, local-only"
@@ -113,7 +113,7 @@ Expected signals when these pass: `go test -count=1 ./...` reports `ok` for
 `internal/claudemd`, `internal/hook`, `internal/installtest`, `internal/jsonorder`,
 `internal/mcpmerge`, `internal/settings` (and `cmd/agentic` has no test files);
 `evals/selftest.py` prints `selftest OK — 8 checks.`; `evals/lint.py` prints
-`lint OK — 15 cases, 7 skills covered.`; `bin/ci-check.sh` ends with
+`lint OK — 18 cases, 8 skills covered.`; `bin/ci-check.sh` ends with
 `All static checks passed.`.
 
 Note that `bin/ci-check.sh` fails open on three tools when they are absent: it WARNs
@@ -232,10 +232,11 @@ The transcript is clipped to head 12000 + tail 8000 characters before judging, s
 early tool-call proof (a skill firing) and the final answer both survive while the middle
 is elided.
 
-### The 14 conformance cases
+### The 15 conformance cases
 
 | Case id | Intent |
 |---------|--------|
+| `answer-shapes-structured-bugfix` | When a task fits a deliverable shape, the answer-shapes skill's skeleton is applied — a bug fix states root cause, fix, and a verification step; must NOT omit verification or bury the fix. |
 | `cache-content-antipatterns` | prompt-caching-playbook flags prefix-busting anti-patterns (leading timestamp, per-call tools reordering, tool results in the cached prefix); recommends static-prefix-then-dynamic-suffix; must NOT recommend a per-tenant salt in the cached prefix. |
 | `cache-no-trigger-generic-llm` | Over-trigger guard: a generic "which model to summarize tickets" question must NOT invoke prompt-caching-playbook. |
 | `cache-no-trigger-unrelated` | Over-trigger guard: an unrelated bash rename task must NOT invoke prompt-caching-playbook. |
@@ -580,6 +581,8 @@ What is measured today on `master`:
 - The metric track (cache-hit-rate gate) — present and working.
 - Real-session telemetry (`report.py` + `gate.py`) — present and working.
 - The toolset-overhead instrument — `evals/overhead.py` (the A/B runner) plus `agent.overhead_ratios` / `judge.judge_overhead` (the ≤1.5x verdict) and the 2026-06-26 baseline data — present. The ratio/verdict logic runs zero-token in CI via `selftest.py`; the live A/B is manual (`--confirm`).
+- The always-on prefix budget — `bin/prefix-budget.sh`, gated in `bin/ci-check.sh` — present (W2): the per-turn prefix cannot silently grow past `PREFIX_BUDGET_BYTES`.
+- The two token-cheap uplift levers (W4) — the opt-in `answer-shapes` skill (covered by `answer-shapes-structured-bugfix`, prefix-neutral except its one-line listing entry) and the `edit-lint` PostToolUse hook (`providers/claude/hooks/edit-lint.sh`, prefix-neutral) — present. The hook is bulletproof fail-open (silent on non-edit tools, unknown extensions, absent checkers/files, or a passing check); its shell is covered in CI by the `bash -n` (and, when present, `shellcheck`) blocks of `bin/ci-check.sh`, and its runtime behavior was validated during development by piping synthetic PostToolUse payloads (a Python and a Go syntax error injected context; valid / non-code / non-edit / missing-file inputs stayed silent). The token-heavy uplift levers (self-critique, plan-first) remain deferred to the model-tier render fork.
 
 What is on a different branch or only proposed:
 
