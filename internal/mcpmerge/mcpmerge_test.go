@@ -63,6 +63,20 @@ func TestCollectFragmentsOrder(t *testing.T) {
 	}
 }
 
+func TestCollectFragmentsExclude(t *testing.T) {
+	t.Setenv("AGENTIC_MCP_EXCLUDE", "lean-ctx")
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "leanctx", "mcp.stdio.json"), `{"mcpServers":{"lean-ctx":{"command":"lc"}}}`)
+	writeFile(t, filepath.Join(root, "gn", "mcp.stdio.json"), `{"mcpServers":{"gitnexus":{"command":"gn"}}}`)
+	m, err := collectFragments(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k := m.Keys(); len(k) != 1 || k[0] != "gitnexus" {
+		t.Errorf("expected only gitnexus after excluding lean-ctx, got: %v", k)
+	}
+}
+
 func TestMergeCursorPreservesHandAdded(t *testing.T) {
 	t.Setenv("NPX", "/test/npx")
 	root := t.TempDir()

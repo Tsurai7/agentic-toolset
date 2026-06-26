@@ -169,5 +169,25 @@ hypothesis) and its live validation is gated on safe `~/.claude` access (no conc
 session) or an `ANTHROPIC_API_KEY`.
 
 Net: W3 (the instrument/gate) and W2 (prefix hygiene) are durable wins; W3 is what let us
-*falsify* W1 instead of shipping a plausible-but-ineffective change. The ≤1.5× target
-itself is **not yet met** — it is W5's job, pending the measurement unblock.
+*falsify* W1 instead of shipping a plausible-but-ineffective change.
+
+**W5 is implemented, but the n=3 + Opus confirmation corrected the earlier n=1 claim: the
+≤1.5× target is NOT yet met.** The single ablation that showed the weak profile at easy
+0.59× was a high-variance fluke. Re-run at n=3 medians (raw:
+[data/overhead-n3-2026-06-26.json](data/overhead-n3-2026-06-26.json), all arms 100% correct):
+
+| model / config | easy | hard | hard2 |
+|----------------|---:|---:|---:|
+| Haiku, full | 3.15× FAIL | 0.65× | 1.00× |
+| Haiku, weak | 2.27× FAIL | 0.93× | 1.00× |
+| Opus 4.8, full | 1.00× | 0.99× | 1.34× |
+
+The over-tooling is **weak-model + trivial-task specific**: Opus 4.8 never exceeds 1.34×
+(no problem on the default/strong tier), and hard tasks are fine for everyone. The
+`AGENTIC_TIER=weak` profile *reduces* Haiku's easy-task overhead (3.15× → 2.27×) and is
+harmless to hard tasks and to Opus, but it does **not** reliably reach ≤1.5× — the
+remaining layer (gitnexus MCP + the tool-pushing prefix + rtk) still triggers variable
+orientation. Reaching the bar would need a more aggressive minimal/near-vanilla weak
+profile; and since the custom layer is merely *neutral* for weak models on hard tasks, its
+value for weak models is an open question. Detail:
+[05-minimal-tier-profile.md](impl-overhead/05-minimal-tier-profile.md).

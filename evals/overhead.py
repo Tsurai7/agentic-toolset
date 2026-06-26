@@ -104,7 +104,40 @@ def _make_hard():
     return d, task, correct
 
 
-TASKS = {"easy": _make_easy, "hard": _make_hard}
+def _make_hard2():
+    """Identify Stringer implementers: distinguish a `String() string` method (value or
+    pointer receiver) from a wrong-signature method, a non-String method, and a
+    same-named free function. Alpha + Beta implement; Gamma (wrong sig), Delta (no
+    String), and the free function do not. Expected: 2 (Alpha, Beta)."""
+    d = tempfile.mkdtemp(prefix="overhead-hard2-")
+    pkg = Path(d, "pkg")
+    pkg.mkdir()
+    (pkg / "types.go").write_text(
+        "package pkg\n"
+        "type Alpha struct{}\n"
+        'func (a Alpha) String() string { return "a" }\n'
+        "type Beta struct{}\n"
+        'func (b *Beta) String() string { return "b" }\n'
+        "type Gamma struct{}\n"
+        'func (g Gamma) String(x int) string { return "" }\n'
+        "type Delta struct{}\n"
+        'func (dd Delta) Other() string { return "" }\n'
+        'func String() string { return "free" }\n'
+    )
+    _git_init(d)
+    task = (
+        "In this Go package, list every type that implements fmt.Stringer (i.e. has a "
+        "method with the exact signature `String() string`, value or pointer receiver). "
+        "Give the type names and the total count."
+    )
+
+    def correct(ans: str) -> bool:
+        return "2" in ans and "Alpha" in ans and "Beta" in ans
+
+    return d, task, correct
+
+
+TASKS = {"easy": _make_easy, "hard": _make_hard, "hard2": _make_hard2}
 
 
 def _run_arm(cwd: str, prompt: str, model: str) -> str:
@@ -121,30 +154,44 @@ def _run_arm(cwd: str, prompt: str, model: str) -> str:
         return '{"type":"result","result":"<TIMEOUT>","usage":{}}'
 
 
-def measure_task(name: str, maker, model: str) -> dict:
-    d, task, correct = maker()
-    try:
-        on_raw = _run_arm(d, task, model)
-        off_raw = _run_arm(d, OFF_PREFIX + task, model)
-    finally:
-        shutil.rmtree(d, ignore_errors=True)
-    on, off = agent.metrics(on_raw), agent.metrics(off_raw)
+_MEDIAN_KEYS = (
+    "total_input_tokens", "repriced_input_tokens", "output_tokens",
+    "cost_usd", "tool_calls", "num_turns",
+)
+
+
+def _median(runs: list[dict], key: str):
+    vals = sorted(r.get(key) for r in runs if r.get(key) is not None)
+    return vals[len(vals) // 2] if vals else None
+
+
+def measure_task(name: str, maker, model: str, reps: int) -> dict:
+    """Run a task's ON/OFF arms `reps` times; report median metrics and correctness
+    rates so a single noisy run can't decide the verdict. The reported ratio is the
+    ratio of medians (robust to per-run variance)."""
+    on_runs, off_runs = [], []
+    correct_on = correct_off = 0
+    for _ in range(reps):
+        d, task, correct = maker()
+        try:
+            on_raw = _run_arm(d, task, model)
+            off_raw = _run_arm(d, OFF_PREFIX + task, model)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+        on_runs.append(agent.metrics(on_raw))
+        off_runs.append(agent.metrics(off_raw))
+        correct_on += int(bool(correct(agent.final_text(on_raw))))
+        correct_off += int(bool(correct(agent.final_text(off_raw))))
+    on_med = {k: _median(on_runs, k) for k in _MEDIAN_KEYS}
+    off_med = {k: _median(off_runs, k) for k in _MEDIAN_KEYS}
     return {
         "task": name,
-        "on": on,
-        "off": off,
-        "ratios": agent.overhead_ratios(on, off),
-        "correct_on": bool(correct(agent.final_text(on_raw))),
-        "correct_off": bool(correct(agent.final_text(off_raw))),
-    }
-
-
-def _regime(r: dict) -> dict:
-    return {
-        "total_input_ratio": r["ratios"]["total_input_ratio"],
-        "cost_ratio": r["ratios"]["cost_ratio"],
-        "correct_on": r["correct_on"],
-        "correct_off": r["correct_off"],
+        "reps": reps,
+        "ratios": agent.overhead_ratios(on_med, off_med),
+        "median_turns_on": on_med["num_turns"],
+        "median_turns_off": off_med["num_turns"],
+        "correct_on_rate": correct_on / reps,
+        "correct_off_rate": correct_off / reps,
     }
 
 
@@ -152,18 +199,42 @@ def _fmt(x, suffix="x"):
     return "—" if x is None else f"{x:.2f}{suffix}"
 
 
+def _verdict(results: list[dict], max_ratio: float = judge.OVERHEAD_EASY_MAX) -> dict:
+    """A run PASSes when every task's median total-input AND cost overhead is within
+    max_ratio (the owner's <=1.5x bar, applied uniformly to easy and hard tasks) and
+    no task regresses correctness (ON solved less often than the bare OFF arm)."""
+    worst_ti = max((r["ratios"]["total_input_ratio"] or 0) for r in results)
+    worst_cost = max((r["ratios"]["cost_ratio"] or 0) for r in results) or None
+    regression = any(r["correct_on_rate"] < r["correct_off_rate"] for r in results)
+    return judge.judge_overhead(
+        {"total_input_ratio": worst_ti, "cost_ratio": worst_cost,
+         "correct_on": not regression, "correct_off": True},
+        easy_max=max_ratio,
+    )
+
+
 def _print_human(results: list[dict], verdict: dict) -> None:
     for r in results:
         ra = r["ratios"]
-        print(f"\n== {r['task']} (correct ON={r['correct_on']} OFF={r['correct_off']}) ==")
-        print(f"  total_input ON/OFF : {_fmt(ra['total_input_ratio'])}"
+        print(f"\n== {r['task']} (reps={r['reps']}; correct ON={r['correct_on_rate']:.0%} "
+              f"OFF={r['correct_off_rate']:.0%}) ==")
+        print(f"  median total_input ON/OFF : {_fmt(ra['total_input_ratio'])}"
               f"  (repriced {_fmt(ra['repriced_input_ratio'])})")
-        print(f"  cost ON/OFF        : {_fmt(ra['cost_ratio'])}")
-        print(f"  output ON/OFF      : {_fmt(ra['output_ratio'])}")
-        print(f"  tool_calls ON/OFF  : {_fmt(ra['tool_calls_ratio'])}")
+        print(f"  median cost ON/OFF        : {_fmt(ra['cost_ratio'])}")
+        print(f"  median turns ON/OFF       : {r['median_turns_on']} / {r['median_turns_off']}")
     print(f"\nVERDICT: {verdict['verdict']}")
     for reason in verdict["reasons"]:
         print(f"  - {reason}")
+
+
+def _select(flt: str) -> list[str]:
+    if flt == "all":
+        return list(TASKS)
+    if flt == "hard":
+        return [n for n in TASKS if n.startswith("hard")]
+    if flt == "easy":
+        return ["easy"]
+    return [flt] if flt in TASKS else []
 
 
 def main(argv=None) -> int:
@@ -171,29 +242,31 @@ def main(argv=None) -> int:
     ap.add_argument("--confirm", action="store_true",
                     help="actually invoke the agent CLI (spends tokens)")
     ap.add_argument("--model", default=DEFAULT_MODEL)
-    ap.add_argument("--filter", choices=["easy", "hard", "all"], default="all")
+    ap.add_argument("--filter", default="all",
+                    help="all | easy | hard (all hard*) | a task name")
+    ap.add_argument("--reps", type=int, default=1,
+                    help="repetitions per task; the median is reported")
     ap.add_argument("--json", action="store_true", help="emit raw JSON instead of a table")
     args = ap.parse_args(argv)
 
     confirm = args.confirm or os.environ.get("AGENTIC_EVAL_CONFIRM") == "1"
-    names = ["easy", "hard"] if args.filter == "all" else [args.filter]
+    names = _select(args.filter)
+    if not names:
+        print(f"no tasks match --filter {args.filter!r} (have: {', '.join(TASKS)})")
+        return 2
 
     if not confirm:
-        print(f"[dry-run] would run {len(names)} task(s) {names} x 2 arms (ON/OFF) on "
-              f"{args.model} — this spends tokens.")
+        print(f"[dry-run] would run {len(names)} task(s) {names} x 2 arms x {args.reps} "
+              f"rep(s) on {args.model} — this spends tokens.")
         print("Re-run with --confirm (or AGENTIC_EVAL_CONFIRM=1) to measure.")
         return 0
 
-    results = [measure_task(n, TASKS[n], args.model) for n in names]
-    easy = next((r for r in results if r["task"] == "easy"), None)
-    hard = next((r for r in results if r["task"] == "hard"), None)
-    verdict = judge.judge_overhead(
-        _regime(easy) if easy else {},
-        _regime(hard) if hard else None,
-    )
+    results = [measure_task(n, TASKS[n], args.model, args.reps) for n in names]
+    verdict = _verdict(results)
 
     if args.json:
-        print(json.dumps({"model": args.model, "results": results, "verdict": verdict}, indent=2))
+        print(json.dumps({"model": args.model, "reps": args.reps,
+                          "results": results, "verdict": verdict}, indent=2))
     else:
         _print_human(results, verdict)
     return 0 if verdict["verdict"] == "PASS" else 1

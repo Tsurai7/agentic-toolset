@@ -91,3 +91,59 @@ worth its cost for any weak-model use at all. Resolve with a judged, n≥3 hard-
 - What stays in "minimal": drop only the lean-ctx redirect + MCP (keep shell-guard safety),
   or go fully vanilla? (The ablation decides.)
 - Default tier (recommend strong, weak opt-in).
+
+## Status — implemented; n=3 correction (the n=1 result was a fluke)
+
+**Honest correction.** The first ablation was n=1 and showed the weak profile at easy
+0.59× (PASS). Re-run at **n=3 (median of 3 reps)** — and on **Opus 4.8** as well as Haiku
+— that PASS does **not** hold. Haiku's easy-task turn count is bimodal (sometimes 4, often
+12–16), so a single run is not trustworthy. The n=3 matrix (all arms 100% correct,
+prompt-isolation, `evals/overhead.py --reps 3`, raw in
+[../data/overhead-n3-2026-06-26.json](../data/overhead-n3-2026-06-26.json)):
+
+| model / config | easy | hard | hard2 |
+|----------------|---:|---:|---:|
+| Haiku, full | **3.15× FAIL** | 0.65× | 1.00× |
+| Haiku, weak | **2.27× FAIL** | 0.93× | 1.00× |
+| Opus 4.8, full | 1.00× | 0.99× | 1.34× |
+
+What this actually shows:
+
+- **Over-tooling is weak-model + trivial-task specific.** Opus 4.8 never exceeds 1.34×
+  (all PASS) — the strong/default tier has no overhead problem and needs no change. Only
+  Haiku's *easy* task fails the bar.
+- **Hard tasks are fine for everyone** — no overhead, both arms always correct. The
+  earlier "hard 1.83× FAIL" was n=1 noise (median is 0.65–0.99×).
+- **The weak profile only *partially* mitigates** Haiku's easy-task overhead (median
+  3.15× → 2.27×) and is harmless to hard tasks and to Opus, but it does **not** reliably
+  reach ≤1.5×. The lean-ctx removal isn't enough on its own: the remaining layer (the
+  gitnexus MCP + the tool-pushing CLAUDE.md prefix + rtk) still triggers a variable
+  orientation dance.
+- **So the ≤1.5× target is not met for Haiku trivial tasks.** Reaching it reliably would
+  need a more aggressive minimal/near-vanilla weak profile (also drop gitnexus and trim
+  the tool-pushing prefix for the weak tier). And since the custom layer is merely
+  *neutral* (not a win) for weak models even on hard tasks, the open question — is it worth
+  its cost for weak models at all? — is now sharper.
+
+The profile below is therefore shipped as an honest **partial mitigation + a measurement
+finding**, not as "≤1.5× achieved".
+
+**Implemented** as an `AGENTIC_TIER` switch on the Claude install (`strong` default):
+
+- `AGENTIC_TIER=weak bin/install.sh --provider all` renders `settings.json` without the
+  lean-ctx Read/Grep redirect hook (keeps shell-guard, edit-lint, observe) and skips
+  registering the lean-ctx MCP server. shell-guard safety and the prefix are unchanged.
+- Mechanism: `providers/claude/install.sh` filters the redirect group for weak and passes
+  `AGENTIC_MCP_EXCLUDE=lean-ctx` to merge-mcp; both merge-mcp implementations
+  (`internal/mcpmerge`, `providers/shared/merge-mcp.py`) honor `AGENTIC_MCP_EXCLUDE`
+  (comma-separated server names) in the fragment collector.
+
+**Tests:** `TestCollectFragmentsExclude` (Go unit, the MCP exclude), and
+`TestClaudeInstallWeakTierDropsRedirect` (integration: a real weak install drops the
+redirect hook, keeps shell-guard + edit-lint). Go+Python parity preserved (exclude is a
+no-op by default). Since the weak install renders exactly the config the ablation measured
+at PASS, the ablation is its end-to-end validation.
+
+**Still open / future:** the weak tier could also drop the now-moot lean-ctx prefix rules
+(an optimization — the measurement passed without it); a judged n≥3 hard-task suite to
+firm the noisy hard-regime numbers; and a Cursor-side equivalent if needed.

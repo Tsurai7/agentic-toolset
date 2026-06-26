@@ -1,0 +1,90 @@
+{
+  "method": "evals/overhead.py --reps 3, prompt-isolation, ratio of medians, 2026-06-26",
+  "haiku_full": [
+    {
+      "task": "easy",
+      "total_input_ratio": 3.146882431413491,
+      "cost_ratio": 1.8341711702107304,
+      "turns_on": 11,
+      "turns_off": 4,
+      "correct_on_rate": 1.0,
+      "correct_off_rate": 1.0
+    },
+    {
+      "task": "hard",
+      "total_input_ratio": 0.6522038143909108,
+      "cost_ratio": 1.162641032040414,
+      "turns_on": 8,
+      "turns_off": 10,
+      "correct_on_rate": 1.0,
+      "correct_off_rate": 1.0
+    },
+    {
+      "task": "hard2",
+      "total_input_ratio": 0.9960726615537895,
+      "cost_ratio": 1.0587932898991566,
+      "turns_on": 3,
+      "turns_off": 3,
+      "correct_on_rate": 1.0,
+      "correct_off_rate": 1.0
+    }
+  ],
+  "haiku_weak": [
+    {
+      "task": "easy",
+      "total_input_ratio": 2.269011380199574,
+      "cost_ratio": 1.5243210033018049,
+      "turns_on": 12,
+      "turns_off": 6,
+      "correct_on_rate": 1.0,
+      "correct_off_rate": 1.0
+    },
+    {
+      "task": "hard",
+      "total_input_ratio": 0.9342979767960663,
+      "cost_ratio": 1.059162636674777,
+      "turns_on": 10,
+      "turns_off": 9,
+      "correct_on_rate": 1.0,
+      "correct_off_rate": 1.0
+    },
+    {
+      "task": "hard2",
+      "total_input_ratio": 0.998087249916837,
+      "cost_ratio": 0.9925205435367619,
+      "turns_on": 3,
+      "turns_off": 3,
+      "correct_on_rate": 1.0,
+      "correct_off_rate": 1.0
+    }
+  ],
+  "opus48_full": [
+    {
+      "task": "easy",
+      "total_input_ratio": 0.9968098681412165,
+      "cost_ratio": 0.9941928896405344,
+      "turns_on": 4,
+      "turns_off": 4,
+      "correct_on_rate": 1.0,
+      "correct_off_rate": 1.0
+    },
+    {
+      "task": "hard",
+      "total_input_ratio": 0.9926549425089041,
+      "cost_ratio": 0.9946665909845084,
+      "turns_on": 8,
+      "turns_off": 8,
+      "correct_on_rate": 1.0,
+      "correct_off_rate": 1.0
+    },
+    {
+      "task": "hard2",
+      "total_input_ratio": 1.3378746252179694,
+      "cost_ratio": 1.0820718620594685,
+      "turns_on": 4,
+      "turns_off": 3,
+      "correct_on_rate": 1.0,
+      "correct_off_rate": 1.0
+    }
+  ]
+}

@@ -39,7 +39,7 @@ Token-cost legend:
 ```mermaid
 graph TD
     subgraph "zero-token, the local gate"
-        L1["Layer 1 — Correctness<br/>go test + bin/ci-check.sh<br/>24 Go tests, 6 packages<br/>+ evals selftest/lint static gates"]
+        L1["Layer 1 — Correctness<br/>go test + bin/ci-check.sh<br/>26 Go tests, 6 packages<br/>+ evals selftest/lint static gates"]
     end
     subgraph "llm-driven, manual, dry by default"
         L2["Layer 2 — Conformance<br/>15 cases, single transcript, PASS/FAIL judge"]
@@ -126,7 +126,7 @@ exited 0.
 
 This is the correctness suite for the machinery that rewrites a user's machine config.
 It is pass/fail only — there is no efficiency or token KPI here, and there are no Go
-benchmarks (`testing.B` / `Benchmark*`). The signal is 24 test functions across six
+benchmarks (`testing.B` / `Benchmark*`). The signal is 26 test functions across six
 packages, all passing.
 
 The Go code is the incremental port of the repo's shell + Python install/hook glue
@@ -141,9 +141,9 @@ dispatches the subcommands `hook`, `merge-settings`, `merge-mcp`, and `merge-cla
 | `internal/jsonorder` | pure unit (3 tests) | Order-preserving JSON read/write: round-trip keeps key order and is byte-identical; `SetRaw` appends new keys in insertion order and updates in place; `WriteFile` emits 2-space-indented, insertion-ordered JSON with a trailing newline, written atomically via temp-file + rename. |
 | `internal/hook` | unit + 12-case table (4 tests) | The PreToolUse Bash hook (shell-guard) allow/deny/rewrite decision table; non-Bash tools pass through with no output; unparseable stdin fails open (no output); a lean-ctx rewrite envelope is emitted verbatim. Host deps (`leanCtxRewrite`, `hasRTK`) are stubbed via package vars, so there is no real `rtk`/lean-ctx dependency at test time. |
 | `internal/settings` | golden-style (4 tests) | Settings merge registers `shell-guard.sh` under PreToolUse on a fresh install; never emits `"$schema": null`; preserves user env, user hooks, and user permission groups while dropping a stale managed group and unioning `permissions.allow`; is idempotent (two merges yield byte-identical output, one shell-guard entry). |
-| `internal/mcpmerge` | unit + TempDir integration (5 tests) | `__KEY__` token substitution in string and array leaves; Cursor-only `autoApprove` stripped while `command` is kept (`claudeServerKeys` allow-list); fragments collected sorted by path; hand-added servers preserved and managed servers appended with substitution; idempotent. |
+| `internal/mcpmerge` | unit + TempDir integration (6 tests) | `__KEY__` token substitution in string and array leaves; Cursor-only `autoApprove` stripped while `command` is kept (`claudeServerKeys` allow-list); fragments collected sorted by path; hand-added servers preserved and managed servers appended with substitution; idempotent; `AGENTIC_MCP_EXCLUDE` drops a named server (the weak-tier lean-ctx exclusion). |
 | `internal/claudemd` | pure unit (4 tests) | `CLAUDE.md` rendering: fresh file gets the managed marker and the `@<absPath>` import; existing user content is preserved with the managed block appended; a legacy fully-generated file is migrated (inline content removed, `@import` block written); idempotent with exactly one managed block. |
-| `internal/installtest` | integration + parity (1 + 3 tests) | One end-to-end test (`install_test.go`) runs the real `providers/claude/install.sh` against a throwaway `$HOME` and asserts the user's `CLAUDE.md`/`settings.json` survive while the managed block, generated principles file, and shell-guard registration appear. Three parity tests (`parity_test.go`) deep-equal the Go merge output against `merge-settings.py`, `merge-mcp.py`, and `merge-claude-md.py`. |
+| `internal/installtest` | integration + parity (2 + 3 tests) | One end-to-end test (`install_test.go`) runs the real `providers/claude/install.sh` against a throwaway `$HOME` and asserts the user's `CLAUDE.md`/`settings.json` survive while the managed block, generated principles file, and shell-guard registration appear; a second asserts `AGENTIC_TIER=weak` drops the lean-ctx redirect hook while keeping shell-guard + edit-lint. Three parity tests (`parity_test.go`) deep-equal the Go merge output against `merge-settings.py`, `merge-mcp.py`, and `merge-claude-md.py`. |
 
 The shell-guard decision table (`TestShellGuard`) is the heart of the hook coverage. A
 few concrete cases: `grep "foo.py" data.csv` rewrites to `rtk grep "foo.py" data.csv`
@@ -196,7 +196,7 @@ workflow is pushed it will run the same checks; until then, run the gate locally
 ### Environment-dependent skips
 
 The three parity tests SKIP when `python3` is absent; `TestClaudeInstallPreservesUserConfig`
-SKIPs when `bash` is absent. On the reference machine both are present, so all 24 tests
+SKIPs when `bash` is absent. On the reference machine both are present, so all 26 tests
 ran and passed (the install integration test took roughly 3.5s). On a runner without
 `python3`, the parity guarantees are silently not checked — a skip, not a failure. The
 parity tests will need removal once the Python scripts in `providers/shared/` are
@@ -582,6 +582,7 @@ What is measured today on `master`:
 - Real-session telemetry (`report.py` + `gate.py`) — present and working.
 - The toolset-overhead instrument — `evals/overhead.py` (the A/B runner) plus `agent.overhead_ratios` / `judge.judge_overhead` (the ≤1.5x verdict) and the 2026-06-26 baseline data — present. The ratio/verdict logic runs zero-token in CI via `selftest.py`; the live A/B is manual (`--confirm`).
 - The always-on prefix budget — `bin/prefix-budget.sh`, gated in `bin/ci-check.sh` — present (W2): the per-turn prefix cannot silently grow past `PREFIX_BUDGET_BYTES`.
+- The weak-tier install profile (W5) — `AGENTIC_TIER=weak bin/install.sh` drops the lean-ctx redirect hook + lean-ctx MCP, a measured driver of weak-model over-tooling. Covered by `TestClaudeInstallWeakTierDropsRedirect` + `TestCollectFragmentsExclude`. Measurement note (n=3 medians, `evals/overhead.py --reps 3`, `plans/data/overhead-n3-2026-06-26.json`): the over-tooling is weak-model + trivial-task specific (Opus 4.8 ≤1.34× everywhere; only Haiku's easy task fails). The weak profile *reduces* Haiku's easy overhead (3.15× → 2.27×) and is harmless to hard tasks and to Opus, but does **not** reliably reach ≤1.5× — an earlier n=1 "0.59× PASS" was a fluke. ≤1.5× for Haiku trivial tasks remains open (needs a more aggressive minimal profile).
 - The two token-cheap uplift levers (W4) — the opt-in `answer-shapes` skill (covered by `answer-shapes-structured-bugfix`, prefix-neutral except its one-line listing entry) and the `edit-lint` PostToolUse hook (`providers/claude/hooks/edit-lint.sh`, prefix-neutral) — present. The hook is bulletproof fail-open (silent on non-edit tools, unknown extensions, absent checkers/files, or a passing check); its shell is covered in CI by the `bash -n` (and, when present, `shellcheck`) blocks of `bin/ci-check.sh`, and its runtime behavior was validated during development by piping synthetic PostToolUse payloads (a Python and a Go syntax error injected context; valid / non-code / non-edit / missing-file inputs stayed silent). The token-heavy uplift levers (self-critique, plan-first) remain deferred to the model-tier render fork.
 
 What is on a different branch or only proposed:
