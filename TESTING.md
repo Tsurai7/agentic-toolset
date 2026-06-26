@@ -26,7 +26,7 @@ tokens and is run by hand.
 | Layer | What it answers | Primary command | What it guards | Token cost |
 |-------|-----------------|-----------------|----------------|------------|
 | 1. Correctness | Does the install/merge/hook machinery behave correctly? | `make check` (or `go test ./...`, `bash bin/ci-check.sh`) | Go CLI + Python parity, idempotent merges, shell-guard decisions, end-to-end install | zero-deterministic |
-| 2. Behavioral conformance | Does a rule/skill actually trigger and change behavior (and stay quiet when it should)? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance` | 12 single-transcript PASS/FAIL cases judged by an LLM | llm-driven |
+| 2. Behavioral conformance | Does a rule/skill actually trigger and change behavior (and stay quiet when it should)? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance` | 14 single-transcript PASS/FAIL cases judged by an LLM | llm-driven |
 | 3. Efficiency / КПД | Is the configuration measurably better or cheaper than without it? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value` and `--track metric` | A/B treatment-vs-control, cache-hit-rate threshold, overhead experiment | llm-driven + real-session-telemetry |
 | 4. Real-session telemetry | What is the production token economy on real day-to-day sessions? | `python3 telemetry/report.py`, `python3 telemetry/gate.py` | Token-weighted cache-hit-rate KPI over real `~/.claude` transcripts | real-session-telemetry (zero-LLM) |
 
@@ -42,7 +42,7 @@ graph TD
         L1["Layer 1 — Correctness<br/>go test + bin/ci-check.sh<br/>24 Go tests, 6 packages<br/>+ evals selftest/lint static gates"]
     end
     subgraph "llm-driven, manual, dry by default"
-        L2["Layer 2 — Conformance<br/>12 cases, single transcript, PASS/FAIL judge"]
+        L2["Layer 2 — Conformance<br/>14 cases, single transcript, PASS/FAIL judge"]
         L3["Layer 3 — Efficiency / КПД<br/>value A/B + metric gate + overhead experiment"]
     end
     subgraph "zero-LLM, local-only"
@@ -231,7 +231,7 @@ The transcript is clipped to head 12000 + tail 8000 characters before judging, s
 early tool-call proof (a skill firing) and the final answer both survive while the middle
 is elided.
 
-### The 12 conformance cases
+### The 14 conformance cases
 
 | Case id | Intent |
 |---------|--------|
@@ -246,6 +246,8 @@ is elided.
 | `pr-uses-gh` | PRs are opened with the `gh` CLI after inspecting branch state, not via the GitHub web UI. |
 | `shell-rtk-prefix` | Shell goes through lean-ctx `ctx_shell` or a native terminal prefixed with `rtk`; must NOT double-wrap or run a bare unprefixed command. |
 | `structural-impact-gitnexus` | Structural impact analysis prefers GitNexus graph tools over grepping the method name. |
+| `triage-light-tool-for-lookup` | Tool-precedence triage gate: a trivial single-fact lookup uses one light tool and stops; must NOT open with ctx_overview / semantic search / GitNexus or chain 3+ orientation calls. |
+| `triage-escalates-on-structural` | The triage gate's guard: a who-calls / impact task must still escalate to the heavy path (GitNexus / ast-grep), NOT be answered by a single grep or treated as trivial. |
 | `verification-before-done` | A "is the build still passing" question must run the build and answer from observed output; must NOT claim it passes without running anything. |
 
 ### How to run

@@ -17,9 +17,21 @@ This repo is the source of truth for personal agent config. Run `bin/install.sh 
 
 ## Tool precedence (resolve overlaps)
 
-Three layers can address the same action (shell, search, file reads). When more than
-one is available, follow this order. Each layer is optional — degrade to the next when
-the tool is absent (e.g. Cursor or a team repo without lean-ctx).
+**Right-size the tooling to the task — this gates everything below.** Match tool weight to
+task weight. For a self-evidently trivial single-fact lookup (one symbol, one file, a
+literal string, "does X exist") use the one lightest tool that answers it and stop — do
+not orient, semantic-search, or build a graph first. Treat the task as heavy whenever it
+is multi-step, structural, or high-blast-radius — anything touching 3+ coupled files, a
+"who calls / what breaks / impact" question, or ambiguous scope; when in doubt, treat it
+as heavy and escalate (the toolset earns its cost on hard tasks). This gate decides only
+*whether* a task is heavy — not *which* tool you reach for once it is: the Global defaults
+still hold (lead with GitNexus for structural work, `ast-grep` for code search, not grep).
+Once a read-only lookup is answered, stop — don't re-run tools to re-confirm a fact you
+already retrieved (this does not relax "Done means verified" for changes you make, default 6).
+
+When you do need a class of action, three layers can address it (shell, search, file
+reads); prefer them in this order. Each layer is optional — degrade to the next when the
+tool is absent (e.g. Cursor or a team repo without lean-ctx).
 
 | Action | 1st choice | 2nd choice | Last resort |
 |--------|-----------|------------|-------------|
@@ -37,9 +49,9 @@ Rules:
   global lean-ctx rules). `rtk` applies only on the native terminal path, where its hook fires.
 - GitNexus is for the **graph** question (structure, polymorphism, blast radius); `ast-grep`
   is for **code shaped like a pattern**; `ctx_search` / `grep` are for **plain text**. Pick by
-  question type, not habit.
-- Never regex-grep source code when `ast-grep` can parse the language — grep is the fallback
-  only for unsupported languages or non-code text (logs, config, prose).
+  question type, not habit. Never regex-grep source code when `ast-grep` can parse the
+  language; grep is the fallback only for unsupported languages or non-code text (logs,
+  config, prose).
 
 ## Detailed rules
 
