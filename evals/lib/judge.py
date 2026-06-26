@@ -137,3 +137,62 @@ def judge_metric(case: dict, value: float) -> dict:
         "verdict": "PASS" if ok else "FAIL",
         "reason": f"{case['metric']}={value:.4f} {op} {threshold}",
     }
+
+
+# --- toolset-overhead gate (no LLM) --------------------------------------------
+
+OVERHEAD_EASY_MAX = 1.5  # the owner's ≤1.5x bar for the easy/lookup regime
+OVERHEAD_HARD_MAX = 1.0  # the toolset must keep paying off where it matters
+
+
+def judge_overhead(easy: dict, hard: dict | None = None, *,
+                   easy_max: float = OVERHEAD_EASY_MAX,
+                   hard_max: float = OVERHEAD_HARD_MAX) -> dict:
+    """Grade the toolset-overhead measurement against the ≤1.5x bar. Pure logic.
+
+    `easy`/`hard` are per-regime dicts produced from `agent.overhead_ratios()` plus
+    correctness flags, e.g.::
+
+        {"total_input_ratio": 1.3, "cost_ratio": 1.2,
+         "correct_on": True, "correct_off": True}
+
+    Easy regime: total-input and cost overhead must each be <= easy_max (inclusive),
+    and the toolset must not regress correctness (ON wrong while OFF right). Hard
+    regime (optional): total-input overhead must be <= hard_max, i.e. the toolset
+    still pays for itself on work that warrants it.
+    """
+    reasons: list[str] = []
+    ok = True
+
+    ti = easy.get("total_input_ratio")
+    if ti is None:
+        ok = False
+        reasons.append("easy: missing total_input_ratio")
+    elif ti > easy_max:
+        ok = False
+        reasons.append(f"easy total_input {ti:.2f}x > {easy_max}x")
+    else:
+        reasons.append(f"easy total_input {ti:.2f}x <= {easy_max}x")
+
+    cr = easy.get("cost_ratio")
+    if cr is not None:
+        if cr > easy_max:
+            ok = False
+            reasons.append(f"easy cost {cr:.2f}x > {easy_max}x")
+        else:
+            reasons.append(f"easy cost {cr:.2f}x <= {easy_max}x")
+
+    if easy.get("correct_off") and not easy.get("correct_on"):
+        ok = False
+        reasons.append("easy: correctness regression (ON wrong, OFF right)")
+
+    if hard is not None:
+        hti = hard.get("total_input_ratio")
+        if hti is not None:
+            if hti > hard_max:
+                ok = False
+                reasons.append(f"hard total_input {hti:.2f}x > {hard_max}x (toolset not paying off)")
+            else:
+                reasons.append(f"hard total_input {hti:.2f}x <= {hard_max}x")
+
+    return {"verdict": "PASS" if ok else "FAIL", "reasons": reasons}

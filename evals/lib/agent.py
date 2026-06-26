@@ -74,13 +74,19 @@ def clip(transcript: str, head: int = 12000, tail: int = 8000) -> str:
 def metrics(raw: str) -> dict:
     """Cheap efficiency signals read straight from a stream-json transcript.
 
-    Free to compute (no extra model calls): tool-call count, transcript size, and
-    the token usage reported by the terminal result event (input / output / cache).
+    Free to compute (no extra model calls): tool-call count, transcript size, the
+    token usage reported by the terminal result event (input / output / cache), and
+    the run-level cost/latency/turns. Two derived fields make the toolset-overhead
+    instrument honest: `repriced_input_tokens` (= input + cache_creation, the billed
+    cost once near-free cache_read is excluded) and `prefix_turn1_ctx` (the first
+    assistant turn's whole context — a proxy for the always-on prefix weight).
     Recording real tokens per arm turns the value track's economy signal into a
     measured token delta rather than a proxy (transcript_chars alone).
     """
     tool_calls = 0
     usage: dict = {}
+    extra: dict = {}
+    prefix_turn1_ctx = None
     for line in raw.splitlines():
         line = line.strip()
         if not line.startswith("{"):
@@ -91,23 +97,65 @@ def metrics(raw: str) -> dict:
             continue
         # Assistant messages carry tool_use blocks in their content array.
         if obj.get("type") == "assistant":
-            content = obj.get("message", {}).get("content", [])
+            msg = obj.get("message", {})
+            content = msg.get("content", [])
             tool_calls += sum(
                 1 for b in content if isinstance(b, dict) and b.get("type") == "tool_use"
             )
+            # The first assistant turn's context size proxies the always-on prefix.
+            if prefix_turn1_ctx is None and isinstance(msg.get("usage"), dict):
+                tu = msg["usage"]
+                prefix_turn1_ctx = (
+                    tu.get("input_tokens", 0)
+                    + tu.get("cache_read_input_tokens", 0)
+                    + tu.get("cache_creation_input_tokens", 0)
+                )
         # The terminal result event carries cumulative token usage for the run.
-        elif obj.get("type") == "result" and isinstance(obj.get("usage"), dict):
-            u = obj["usage"]
-            usage = {
-                "input_tokens": u.get("input_tokens", 0),
-                "output_tokens": u.get("output_tokens", 0),
-                "cache_read_tokens": u.get("cache_read_input_tokens", 0),
-                "cache_creation_tokens": u.get("cache_creation_input_tokens", 0),
-            }
+        elif obj.get("type") == "result":
+            if isinstance(obj.get("usage"), dict):
+                u = obj["usage"]
+                usage = {
+                    "input_tokens": u.get("input_tokens", 0),
+                    "output_tokens": u.get("output_tokens", 0),
+                    "cache_read_tokens": u.get("cache_read_input_tokens", 0),
+                    "cache_creation_tokens": u.get("cache_creation_input_tokens", 0),
+                }
+            for src, dst in (("total_cost_usd", "cost_usd"),
+                             ("duration_ms", "duration_ms"),
+                             ("num_turns", "num_turns")):
+                if obj.get(src) is not None:
+                    extra[dst] = obj[src]
     m = {"tool_calls": tool_calls, "transcript_chars": len(raw)}
     if usage:
         usage["total_input_tokens"] = (
             usage["input_tokens"] + usage["cache_read_tokens"] + usage["cache_creation_tokens"]
         )
+        usage["repriced_input_tokens"] = usage["input_tokens"] + usage["cache_creation_tokens"]
         m.update(usage)
+    if prefix_turn1_ctx is not None:
+        m["prefix_turn1_ctx"] = prefix_turn1_ctx
+    m.update(extra)
     return m
+
+
+def overhead_ratios(on: dict, off: dict) -> dict:
+    """ON/OFF ratios for the toolset-overhead instrument (pure arithmetic).
+
+    Each ratio is `metrics(on)[k] / metrics(off)[k]`, or None when the OFF
+    denominator is missing or zero. `total_input_ratio` is the headline number the
+    owner set the ≤1.5x bar on; `repriced_input_ratio` and `cost_ratio` are the
+    honest billed views (see metrics()).
+    """
+    def ratio(key: str):
+        a, b = on.get(key), off.get(key)
+        if a is None or not b:
+            return None
+        return a / b
+
+    return {
+        "total_input_ratio": ratio("total_input_tokens"),
+        "repriced_input_ratio": ratio("repriced_input_tokens"),
+        "output_ratio": ratio("output_tokens"),
+        "cost_ratio": ratio("cost_usd"),
+        "tool_calls_ratio": ratio("tool_calls"),
+    }

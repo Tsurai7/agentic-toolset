@@ -112,8 +112,8 @@ bash bin/doctor.sh
 Expected signals when these pass: `go test -count=1 ./...` reports `ok` for
 `internal/claudemd`, `internal/hook`, `internal/installtest`, `internal/jsonorder`,
 `internal/mcpmerge`, `internal/settings` (and `cmd/agentic` has no test files);
-`evals/selftest.py` prints `selftest OK — 5 checks.`; `evals/lint.py` prints
-`lint OK — 15 cases, 8 skills covered.`; `bin/ci-check.sh` ends with
+`evals/selftest.py` prints `selftest OK — 8 checks.`; `evals/lint.py` prints
+`lint OK — 15 cases, 7 skills covered.`; `bin/ci-check.sh` ends with
 `All static checks passed.`.
 
 Note that `bin/ci-check.sh` fails open on three tools when they are absent: it WARNs
@@ -387,15 +387,27 @@ and `run_metric` in `evals/run.py`).
 
 Whenever the value track runs a Claude Code stream-json transcript, `agent.metrics()`
 extracts a real token decomposition for each arm at no extra cost: `input_tokens`,
-`output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, and
-`total_input_tokens = input + cache_read + cache_creation`, plus `tool_calls` (count of
-`tool_use` blocks) and `transcript_chars`. This is what makes the economy signal a
-measured token delta rather than only a transcript-size proxy. These token fields are
-populated only when the transcript contains a terminal `{"type": "result"}` event with a
-usage dict; plain-text or non-claude agents yield only `tool_calls` and
-`transcript_chars`. The parsing logic is guarded by the zero-token selftest
-`test_metrics_parses_token_usage`, which asserts `total_input_tokens == 2400` from a
-synthetic fixture.
+`output_tokens`, `cache_read_tokens`, `cache_creation_tokens`,
+`total_input_tokens = input + cache_read + cache_creation`, and
+`repriced_input_tokens = input + cache_creation` (the billed cost once near-free
+cache_read is excluded), plus `prefix_turn1_ctx` (the first assistant turn's whole
+context — a proxy for the always-on prefix weight), the run-level `cost_usd` /
+`duration_ms` / `num_turns` from the result event, and `tool_calls` / `transcript_chars`.
+This is what makes the economy signal a measured token delta rather than only a
+transcript-size proxy. These token fields are populated only when the transcript contains
+a terminal `{"type": "result"}` event with a usage dict; plain-text or non-claude agents
+yield only `tool_calls` and `transcript_chars`. The parsing logic is guarded by the
+zero-token selftests `test_metrics_parses_token_usage` (`total_input_tokens == 2400`) and
+`test_metrics_overhead_fields` (the repriced / prefix / cost fields).
+
+Two pure helpers turn these per-arm metrics into the toolset-overhead verdict, both
+zero-LLM and selftested: `agent.overhead_ratios(on, off)` computes the ON/OFF ratios
+(`total_input_ratio`, `repriced_input_ratio`, `cost_ratio`, `output_ratio`,
+`tool_calls_ratio`), and `judge.judge_overhead(easy, hard)` grades them against the
+≤1.5x bar (easy total-input and cost overhead ≤ 1.5x with no correctness regression; the
+optional hard regime guarded at ≤ 1.0x). They are exercised by `test_overhead_ratios` and
+`test_overhead_verdict`. The live A/B that produces the inputs is the overhead experiment
+in 5.4.
 
 ### 5.4 The toolset-overhead experiment
 
@@ -522,8 +534,8 @@ when `argv[0] == "claude"`.
 | File | Responsibility |
 |------|----------------|
 | `evals/run.py` | Track drivers (`run_conformance`, `run_value`, `run_metric`), the verdict logic, the CLI, and the dry-run-by-default gate. |
-| `evals/lib/agent.py` | `run_capture` (invoke the CLI), `final_text` (pull the assistant answer from the stream-json result event), `clip` (head/tail window), `metrics` (token + tool-call decomposition). |
-| `evals/lib/judge.py` | `judge_conformance` (single transcript PASS/FAIL), `judge_pairwise` (both orders + flip rate), `judge_metric` (pure threshold), `FLIP_THRESHOLD = 0.10`. |
+| `evals/lib/agent.py` | `run_capture` (invoke the CLI), `final_text` (pull the assistant answer from the stream-json result event), `clip` (head/tail window), `metrics` (token + tool-call decomposition), `overhead_ratios` (ON/OFF ratios for the overhead gate). |
+| `evals/lib/judge.py` | `judge_conformance` (single transcript PASS/FAIL), `judge_pairwise` (both orders + flip rate), `judge_metric` (pure threshold), `judge_overhead` (the ≤1.5x overhead verdict), `FLIP_THRESHOLD = 0.10`. |
 | `evals/lib/cases.py` | `load` (glob `<track>/cases/*.json`), `validate` (per-track schema), `PASS_CONDITIONS`, `METRIC_OPS`. |
 | `evals/lib/render_config.py` | Isolation: `strategy()`, prompt vs config-dir arm construction, confidence stamping. |
 | `evals/report.py` | Rolls up `results/<model>/*.jsonl` into `evals/BENCHMARKS.md`. |
@@ -542,9 +554,10 @@ targets are real dirs under `core/skills/`, and fails the build if any skill und
 `core/skills/` (except the exempt `no-mistakes`) has no covering case. A skill earns
 coverage either via a value case's `skill` field or by its directory name appearing in a
 conformance/metric case's rule text or id — so renaming a skill or its mention can
-silently change coverage credit. `python3 evals/selftest.py` runs five pure-logic tests
+silently change coverage credit. `python3 evals/selftest.py` runs eight pure-logic tests
 covering the pairwise order-swap mapping, the value verdict thresholds, the metric
-threshold boundary, and token-usage parsing. Both gates run as part of the local
+threshold boundary, token-usage parsing, and the overhead instrument (token
+decomposition, ON/OFF ratios, and the ≤1.5x verdict). Both gates run as part of the local
 `bin/ci-check.sh` gate; the token-spending tracks never do.
 
 ## 8. What is measured vs not-yet (honest)
