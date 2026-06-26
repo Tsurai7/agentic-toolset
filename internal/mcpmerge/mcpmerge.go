@@ -109,9 +109,23 @@ func substitute(v any, env map[string]string) any {
 	return v
 }
 
+// excludedServers reads AGENTIC_MCP_EXCLUDE (comma-separated server names). The weak
+// install tier sets this to omit the orientation-inducing layer (e.g. lean-ctx).
+func excludedServers() map[string]bool {
+	m := map[string]bool{}
+	for _, n := range strings.Split(os.Getenv("AGENTIC_MCP_EXCLUDE"), ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			m[n] = true
+		}
+	}
+	return m
+}
+
 // collectFragments collects every integrations/**/mcp*.json server entry into one
-// order-preserving map (sorted by path, later same-named entries win).
+// order-preserving map (sorted by path, later same-named entries win), skipping any
+// server named in AGENTIC_MCP_EXCLUDE.
 func collectFragments(integrationsDir string) (*jsonorder.Map, error) {
+	excluded := excludedServers()
 	var files []string
 	_ = filepath.WalkDir(integrationsDir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -137,6 +151,9 @@ func collectFragments(integrationsDir string) (*jsonorder.Map, error) {
 			}
 		}
 		for _, name := range servers.Keys() {
+			if excluded[name] {
+				continue
+			}
 			raw, _ := servers.GetRaw(name)
 			out.SetRaw(name, raw)
 		}

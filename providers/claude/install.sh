@@ -4,6 +4,11 @@ set -euo pipefail
 
 AGENTIC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DRY_RUN="${DRY_RUN:-0}"
+# Tier selects how much of the orientation layer to install. "strong" (default) is the
+# full toolset. "weak" omits the lean-ctx Read/Grep redirect hook and the lean-ctx MCP
+# server — measured to cut a weak model's per-task overhead from ~5x to <=1x by stopping
+# the orientation dance on trivial tasks (plans/impl-overhead/05-minimal-tier-profile.md).
+AGENTIC_TIER="${AGENTIC_TIER:-strong}"
 
 log() { printf '[claude] %s\n' "$*"; }
 run() {
@@ -89,7 +94,11 @@ install_mcp() {
   # `claude` CLI), NOT ~/.claude/.mcp.json. Register through the CLI so servers
   # like gitnexus actually load (PORT-03).
   run mkdir -p "${HOME}/.claude"
-  DRY_RUN="$DRY_RUN" run_tool merge-mcp "$AGENTIC_ROOT" --register-claude-user
+  # Weak tier: don't register the lean-ctx MCP server (its ctx_* tools + "always use
+  # lean-ctx" instructions drive the orientation dance that over-tools weak models).
+  local exclude=""
+  [[ "$AGENTIC_TIER" == "weak" ]] && exclude="lean-ctx"
+  DRY_RUN="$DRY_RUN" AGENTIC_MCP_EXCLUDE="$exclude" run_tool merge-mcp "$AGENTIC_ROOT" --register-claude-user
 }
 
 install_settings() {
@@ -110,6 +119,21 @@ install_settings() {
   local resolved
   resolved="$(mktemp)"
   sed "s#__AGENTIC_ROOT__#${AGENTIC_ROOT}#g" "$fragment" >"$resolved"
+  # Weak tier: drop the lean-ctx Read/Grep redirect hook (the turn-multiplier on
+  # trivial tasks). shell-guard, edit-lint, and the observe hooks stay.
+  if [[ "$AGENTIC_TIER" == "weak" ]]; then
+    python3 - "$resolved" <<'PY'
+import json, sys
+p = sys.argv[1]
+s = json.load(open(p))
+pre = s.get("hooks", {}).get("PreToolUse", [])
+s["hooks"]["PreToolUse"] = [
+    g for g in pre
+    if not any("lean-ctx hook redirect" in h.get("command", "") for h in g.get("hooks", []))
+]
+json.dump(s, open(p, "w"), indent=2)
+PY
+  fi
   run_tool merge-settings "$resolved" "$out"
   rm -f "$resolved"
 }
@@ -118,4 +142,4 @@ link_skills
 install_claude_md
 install_mcp
 install_settings
-log "done"
+log "done (tier: ${AGENTIC_TIER})"

@@ -91,3 +91,39 @@ worth its cost for any weak-model use at all. Resolve with a judged, n≥3 hard-
 - What stays in "minimal": drop only the lean-ctx redirect + MCP (keep shell-guard safety),
   or go fully vanilla? (The ablation decides.)
 - Default tier (recommend strong, weak opt-in).
+
+## Status — implemented & validated (2026-06-26)
+
+**Validated.** The ablation (W3 instrument, Haiku, swap-measure-restore on the live
+`~/.claude`, n=1, prompt-isolation) confirmed the minimal cut and pinpointed that it needs
+both removals:
+
+| config | easy total_input | easy turns ON/OFF | hard total_input | verdict |
+|--------|---:|---:|---:|--|
+| full (baseline) | 5.33× | 16 / 4 | 0.79× | FAIL |
+| drop redirect hook only (keep MCP) | 0.20× | 1 / 6 | **1.83×** | FAIL (hard) |
+| **minimal: drop redirect hook + lean-ctx MCP** | **0.59×** | **4 / 6** | **0.93×** | **PASS** |
+
+Removing only the redirect hook fixes the easy task but the lingering MCP over-orients the
+hard task; removing both lands both regimes under the gate. The weak profile therefore
+drops both.
+
+**Implemented** as an `AGENTIC_TIER` switch on the Claude install (`strong` default):
+
+- `AGENTIC_TIER=weak bin/install.sh --provider all` renders `settings.json` without the
+  lean-ctx Read/Grep redirect hook (keeps shell-guard, edit-lint, observe) and skips
+  registering the lean-ctx MCP server. shell-guard safety and the prefix are unchanged.
+- Mechanism: `providers/claude/install.sh` filters the redirect group for weak and passes
+  `AGENTIC_MCP_EXCLUDE=lean-ctx` to merge-mcp; both merge-mcp implementations
+  (`internal/mcpmerge`, `providers/shared/merge-mcp.py`) honor `AGENTIC_MCP_EXCLUDE`
+  (comma-separated server names) in the fragment collector.
+
+**Tests:** `TestCollectFragmentsExclude` (Go unit, the MCP exclude), and
+`TestClaudeInstallWeakTierDropsRedirect` (integration: a real weak install drops the
+redirect hook, keeps shell-guard + edit-lint). Go+Python parity preserved (exclude is a
+no-op by default). Since the weak install renders exactly the config the ablation measured
+at PASS, the ablation is its end-to-end validation.
+
+**Still open / future:** the weak tier could also drop the now-moot lean-ctx prefix rules
+(an optimization — the measurement passed without it); a judged n≥3 hard-task suite to
+firm the noisy hard-regime numbers; and a Cursor-side equivalent if needed.

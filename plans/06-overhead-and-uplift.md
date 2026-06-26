@@ -169,5 +169,13 @@ hypothesis) and its live validation is gated on safe `~/.claude` access (no conc
 session) or an `ANTHROPIC_API_KEY`.
 
 Net: W3 (the instrument/gate) and W2 (prefix hygiene) are durable wins; W3 is what let us
-*falsify* W1 instead of shipping a plausible-but-ineffective change. The ≤1.5× target
-itself is **not yet met** — it is W5's job, pending the measurement unblock.
+*falsify* W1 instead of shipping a plausible-but-ineffective change.
+
+**W5 is now implemented and the ≤1.5× target is met** (in a safe `~/.claude` window). The
+ablation pinpointed that the over-tooling needs *both* the lean-ctx redirect hook and the
+lean-ctx MCP removed; the **`AGENTIC_TIER=weak` install profile** does exactly that and the
+W3 gate passes — easy **0.59×**, hard **0.93×**, both correct (was 5.33× / FAIL). Removing
+only the redirect hook fixes the easy task but the lingering MCP regresses the hard task
+(1.83×), so the profile drops both. Details + numbers:
+[05-minimal-tier-profile.md](impl-overhead/05-minimal-tier-profile.md). n=1 per cell, prompt
+isolation — a judged n≥3 hard-task suite is the remaining confirmation.

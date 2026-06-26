@@ -68,15 +68,25 @@ def load_json(path: Path) -> dict:
         raise SystemExit(f"merge-mcp: invalid JSON in {path}: {exc}")
 
 
+def _excluded_servers() -> set[str]:
+    """Server names to drop, from AGENTIC_MCP_EXCLUDE (comma-separated). The weak
+    install tier sets this to omit the orientation-inducing layer (e.g. lean-ctx)."""
+    return {n.strip() for n in os.environ.get("AGENTIC_MCP_EXCLUDE", "").split(",") if n.strip()}
+
+
 def collect_fragments(integrations_dir: Path) -> dict:
     merged: dict = {"mcpServers": {}}
     if not integrations_dir.is_dir():
         return merged
+    excluded = _excluded_servers()
     for path in sorted(integrations_dir.glob("**/mcp*.json")):
         data = load_json(path)
         servers = data.get("mcpServers", data)
         if isinstance(servers, dict):
-            merged["mcpServers"].update(servers)
+            for name, config in servers.items():
+                if name in excluded:
+                    continue
+                merged["mcpServers"][name] = config
     return merged
 
 
