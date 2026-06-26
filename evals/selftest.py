@@ -14,7 +14,7 @@ from pathlib import Path
 
 EVALS = Path(__file__).resolve().parent
 sys.path.insert(0, str(EVALS))
-from lib import judge  # noqa: E402
+from lib import agent, judge  # noqa: E402
 
 
 def _load_run():
@@ -61,6 +61,21 @@ def test_metric_verdict():
     le = {"metric": "x", "op": "<=", "threshold": 0.10}
     assert judge.judge_metric(le, 0.05)["verdict"] == "PASS"
     assert judge.judge_metric(le, 0.20)["verdict"] == "FAIL"
+
+
+def test_metrics_parses_token_usage():
+    # metrics() must surface real token usage from the terminal result event so the
+    # value track can report a token delta, not just transcript size.
+    raw = "\n".join([
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}',
+        '{"type":"result","result":"done","usage":{"input_tokens":100,"output_tokens":50,'
+        '"cache_read_input_tokens":2000,"cache_creation_input_tokens":300}}',
+    ])
+    m = agent.metrics(raw)
+    assert m["tool_calls"] == 1, m
+    assert m["input_tokens"] == 100 and m["output_tokens"] == 50, m
+    assert m["cache_read_tokens"] == 2000 and m["cache_creation_tokens"] == 300, m
+    assert m["total_input_tokens"] == 2400, m
 
 
 def main() -> int:

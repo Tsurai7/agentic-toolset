@@ -74,10 +74,13 @@ def clip(transcript: str, head: int = 12000, tail: int = 8000) -> str:
 def metrics(raw: str) -> dict:
     """Cheap efficiency signals read straight from a stream-json transcript.
 
-    Free to compute (no extra model calls), and the main signal for value cases
-    whose payoff is economy rather than quality (`treatment_not_worse`).
+    Free to compute (no extra model calls): tool-call count, transcript size, and
+    the token usage reported by the terminal result event (input / output / cache).
+    Recording real tokens per arm turns the value track's economy signal into a
+    measured token delta rather than a proxy (transcript_chars alone).
     """
     tool_calls = 0
+    usage: dict = {}
     for line in raw.splitlines():
         line = line.strip()
         if not line.startswith("{"):
@@ -92,4 +95,19 @@ def metrics(raw: str) -> dict:
             tool_calls += sum(
                 1 for b in content if isinstance(b, dict) and b.get("type") == "tool_use"
             )
-    return {"tool_calls": tool_calls, "transcript_chars": len(raw)}
+        # The terminal result event carries cumulative token usage for the run.
+        elif obj.get("type") == "result" and isinstance(obj.get("usage"), dict):
+            u = obj["usage"]
+            usage = {
+                "input_tokens": u.get("input_tokens", 0),
+                "output_tokens": u.get("output_tokens", 0),
+                "cache_read_tokens": u.get("cache_read_input_tokens", 0),
+                "cache_creation_tokens": u.get("cache_creation_input_tokens", 0),
+            }
+    m = {"tool_calls": tool_calls, "transcript_chars": len(raw)}
+    if usage:
+        usage["total_input_tokens"] = (
+            usage["input_tokens"] + usage["cache_read_tokens"] + usage["cache_creation_tokens"]
+        )
+        m.update(usage)
+    return m
