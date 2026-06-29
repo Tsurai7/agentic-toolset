@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 from pathlib import Path
 
 EVALS = Path(__file__).resolve().parent
 sys.path.insert(0, str(EVALS))
-from lib import agent, judge  # noqa: E402
+from lib import agent, cases, judge  # noqa: E402
 
 
 def _load_run():
@@ -135,6 +136,35 @@ def test_overhead_verdict():
     assert jo({"total_input_ratio": 1.2, "cost_ratio": 1.2,
                "correct_on": True, "correct_off": True},
               {"total_input_ratio": 0.72})["verdict"] == "PASS"
+
+
+def test_cases_loader_names_bad_file():
+    # BUG-22: a malformed case file must produce a legible, file-named error —
+    # not a bare JSONDecodeError traceback — and must not abort the good files.
+    with tempfile.TemporaryDirectory() as d:
+        bad = Path(d) / "broken.json"
+        bad.write_text('{"id": "x",,}', "utf-8")  # double comma → invalid JSON
+        try:
+            cases._read_case(bad)
+        except cases.CaseLoadError as exc:
+            assert "broken.json" in str(exc) and "invalid JSON" in str(exc), exc
+        else:
+            assert False, "expected CaseLoadError for malformed JSON"
+
+        # A non-object top level (array) is rejected and still names the file.
+        arr = Path(d) / "arr.json"
+        arr.write_text("[1, 2, 3]", "utf-8")
+        try:
+            cases._read_case(arr)
+        except cases.CaseLoadError as exc:
+            assert "arr.json" in str(exc) and "expected a JSON object" in str(exc), exc
+        else:
+            assert False, "expected CaseLoadError for non-object top level"
+
+        # A valid case round-trips unchanged.
+        ok = Path(d) / "ok.json"
+        ok.write_text('{"id": "ok", "rule": "r", "prompt": "p", "expect": ["e"]}', "utf-8")
+        assert cases._read_case(ok)["id"] == "ok"
 
 
 def main() -> int:

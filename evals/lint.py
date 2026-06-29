@@ -32,7 +32,9 @@ def main() -> int:
     skills = _skill_names()
 
     for track in ("conformance", "value", "metric"):
-        for case in cases.load(track):
+        track_cases, load_errors = cases.load_reporting(track)
+        errors.extend(f"{track}: {e}" for e in load_errors)
+        for case in track_cases:
             cid = case.get("id", "<no-id>")
             loc = f"{track}:{cid}"
 

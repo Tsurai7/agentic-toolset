@@ -560,7 +560,7 @@ loops. Coverage of *what ci-check validates* is doc 05's scope.
 
 ## Area 4 — eval harness (`evals/*.py`) — bugs in the code (coverage gaps → [doc 05](05-test-coverage.md))
 
-### BUG-22 — `cases.load()` / `report.py` / `bench.py` crash hard on a single malformed JSON file — Medium — **Inferred (high confidence)**
+### BUG-22 — `cases.load()` / `report.py` / `bench.py` crash hard on a single malformed JSON file — Medium — **Inferred (high confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
 
 `evals/lib/cases.py:23-31` (`json.loads(p.read_text(...))` with no try/except);
 `evals/bench.py:127` (`[json.loads(...) for p in …]`); cross-ref `merge-*.py` which *do*
@@ -582,6 +582,15 @@ with an opaque traceback instead of a "case X: invalid JSON" message.
 **Fix.** Wrap each per-file `json.loads` and report `f"{path}: invalid JSON: {exc}"`
 (mirroring `merge-mcp.load_json`). This is a harness-code bug; the question of *which cases
 should exist* is doc 05.
+
+**✅ Resolved (improvement loop, 2026-06-30).** `evals/lib/cases.py` gained `_read_case()`
+(raises `CaseLoadError("{path}: invalid JSON: …")`, also rejecting a non-object top level)
+and `load_reporting()`; `evals/lint.py` now uses the latter, so a malformed case file is
+reported **by filename with a reason** and the well-formed cases still validate — instead of
+an opaque traceback that aborts the whole CI lint. Bench: `evals/selftest.py::test_cases_loader_names_bad_file`
+(runs in `bin/ci-check.sh`). The other two surfaces named here are already closed:
+`report.py`'s result-loader has a `try/except (JSONDecodeError, IndexError)` at its
+`json.loads` (`report.py:28-31`), and `bench.py` no longer exists in the tree.
 
 ### BUG-23 — `report.py` / `bench.py` assume result-record shape; a partial or older artifact KeyErrors the rollup — Low — **Inferred (medium confidence)**
 
@@ -646,7 +655,7 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 | BUG-13 | Missing `npx`/`npm` ⇒ green install, dead MCP server | Med | S | — | Partial — Go must still warn on unresolved launcher |
 | BUG-14 | `.env` parsed twice (bash `source` vs python) with divergent semantics | Med | M | — | Partial — Go must pick one parser |
 | BUG-17 | Unbounded `.bak` proliferation in `$HOME` on every run | Med | S | — | Partial — Go installer should diff-then-backup |
-| BUG-22 | Eval loaders crash hard on one malformed JSON (opaque CI failure) | Med | S | — | No — Python fix now (mirror `merge.load_json`) |
+| BUG-22 ✅ | Eval loaders crash hard on one malformed JSON (opaque CI failure) | Med | S | — | **FIXED** 2026-06-30 (loop) — Python fix landed (mirrors `merge.load_json`) |
 | BUG-09 | No `rtk`/`lean-ctx` ⇒ denies still fire but no compression (worst of both) | Med | S | BUG-03 | Partial — Go should gate deny on availability |
 | BUG-15 | `substitute()` naive global replace; placeholder double-substitution | Med→Low | S | — | **Yes** — single-pass regex substitution |
 | BUG-16 | `data.get("mcpServers", data)` accepts malformed fragments silently | Low | S | — | Partial — Go should validate fragment shape |

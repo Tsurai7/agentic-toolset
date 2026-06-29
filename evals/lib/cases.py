@@ -22,15 +22,58 @@ def _track_dir(track: str) -> Path:
     return {"conformance": CONFORMANCE_DIR, "value": VALUE_DIR, "metric": METRIC_DIR}[track]
 
 
+class CaseLoadError(Exception):
+    """A case file could not be read as a JSON object — carries the offending path.
+
+    The merge scripts already name the bad file (merge-mcp.load_json); the eval
+    loaders used a bare json.loads, so one typo'd case aborted the whole lint/run
+    with an opaque traceback and no filename (BUG-22). This makes the failure
+    legible instead.
+    """
+
+
+def _read_case(p: Path) -> dict:
+    """Read one case file, raising CaseLoadError(path: reason) on any problem."""
+    try:
+        case = json.loads(p.read_text("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+        raise CaseLoadError(f"{p}: invalid JSON: {exc}") from exc
+    if not isinstance(case, dict):
+        raise CaseLoadError(f"{p}: expected a JSON object at top level, got {type(case).__name__}")
+    return case
+
+
 def load(track: str) -> list[dict]:
-    """Load and tag every case file in a track, sorted by id."""
+    """Load and tag every case file in a track, sorted by id.
+
+    Raises CaseLoadError naming the offending file on the first malformed case
+    (fail-fast — used by run.py before spending tokens). Linters that want to
+    report *every* bad file should use load_reporting() instead.
+    """
     out = []
     for p in sorted(_track_dir(track).glob("*.json")):
-        case = json.loads(p.read_text("utf-8"))
+        case = _read_case(p)
         case["_track"] = track
         case["_path"] = str(p)
         out.append(case)
     return out
+
+
+def load_reporting(track: str) -> tuple[list[dict], list[str]]:
+    """Like load() but collect per-file load errors instead of raising, so a
+    linter reports every malformed file (named) and still validates the good ones."""
+    loaded: list[dict] = []
+    errors: list[str] = []
+    for p in sorted(_track_dir(track).glob("*.json")):
+        try:
+            case = _read_case(p)
+        except CaseLoadError as exc:
+            errors.append(str(exc))
+            continue
+        case["_track"] = track
+        case["_path"] = str(p)
+        loaded.append(case)
+    return loaded, errors
 
 
 def validate(case: dict, track: str) -> list[str]:
