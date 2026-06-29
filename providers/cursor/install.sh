@@ -25,6 +25,16 @@ run_tool() {
   fi
 }
 
+backup_once() {
+  # One-time backup: preserve the user's original file once, then never again, so
+  # repeated installs don't accrete *.bak.<timestamp> files in $HOME (BUG-17).
+  local f="$1"
+  if [[ -f "$f" && ! -f "${f}.bak" ]]; then
+    cp "$f" "${f}.bak"
+    log "backed up $f -> ${f}.bak (one-time)"
+  fi
+}
+
 link_skills() {
   local target="${HOME}/.cursor/skills"
   local source="${AGENTIC_ROOT}/core/skills"
@@ -43,10 +53,7 @@ link_skills() {
 
 install_mcp() {
   local out="${HOME}/.cursor/mcp.json"
-  if [[ -f "$out" && "$DRY_RUN" != "1" ]]; then
-    cp "$out" "${out}.bak.$(date +%s)"
-    log "backed up existing mcp.json"
-  fi
+  if [[ "$DRY_RUN" != "1" ]]; then backup_once "$out"; fi
   if [[ "$DRY_RUN" == "1" ]]; then
     log "[dry-run] merge-mcp -> $out"
   else
@@ -59,10 +66,7 @@ install_hooks() {
   local out="${HOME}/.cursor/hooks.json"
   [[ -f "$src" ]] || return 0
   run mkdir -p "${HOME}/.cursor"
-  if [[ -f "$out" && "$DRY_RUN" != "1" ]]; then
-    cp "$out" "${out}.bak.$(date +%s)"
-    log "backed up existing hooks.json"
-  fi
+  if [[ "$DRY_RUN" != "1" ]]; then backup_once "$out"; fi
   run cp "$src" "$out"
   log "hooks: $out"
 }

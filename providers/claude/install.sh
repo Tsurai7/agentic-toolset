@@ -30,6 +30,17 @@ run_tool() {
   fi
 }
 
+backup_once() {
+  # One-time backup: preserve the user's original file once, then never again, so
+  # repeated installs (the docs say to run install after every pull) don't accrete
+  # *.bak.<timestamp> files in $HOME (BUG-17). The original is kept at $1.bak.
+  local f="$1"
+  if [[ -f "$f" && ! -f "${f}.bak" ]]; then
+    cp "$f" "${f}.bak"
+    log "backed up $f -> ${f}.bak (one-time)"
+  fi
+}
+
 link_skills() {
   local target="${HOME}/.claude/skills"
   local source="${AGENTIC_ROOT}/core/skills"
@@ -82,9 +93,7 @@ install_claude_md() {
       cat "$f"
     done
   } >"$generated"
-  if [[ -f "$out" ]]; then
-    cp "$out" "${out}.bak.$(date +%s)"
-  fi
+  backup_once "$out"
   run_tool merge-claude-md "$generated" "$out"
   log "wrote $generated; ensured @import in $out (root: ${AGENTIC_ROOT})"
 }
@@ -111,9 +120,7 @@ install_settings() {
     log "[dry-run] merge hooks + permissions -> $out (preserving env)"
     return 0
   fi
-  if [[ -f "$out" ]]; then
-    cp "$out" "${out}.bak.$(date +%s)"
-  fi
+  backup_once "$out"
   # Resolve __AGENTIC_ROOT__ to the absolute repo path before merging, so hook
   # commands point at the repo-owned scripts regardless of install location.
   local resolved

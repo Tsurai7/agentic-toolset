@@ -296,7 +296,15 @@ fix. Full BSD-vs-GNU treatment is doc 04's; flagged here because it is the reaso
 **Fix.** Use `python3`/`jq` for all JSON in/out (also fixes BUG-01/05), or the Go rewrite
 (doc 01), which sidesteps `sed` entirely.
 
-### BUG-09 — `rtk`/`lean-ctx` absent ⇒ hook silently disables itself for non-grep commands — Medium — **Observed**
+### BUG-09 — `rtk`/`lean-ctx` absent ⇒ hook silently disables itself for non-grep commands — Medium — **Observed** — ✅ RESOLVED (won't-fix by design, 2026-06-30)
+
+**✅ Resolved — won't-fix (by design).** Re-evaluated: the ast-grep deny is not a
+*compression* mechanism, it is a **code-search-quality** redirect (grep → `sg`), and `ast-grep`
+is a required dependency installed by `bootstrap.sh` independently of `rtk`/`lean-ctx`. So on a
+machine without the compression layer the deny is still correct and actionable (it points at a
+tool that *is* present), not "punitive with no benefit." Gating it on `rtk`/`lean-ctx`
+availability would wrongly couple search quality to compression. The graceful pass-through for
+non-grep commands when no wrapper exists is the intended degradation. No change.
 
 `shell-guard.sh:65-71` (lean-ctx branch), `:74` (`command -v rtk … || exit 0`).
 
@@ -532,7 +540,16 @@ fragments.
 
 ## Area 3 — installers (`bin/*.sh`, `providers/*/install.sh`)
 
-### BUG-17 — Every install run leaves a new timestamped `.bak`; unbounded backup proliferation — Medium — **Inferred (high confidence)**
+### BUG-17 — Every install run leaves a new timestamped `.bak`; unbounded backup proliferation — Medium — **Inferred (high confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Both installers now use a shared `backup_once()` that copies a target to
+`<file>.bak` **only when no `.bak` already exists** — so the user's original config is
+preserved exactly once and repeated installs (run after every pull) never accrete
+`*.bak.<timestamp>` files in `$HOME`. Applied to `CLAUDE.md` + `settings.json` (Claude) and
+`mcp.json` + `hooks.json` (Cursor). Bench: extracted-function harness — run twice with the
+file changing between runs; the `.bak` retains the ORIGINAL and exactly one backup exists.
+(The one-time skills-dir backup was already non-proliferating — it only triggers for a real
+dir, after which the target is a symlink.)
 
 `providers/claude/install.sh:42,71,91`; `providers/cursor/install.sh:36,52`; and the
 `link_skills` dir-backup at `claude:26` / `cursor:26`.
@@ -735,9 +752,9 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 | BUG-11 ✅ | Doc claims merge scripts back up; they don't (standalone) | Med | S | BUG-12 | **FIXED** 2026-06-30 (loop) — ARCHITECTURE.md corrected (atomic write, installer backs up) |
 | BUG-13 ✅ | Missing `npx`/`npm` ⇒ green install, dead MCP server | Med | S | — | **FIXED** 2026-06-30 (loop) — loud npx warning (Go + Python); empty NODE_PATH residual |
 | BUG-14 | `.env` parsed twice (bash `source` vs python) with divergent semantics | Med | M | — | Partial — Go must pick one parser |
-| BUG-17 | Unbounded `.bak` proliferation in `$HOME` on every run | Med | S | — | Partial — Go installer should diff-then-backup |
+| BUG-17 ✅ | Unbounded `.bak` proliferation in `$HOME` on every run | Med | S | — | **FIXED** 2026-06-30 (loop) — `backup_once` (single `.bak`, both installers) |
 | BUG-22 ✅ | Eval loaders crash hard on one malformed JSON (opaque CI failure) | Med | S | — | **FIXED** 2026-06-30 (loop) — Python fix landed (mirrors `merge.load_json`) |
-| BUG-09 | No `rtk`/`lean-ctx` ⇒ denies still fire but no compression (worst of both) | Med | S | BUG-03 | Partial — Go should gate deny on availability |
+| BUG-09 ✅ | No `rtk`/`lean-ctx` ⇒ denies still fire but no compression (worst of both) | Med | S | BUG-03 | **WON'T FIX** 2026-06-30 (by design — deny is search-quality, not compression) |
 | BUG-15 ✅ | `substitute()` naive global replace; placeholder double-substitution | Med→Low | S | — | **FIXED** 2026-06-30 (loop) — single-pass regex (Go + Python) |
 | BUG-16 ✅ | `data.get("mcpServers", data)` accepts malformed fragments silently | Low | S | — | **FIXED** 2026-06-30 (loop) — require mcpServers wrapper; warn+skip (Go + Python) |
 | BUG-18 ✅ | `bootstrap.sh` ignores `--dry-run`; can trigger real install | Low | S | — | **FIXED** 2026-06-30 (loop) — arg loop + dry-run gating |

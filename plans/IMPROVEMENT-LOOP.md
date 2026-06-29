@@ -185,3 +185,17 @@ arise.
   wrapper injects no junk); `parity_test.go` still matches (re-ran `-count=1`).
 - **Validated.** `bin/ci-check.sh` all green. Both marked ✅ FIXED (+ cross-cutting contradiction
   #1). Backlog **18/23** — remaining: BUG-09, 14, 17, 19, 23 (all Medium/Low).
+
+### loop 11 — bounded backups (BUG-17) + deny-without-compression resolved (BUG-09) · 2026-06-30
+- **Idea / office-hours.** *BUG-17:* the docs say run install after every pull, and each run
+  did an unconditional `cp <file>.bak.<timestamp>`, so `~/.claude` and `~/.cursor` accreted
+  backups forever. *BUG-09:* re-evaluated the "denies fire without compression" concern.
+- **Change.** BUG-17: shared `backup_once()` in both installers — back up to `<file>.bak`
+  **only if no `.bak` exists**, preserving the user's original once and never proliferating;
+  applied to CLAUDE.md/settings.json (Claude) and mcp.json/hooks.json (Cursor). BUG-09:
+  **won't-fix (by design)** — the ast-grep deny is a code-search-quality redirect (`grep`→`sg`)
+  and `ast-grep` is installed independently of `rtk`/`lean-ctx`, so the deny stays correct and
+  actionable without the compression layer.
+- **Bench.** Extracted-function harness for `backup_once` (run twice with the file changing →
+  one `.bak`, retains ORIGINAL); `bash -n` + shellcheck (via ci-check).
+- **Validated.** `bin/ci-check.sh` all green. Backlog **20/23** — remaining: BUG-14, 19, 23.
