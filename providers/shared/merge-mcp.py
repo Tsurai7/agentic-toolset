@@ -10,6 +10,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from safe_io import atomic_write_text  # noqa: E402
+
 
 def _which(name: str, fallback: str) -> str:
     return shutil.which(name) or fallback
@@ -173,8 +176,7 @@ def main() -> int:
     result.setdefault("mcpServers", {})
     result["mcpServers"].update(managed.get("mcpServers", {}))
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(output, json.dumps(result, indent=2) + "\n")
     managed_names = ", ".join(sorted(managed.get("mcpServers", {}))) or "none"
     print(
         f"Wrote {output} ({len(result['mcpServers'])} server(s) total; "

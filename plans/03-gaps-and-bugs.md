@@ -298,7 +298,7 @@ outcome that cuts against the north-star goal of helping weak setups.
 
 ## Area 2 — merge scripts (`providers/shared/merge-*.py`)
 
-### BUG-10 — `merge-settings.py` writes `"$schema": null` when neither side has a schema — Medium — **Observed**
+### BUG-10 — `merge-settings.py` writes `"$schema": null` when neither side has a schema — Medium — **Observed** — ✅ FIXED (already guarded; verified 2026-06-30)
 
 `providers/shared/merge-settings.py:31`.
 
@@ -328,6 +328,11 @@ simply wrong. (The leads doc flagged exactly this.)
 `if v := fragment.get("$schema"): result.setdefault("$schema", v)` (or check the existing
 result first and skip entirely when both are absent).
 
+**✅ Resolved.** `merge-settings.py` already guards with `schema = fragment.get("$schema"); if
+schema is not None: result.setdefault("$schema", schema)` (verified 2026-06-30). The Go path
+(`internal/settings`) emits the same output — `internal/installtest/parity_test.go` asserts
+Go and Python match byte-for-byte, so neither writes a `null` schema.
+
 ### BUG-11 — ARCHITECTURE.md claims "all destructive writes back up" but the merge scripts do not — Medium (doc-vs-behavior) — **Observed**
 
 `ARCHITECTURE.md:79-81` vs `merge-settings.py:42` / `merge-mcp.py:105`.
@@ -353,7 +358,7 @@ regardless of caller, or (b) soften the doc to "the install scripts back up befo
 the merge tools; the merge tools themselves overwrite in place." Option (a) is better
 because it also covers BUG-12.
 
-### BUG-12 — Non-atomic `write_text` can corrupt `mcp.json` / `settings.json` on interruption — Medium — **Inferred (high confidence)**
+### BUG-12 — Non-atomic `write_text` can corrupt `mcp.json` / `settings.json` on interruption — Medium — **Inferred (high confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
 
 `merge-mcp.py:105`, `merge-settings.py:42`.
 
@@ -371,6 +376,16 @@ of truncate-in-place writes, which is well established. High confidence.
 **Fix.** Write to a temp file in the same directory then `os.replace()` (atomic rename on
 the same filesystem). The Go rewrite (doc 01) should do the same. Combine with BUG-11's
 backup-in-writer.
+
+**✅ Resolved (improvement loop, 2026-06-30).** New `providers/shared/safe_io.py`
+`atomic_write_text()` writes to a same-dir temp file, `fsync`s, then `os.replace()`s over
+the target (removing the temp and leaving the original intact on any failure).
+`merge-settings.py` and `merge-mcp.py` now use it. The Go path was already atomic
+(`internal/jsonorder.WriteFile` — temp + rename), so this brings the Python fallback to
+parity. Bench: `providers/shared/selftest.py::test_failed_write_leaves_original_intact`
+(monkeypatches `os.replace` to fail mid-write and asserts the live file survives byte-for-byte
+with no temp leak), wired into `bin/ci-check.sh`; `internal/installtest/parity_test.go` still
+matches Go vs Python byte-for-byte.
 
 ### BUG-13 — Missing `npx`/`npm` produces a "successful" install with an unrunnable MCP server — Medium — **Observed**
 
@@ -649,8 +664,8 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 | BUG-05 | `extract()` breaks if protocol JSON spans lines | High | S | BUG-01 | **Yes** — whole-stdin JSON parse |
 | BUG-07 | `set -e`/`pipefail` control-flow fragility; hook can abort→deny | High | S | BUG-01 | **Yes** — Go won't use `-e` parsing; ensure exit 0 on internal error |
 | BUG-08 | JSON escaping via BSD/GNU-divergent `sed` blocks the real fix | High | S | BUG-01 | **Yes** — no `sed`; cross-ref [doc 04](04-portability-review.md) |
-| BUG-12 | Non-atomic `write_text` can corrupt live config on interruption | Med | S | — | **Yes** if Go uses temp+rename; else Python `os.replace` now |
-| BUG-10 | `merge-settings.py` writes `"$schema": null` | Med | S | — | Partial — fix logic regardless; Go should also guard |
+| BUG-12 ✅ | Non-atomic `write_text` can corrupt live config on interruption | Med | S | — | **FIXED** 2026-06-30 (loop) — `safe_io.atomic_write_text` (Python); Go already atomic |
+| BUG-10 ✅ | `merge-settings.py` writes `"$schema": null` | Med | S | — | **FIXED** (guarded in Python; Go matches via parity test) |
 | BUG-11 | Doc claims merge scripts back up; they don't (standalone) | Med | S | BUG-12 | No — doc + move-backup-into-writer fix now |
 | BUG-13 | Missing `npx`/`npm` ⇒ green install, dead MCP server | Med | S | — | Partial — Go must still warn on unresolved launcher |
 | BUG-14 | `.env` parsed twice (bash `source` vs python) with divergent semantics | Med | M | — | Partial — Go must pick one parser |

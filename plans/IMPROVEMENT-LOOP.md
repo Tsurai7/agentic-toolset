@@ -63,3 +63,21 @@ arise.
   input bill avoided; cross-checked the hit rate vs `telemetry/report.py` (94.6% — agree);
   `--json` and `--project` verified; `bin/ci-check.sh` all green.
 - **Docs.** `telemetry/README.md` (built-in readout section) + `README.md` (Metrics section).
+
+### loop 03 — Atomic writes in the Python merge fallback (BUG-12, +BUG-10) · 2026-06-30
+- **Idea / office-hours.** North star #1 (inject without breaking). *Status quo:* the Go
+  merge path writes atomically (`jsonorder.WriteFile` = temp + rename), but the Python
+  fallback (`merge-settings.py`, `merge-mcp.py`) used `path.write_text(...)`, which truncates
+  in place — an interrupted merge leaves the user's live `~/.claude/settings.json` / `mcp.json`
+  empty or half-written. *Wedge:* one shared atomic-write helper; bring Python to Go's parity.
+- **Change.** New `providers/shared/safe_io.py::atomic_write_text` (same-dir temp → fsync →
+  `os.replace`, original untouched on failure); both merge scripts use it.
+- **Bench.** New `providers/shared/selftest.py` (first Python-level test for the merge
+  scripts): atomic replace, parent-dir creation, and a real crash test — monkeypatch
+  `os.replace` to fail mid-write and assert the live file survives byte-for-byte with no temp
+  leak. Wired into `bin/ci-check.sh`. Output is unchanged, so `parity_test.go` (Go vs Python
+  byte-for-byte) still passes — re-ran with `-count=1`.
+- **Validated.** merge-helpers selftest 3/3; merge-settings end-to-end preserves user `env`;
+  parity green (forced); `bin/ci-check.sh` all green.
+- **Marked fixed.** `plans/03-gaps-and-bugs.md` BUG-12 → ✅ FIXED; BUG-10 → ✅ FIXED (already
+  guarded in Python; Go matches via the parity test — verified, not just assumed).

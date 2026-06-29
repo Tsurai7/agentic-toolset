@@ -81,6 +81,10 @@ echo "== evals self-test (harness logic) =="
 if python3 evals/selftest.py; then ok "harness logic"; else err "evals/selftest.py failed"; fi
 echo ""
 
+echo "== merge helpers self-test (atomic write) =="
+if python3 providers/shared/selftest.py; then ok "merge helpers"; else err "providers/shared/selftest.py failed"; fi
+echo ""
+
 echo "== evals parse (dry run) =="
 if python3 evals/run.py --track all >/dev/null 2>&1; then ok "eval cases parse"; else err "evals/run.py dry run failed"; fi
 echo ""

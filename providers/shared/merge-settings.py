@@ -12,6 +12,9 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from safe_io import atomic_write_text  # noqa: E402
+
 
 def load_json(path: Path) -> dict:
     try:
@@ -90,8 +93,7 @@ def main() -> int:
     perms["allow"] = sorted(set(perms.get("allow", [])) | set(frag_allow))
     perms.setdefault("deny", [])
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(output, json.dumps(result, indent=2) + "\n")
     print(f"Merged hooks + {len(frag_allow)} permission(s) into {output}")
     return 0
 
