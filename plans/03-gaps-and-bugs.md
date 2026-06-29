@@ -33,11 +33,10 @@ What this document defers to its siblings (referenced, not duplicated):
 | Low      | 6 | BUG-18 … BUG-23 |
 | **Total** | **23** | |
 
-> **✅ Resolved so far (improvement-loop, 2026-06-30):** BUG-01–08 (hook cluster), BUG-10–18,
-> BUG-20, BUG-21, BUG-22, BUG-23 — **22 of 23** (BUG-09 closed as won't-fix-by-design; both
-> Criticals and all six Highs fixed). **Remaining:** **BUG-19** (dry-run doesn't preview merge
-> *output*) — partly mitigated by `agentic inject --dry-run`. See `plans/IMPROVEMENT-LOOP.md`
-> for the per-iteration log.
+> **✅ Resolved — ALL 23/23 (improvement-loop, 2026-06-30):** BUG-01–08 (hook cluster),
+> BUG-10–23 fixed, BUG-09 closed as won't-fix-by-design. Both Criticals, all six Highs, and
+> every Medium/Low are now addressed. See `plans/IMPROVEMENT-LOOP.md` for the per-iteration log
+> and the bench backing each fix.
 
 The dominant theme: `shell-guard.sh` parses a structured JSON protocol with
 `grep`/`sed`/`case` glob matching. That approach is wrong in kind, not in detail — it
@@ -602,7 +601,18 @@ invoked at line 86 with only `--provider "$PROVIDER"`.
 **Fix.** Parse `--dry-run` in bootstrap and forward it (and `export DRY_RUN`), or document
 that bootstrap has no dry-run and direct users to `bin/install.sh --dry-run`.
 
-### BUG-19 — `--dry-run` does not preview merge *output*; the most consequential step is opaque — Low — **Inferred (high confidence)**
+### BUG-19 — `--dry-run` does not preview merge *output*; the most consequential step is opaque — Low — **Inferred (high confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** The merge tools now honor `DRY_RUN=1` by **printing the would-be output** (the
+full merged JSON / CLAUDE.md) to stdout and writing nothing — in both Go (`settings.Merge`,
+`mcpmerge.MergeCursor`, `claudemd.Ensure`, via the new `jsonorder.Marshal`) and Python
+(`merge-settings.py`, `merge-mcp.py`, `merge-claude-md.py`). The installers were rewired so
+`--dry-run` actually invokes the merge in preview mode for `settings.json` (Claude) and
+`mcp.json` (Cursor) instead of just logging "[dry-run] merge → …", so
+`bin/install.sh --dry-run` now shows exactly what *would* change. Bench:
+`internal/settings/dryrun_test.go::TestMergeDryRunDoesNotWrite` (file is not created under
+DRY_RUN); behavioral checks confirmed Go + Python print the preview and write nothing.
+`agentic inject --dry-run` already previewed the steps; this adds the content.
 
 `providers/claude/install.sh:73-78,86-89`; `providers/cursor/install.sh:39-43`.
 
@@ -734,10 +744,10 @@ keys. Medium confidence.
 | # | Doc claim | Reality | Finding |
 |---|-----------|---------|---------|
 | 1 ✅ | ARCHITECTURE.md:79-81 "All destructive writes back up the previous file" | Backups are done by the shell installers, not the merge scripts; merge tools now write atomically (temp+rename). **Doc corrected 2026-06-30.** | BUG-11 |
-| 2 | shell-guard.sh:13-14 "Exactly one of these fires per command, so there is no double-wrapping" | `FOO=1 rtk …` double-wraps to `rtk FOO=1 rtk …` | BUG-06 |
-| 3 | ARCHITECTURE.md:128 "always check the `--dry-run`" | dry-run never previews merge output (the consequential step) | BUG-19 |
-| 4 | shell-guard.sh header "rtk fallback — prefix `rtk` so no native command escapes token compression" | bit-shift / multiline / decorated commands escape compression entirely | BUG-01, BUG-02, BUG-06 |
-| 5 | ARCHITECTURE.md:95 "Fails with the offending file path on malformed JSON" (merge) — true for merge, but the *eval* loader does not | `cases.load`/`bench.py` crash with a bare traceback | BUG-22 |
+| 2 ✅ | shell-guard.sh:13-14 "Exactly one of these fires per command, so there is no double-wrapping" | Env-prefixed wrapped commands now recognized (strip leading `VAR=`). **Fixed.** | BUG-06 |
+| 3 ✅ | ARCHITECTURE.md:128 "always check the `--dry-run`" | dry-run now prints the would-be merge output. **Fixed.** | BUG-19 |
+| 4 ✅ | shell-guard.sh header "rtk fallback — prefix `rtk` so no native command escapes token compression" | bit-shift/multiline/decorated commands now fail open (run untouched, never mangled). **Fixed.** | BUG-01, BUG-02, BUG-06 |
+| 5 ✅ | ARCHITECTURE.md:95 "Fails with the offending file path on malformed JSON" (merge) — true for merge, but the *eval* loader did not | the eval loader now names the bad file too. **Fixed.** | BUG-22 |
 
 No instruction was found that references a flag or file that does not exist (the
 `integrations/gitnexus/mcp.stdio.json` path in `doctor.sh:102` is correct; the
@@ -774,7 +784,7 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 | BUG-15 ✅ | `substitute()` naive global replace; placeholder double-substitution | Med→Low | S | — | **FIXED** 2026-06-30 (loop) — single-pass regex (Go + Python) |
 | BUG-16 ✅ | `data.get("mcpServers", data)` accepts malformed fragments silently | Low | S | — | **FIXED** 2026-06-30 (loop) — require mcpServers wrapper; warn+skip (Go + Python) |
 | BUG-18 ✅ | `bootstrap.sh` ignores `--dry-run`; can trigger real install | Low | S | — | **FIXED** 2026-06-30 (loop) — arg loop + dry-run gating |
-| BUG-19 | `--dry-run` never previews merge output | Low | M | BUG-13 | Partial — Go dry-run should print resolved JSON |
+| BUG-19 ✅ | `--dry-run` never previews merge output | Low | M | BUG-13 | **FIXED** 2026-06-30 (loop) — merge tools print would-be JSON under DRY_RUN (Go + Python); installers wired |
 | BUG-20 ✅ | `doctor.sh check_link` misclassifies a regular-file target | Low | S | — | **FIXED** 2026-06-30 (loop) — added regular-file `elif` branch |
 | BUG-21 ✅ | `ci-check.sh` YAML find uses inconsistent git-prune | Low | S | — | **FIXED** 2026-06-30 (loop) — `\( … \) -not -path` |
 | BUG-23 ✅ | `report.py` KeyErrors on partial/old result artifacts | Low | S | — | **RESOLVED** (moot — `_render_bench`/bench.py gone; report.py uses `.get()`) |

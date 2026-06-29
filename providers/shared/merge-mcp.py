@@ -205,7 +205,11 @@ def main() -> int:
     result.setdefault("mcpServers", {})
     result["mcpServers"].update(managed.get("mcpServers", {}))
 
-    atomic_write_text(output, json.dumps(result, indent=2) + "\n")
+    rendered = json.dumps(result, indent=2) + "\n"
+    if os.environ.get("DRY_RUN") == "1":
+        print(f"[dry-run] would write {output}:\n{rendered}", end="")
+        return 0
+    atomic_write_text(output, rendered)
     managed_names = ", ".join(sorted(managed.get("mcpServers", {}))) or "none"
     print(
         f"Wrote {output} ({len(result['mcpServers'])} server(s) total; "

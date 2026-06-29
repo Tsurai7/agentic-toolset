@@ -116,11 +116,7 @@ install_settings() {
   run mkdir -p "${HOME}/.claude"
   # Repo-owned hook scripts must be executable to fire as PreToolUse commands.
   run chmod +x "${AGENTIC_ROOT}/providers/claude/hooks/"*.sh
-  if [[ "$DRY_RUN" == "1" ]]; then
-    log "[dry-run] merge hooks + permissions -> $out (preserving env)"
-    return 0
-  fi
-  backup_once "$out"
+  if [[ "$DRY_RUN" != "1" ]]; then backup_once "$out"; fi
   # Resolve __AGENTIC_ROOT__ to the absolute repo path before merging, so hook
   # commands point at the repo-owned scripts regardless of install location.
   local resolved

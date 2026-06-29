@@ -214,3 +214,24 @@ arise.
   current `report.py`.
 - **Validated.** `bin/ci-check.sh` all green. **Backlog 22/23** — only BUG-19 (merge-output
   dry-run preview) remains, partly mitigated by `agentic inject --dry-run`.
+
+### loop 13 — merge-output dry-run preview (BUG-19) — backlog complete · 2026-06-30
+- **Idea / office-hours.** The last open item. *Status quo:* `--dry-run` logged "[dry-run]
+  merge → file" but never showed *what* would be written — the most consequential step was
+  opaque, undercutting the "inject without breaking" confidence story. *Wedge:* make the merge
+  tools print the would-be output under `DRY_RUN` and have the installers call them in that mode.
+- **Change.** `jsonorder.Marshal` (rendered bytes); `settings.Merge`/`mcpmerge.MergeCursor`/
+  `claudemd.Ensure` (Go) and `merge-settings.py`/`merge-mcp.py`/`merge-claude-md.py` (Python)
+  print the full merged JSON / CLAUDE.md and skip the write when `DRY_RUN=1`. Installers rewired
+  so `--dry-run` previews `settings.json` (Claude) + `mcp.json` (Cursor).
+- **Bench.** `internal/settings/dryrun_test.go::TestMergeDryRunDoesNotWrite`; behavioral checks
+  of Go + Python (preview printed, file not created); `bin/install.sh --dry-run` now shows the
+  merged JSON; `parity_test.go` unaffected (re-ran).
+- **Validated.** `bin/ci-check.sh` all green.
+
+## ✅ Backlog complete — 23/23
+All of `plans/03-gaps-and-bugs.md` is resolved: both Criticals, all six Highs, every Medium and
+Low (BUG-09 as a justified won't-fix). Delivered across loops 01–13, each test-backed and
+committed to `master`. Standing themes also shipped: **metrics/observability** (`agentic gain`
++ `--gate`), **reversible install** (`agentic inject`/`eject`), and **atomic, non-corrupting,
+single-parser, bounded-backup merges**.

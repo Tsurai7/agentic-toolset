@@ -9,6 +9,7 @@ file, notably machine-local `env` (e.g. a local proxy URL).
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -93,7 +94,11 @@ def main() -> int:
     perms["allow"] = sorted(set(perms.get("allow", [])) | set(frag_allow))
     perms.setdefault("deny", [])
 
-    atomic_write_text(output, json.dumps(result, indent=2) + "\n")
+    rendered = json.dumps(result, indent=2) + "\n"
+    if os.environ.get("DRY_RUN") == "1":
+        print(f"[dry-run] would write {output}:\n{rendered}", end="")
+        return 0
+    atomic_write_text(output, rendered)
     print(f"Merged hooks + {len(frag_allow)} permission(s) into {output}")
     return 0
 

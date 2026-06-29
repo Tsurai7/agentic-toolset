@@ -170,14 +170,25 @@ func ReadFile(path string) (*Map, error) {
 	return m, nil
 }
 
-// WriteFile writes m as indented JSON (2 spaces, no HTML escaping, trailing
-// newline) atomically via a temp file + rename.
-func WriteFile(path string, m *Map) error {
+// Marshal returns m as indented JSON (2 spaces, no HTML escaping, trailing
+// newline) — the exact bytes WriteFile persists. Useful for previewing a
+// would-be write (e.g. a --dry-run) without touching the filesystem.
+func Marshal(m *Map) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(m); err != nil { // Encode appends a trailing newline
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// WriteFile writes m as indented JSON (2 spaces, no HTML escaping, trailing
+// newline) atomically via a temp file + rename.
+func WriteFile(path string, m *Map) error {
+	data, err := Marshal(m)
+	if err != nil {
 		return err
 	}
 	dir := filepath.Dir(path)
@@ -190,7 +201,7 @@ func WriteFile(path string, m *Map) error {
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
-	if _, err := tmp.Write(buf.Bytes()); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		return err
 	}

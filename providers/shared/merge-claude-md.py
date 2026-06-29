@@ -9,6 +9,7 @@ expands `@path` imports into context identically to inline content.
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -40,8 +41,12 @@ def main() -> int:
     generated = Path(sys.argv[1]).resolve()
     target = Path(sys.argv[2])
     existing = target.read_text(encoding="utf-8") if target.is_file() else ""
+    content = render(existing, generated)
+    if os.environ.get("DRY_RUN") == "1":
+        print(f"[dry-run] would write {target}:\n{content}")
+        return 0
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(render(existing, generated), encoding="utf-8")
+    target.write_text(content, encoding="utf-8")
     print(f"agentic-cfg @import ensured in {target} -> {generated}")
     return 0
 

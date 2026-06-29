@@ -258,6 +258,14 @@ func MergeCursor(root, outPath string) error {
 	}
 	sb, _ := json.Marshal(servers)
 	out.SetRaw("mcpServers", sb)
+	if os.Getenv("DRY_RUN") == "1" {
+		data, err := jsonorder.Marshal(out)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("[dry-run] would write %s:\n%s", outPath, data)
+		return nil
+	}
 	return jsonorder.WriteFile(outPath, out)
 }
 

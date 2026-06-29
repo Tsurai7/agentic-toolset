@@ -4,6 +4,7 @@
 package claudemd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -86,6 +87,11 @@ func Ensure(generatedPath, claudeMdPath string) error {
 	if err := os.MkdirAll(filepath.Dir(claudeMdPath), 0o755); err != nil {
 		return err
 	}
+	content := Render(existing, abs)
+	if os.Getenv("DRY_RUN") == "1" {
+		fmt.Printf("[dry-run] would write %s:\n%s\n", claudeMdPath, content)
+		return nil
+	}
 	// G306: CLAUDE.md is non-secret user config; 0644 matches the install convention.
-	return os.WriteFile(claudeMdPath, []byte(Render(existing, abs)), 0o644) //nolint:gosec // non-secret user config; 0644 is intentional
+	return os.WriteFile(claudeMdPath, []byte(content), 0o644) //nolint:gosec // non-secret user config; 0644 is intentional
 }

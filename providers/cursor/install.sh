@@ -54,11 +54,9 @@ link_skills() {
 install_mcp() {
   local out="${HOME}/.cursor/mcp.json"
   if [[ "$DRY_RUN" != "1" ]]; then backup_once "$out"; fi
-  if [[ "$DRY_RUN" == "1" ]]; then
-    log "[dry-run] merge-mcp -> $out"
-  else
-    run_tool merge-mcp "$AGENTIC_ROOT" "$out"
-  fi
+  # merge-mcp respects DRY_RUN: under it, the tool prints the would-be mcp.json
+  # (the actual merge preview) and writes nothing.
+  run_tool merge-mcp "$AGENTIC_ROOT" "$out"
 }
 
 install_hooks() {
