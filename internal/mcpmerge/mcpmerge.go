@@ -171,12 +171,17 @@ func collectFragments(integrationsDir string) (*jsonorder.Map, error) {
 		if err != nil {
 			return nil, fmt.Errorf("merge-mcp: invalid JSON in %s: %w", f, err)
 		}
-		servers := m
-		if raw, ok := m.GetRaw("mcpServers"); ok {
-			servers = jsonorder.New()
-			if err := json.Unmarshal(raw, servers); err != nil {
-				return nil, fmt.Errorf("merge-mcp: invalid JSON in %s: %w", f, err)
-			}
+		raw, ok := m.GetRaw("mcpServers")
+		if !ok {
+			// A fragment must wrap its servers in an mcpServers key. Treating a
+			// bare/typo'd top-level map as the server set silently injected junk
+			// servers (BUG-16); warn and skip instead.
+			fmt.Fprintf(os.Stderr, "merge-mcp: WARNING %s has no \"mcpServers\" object — skipping (a fragment must wrap its servers in an mcpServers key)\n", f)
+			continue
+		}
+		servers := jsonorder.New()
+		if err := json.Unmarshal(raw, servers); err != nil {
+			return nil, fmt.Errorf("merge-mcp: invalid JSON in %s: %w", f, err)
 		}
 		for _, name := range servers.Keys() {
 			if excluded[name] {

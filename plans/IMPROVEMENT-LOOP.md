@@ -171,3 +171,17 @@ arise.
   prefix-collision, unknown, nested). Python spot-checked. Output unchanged for the current key
   set → `parity_test.go` still matches (re-ran `-count=1`).
 - **Validated.** `bin/ci-check.sh` all green. Marked ✅ FIXED — backlog **16/23**.
+
+### loop 10 — fragment-shape validation (BUG-16) + doc accuracy (BUG-11) · 2026-06-30
+- **Idea / office-hours.** Two merge-robustness items. *BUG-16:* `data.get("mcpServers", data)`
+  treated a typo'd-wrapper or non-fragment JSON as a bare server map, silently injecting junk
+  servers. *BUG-11:* `ARCHITECTURE.md` claimed "all destructive writes back up" — false (the
+  installer backs up; the merge tools don't, and now write atomically).
+- **Change.** BUG-16: `collectFragments` (Go) + `collect_fragments` (Python) now **require**
+  the `mcpServers` wrapper and warn+skip a fragment lacking it (verified all shipped fragments
+  use the wrapper → output unchanged → parity holds). BUG-11: corrected `ARCHITECTURE.md` to
+  describe the real backup/atomic-write behavior.
+- **Bench.** `internal/mcpmerge/collect_test.go::TestCollectFragmentsRequiresWrapper` (a typo'd
+  wrapper injects no junk); `parity_test.go` still matches (re-ran `-count=1`).
+- **Validated.** `bin/ci-check.sh` all green. Both marked ✅ FIXED (+ cross-cutting contradiction
+  #1). Backlog **18/23** — remaining: BUG-09, 14, 17, 19, 23 (all Medium/Low).

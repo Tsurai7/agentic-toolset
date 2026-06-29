@@ -90,12 +90,21 @@ def collect_fragments(integrations_dir: Path) -> dict:
     excluded = _excluded_servers()
     for path in sorted(integrations_dir.glob("**/mcp*.json")):
         data = load_json(path)
-        servers = data.get("mcpServers", data)
-        if isinstance(servers, dict):
-            for name, config in servers.items():
-                if name in excluded:
-                    continue
-                merged["mcpServers"][name] = config
+        servers = data.get("mcpServers")
+        if not isinstance(servers, dict):
+            # A fragment must wrap its servers in an mcpServers key; treating a
+            # bare/typo'd top-level map as the server set silently injected junk
+            # servers (BUG-16). Warn and skip instead.
+            print(
+                f"merge-mcp: WARNING {path} has no \"mcpServers\" object — skipping "
+                "(a fragment must wrap its servers in an mcpServers key)",
+                file=sys.stderr,
+            )
+            continue
+        for name, config in servers.items():
+            if name in excluded:
+                continue
+            merged["mcpServers"][name] = config
     return merged
 
 

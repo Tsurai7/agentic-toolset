@@ -355,7 +355,13 @@ schema is not None: result.setdefault("$schema", schema)` (verified 2026-06-30).
 (`internal/settings`) emits the same output — `internal/installtest/parity_test.go` asserts
 Go and Python match byte-for-byte, so neither writes a `null` schema.
 
-### BUG-11 — ARCHITECTURE.md claims "all destructive writes back up" but the merge scripts do not — Medium (doc-vs-behavior) — **Observed**
+### BUG-11 — ARCHITECTURE.md claims "all destructive writes back up" but the merge scripts do not — Medium (doc-vs-behavior) — **Observed** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved (doc).** `ARCHITECTURE.md` now states accurately: the **install scripts** back up
+each target (timestamped) before invoking the merge tools; the merge tools themselves write
+**atomically** (temp + rename) but create no backups, so an interrupted merge never corrupts
+the live config (cross-ref BUG-12). The misleading "all destructive writes back up" claim is
+gone.
 
 `ARCHITECTURE.md:79-81` vs `merge-settings.py:42` / `merge-mcp.py:105`.
 
@@ -499,7 +505,13 @@ Low.
 **Fix.** Substitute in a single pass with a regex over `__([A-Z0-9_]+)__` and a lookup, so
 each placeholder is resolved exactly once from the original text.
 
-### BUG-16 — `data.get("mcpServers", data)` silently treats a malformed fragment as a server map — Low — **Observed**
+### BUG-16 — `data.get("mcpServers", data)` silently treats a malformed fragment as a server map — Low — **Observed** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Both `collectFragments` (Go) and `collect_fragments` (Python) now **require**
+the `mcpServers` wrapper: a fragment lacking it (a typo'd key like `mcpServer`, or some other
+JSON) is **warned about (named) and skipped**, instead of having its top-level keys injected
+as junk servers. All shipped fragments use the wrapper, so output is unchanged (parity holds).
+Bench: `internal/mcpmerge/collect_test.go::TestCollectFragmentsRequiresWrapper`.
 
 `merge-mcp.py:77`.
 
@@ -688,7 +700,7 @@ keys. Medium confidence.
 
 | # | Doc claim | Reality | Finding |
 |---|-----------|---------|---------|
-| 1 | ARCHITECTURE.md:79-81 "All destructive writes back up the previous file" | Backups are done by the shell installers, not the merge scripts; standalone merge runs overwrite with no backup | BUG-11 |
+| 1 ✅ | ARCHITECTURE.md:79-81 "All destructive writes back up the previous file" | Backups are done by the shell installers, not the merge scripts; merge tools now write atomically (temp+rename). **Doc corrected 2026-06-30.** | BUG-11 |
 | 2 | shell-guard.sh:13-14 "Exactly one of these fires per command, so there is no double-wrapping" | `FOO=1 rtk …` double-wraps to `rtk FOO=1 rtk …` | BUG-06 |
 | 3 | ARCHITECTURE.md:128 "always check the `--dry-run`" | dry-run never previews merge output (the consequential step) | BUG-19 |
 | 4 | shell-guard.sh header "rtk fallback — prefix `rtk` so no native command escapes token compression" | bit-shift / multiline / decorated commands escape compression entirely | BUG-01, BUG-02, BUG-06 |
@@ -720,14 +732,14 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 | BUG-08 ✅ | JSON escaping via BSD/GNU-divergent `sed` blocks the real fix | High | S | BUG-01 | **FIXED** — no `sed`; real JSON encoder |
 | BUG-12 ✅ | Non-atomic `write_text` can corrupt live config on interruption | Med | S | — | **FIXED** 2026-06-30 (loop) — `safe_io.atomic_write_text` (Python); Go already atomic |
 | BUG-10 ✅ | `merge-settings.py` writes `"$schema": null` | Med | S | — | **FIXED** (guarded in Python; Go matches via parity test) |
-| BUG-11 | Doc claims merge scripts back up; they don't (standalone) | Med | S | BUG-12 | No — doc + move-backup-into-writer fix now |
+| BUG-11 ✅ | Doc claims merge scripts back up; they don't (standalone) | Med | S | BUG-12 | **FIXED** 2026-06-30 (loop) — ARCHITECTURE.md corrected (atomic write, installer backs up) |
 | BUG-13 ✅ | Missing `npx`/`npm` ⇒ green install, dead MCP server | Med | S | — | **FIXED** 2026-06-30 (loop) — loud npx warning (Go + Python); empty NODE_PATH residual |
 | BUG-14 | `.env` parsed twice (bash `source` vs python) with divergent semantics | Med | M | — | Partial — Go must pick one parser |
 | BUG-17 | Unbounded `.bak` proliferation in `$HOME` on every run | Med | S | — | Partial — Go installer should diff-then-backup |
 | BUG-22 ✅ | Eval loaders crash hard on one malformed JSON (opaque CI failure) | Med | S | — | **FIXED** 2026-06-30 (loop) — Python fix landed (mirrors `merge.load_json`) |
 | BUG-09 | No `rtk`/`lean-ctx` ⇒ denies still fire but no compression (worst of both) | Med | S | BUG-03 | Partial — Go should gate deny on availability |
 | BUG-15 ✅ | `substitute()` naive global replace; placeholder double-substitution | Med→Low | S | — | **FIXED** 2026-06-30 (loop) — single-pass regex (Go + Python) |
-| BUG-16 | `data.get("mcpServers", data)` accepts malformed fragments silently | Low | S | — | Partial — Go should validate fragment shape |
+| BUG-16 ✅ | `data.get("mcpServers", data)` accepts malformed fragments silently | Low | S | — | **FIXED** 2026-06-30 (loop) — require mcpServers wrapper; warn+skip (Go + Python) |
 | BUG-18 ✅ | `bootstrap.sh` ignores `--dry-run`; can trigger real install | Low | S | — | **FIXED** 2026-06-30 (loop) — arg loop + dry-run gating |
 | BUG-19 | `--dry-run` never previews merge output | Low | M | BUG-13 | Partial — Go dry-run should print resolved JSON |
 | BUG-20 ✅ | `doctor.sh check_link` misclassifies a regular-file target | Low | S | — | **FIXED** 2026-06-30 (loop) — added regular-file `elif` branch |

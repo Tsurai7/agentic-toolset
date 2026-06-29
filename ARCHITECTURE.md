@@ -76,10 +76,13 @@ location), sources `secrets/.env`, and dispatches to provider installers.
   (stub with `__AGENTIC_ROOT__` injected + `AGENTS.md` + user-rules) →
   `install_mcp` → `install_settings` (merge lean-ctx hooks/permissions).
 
-Both call `merge-mcp.py`; Claude also calls `merge-settings.py`. All destructive
-writes back up the previous file with a timestamp suffix; `DRY_RUN=1` makes every
-step print-only. `AGENTIC_ROOT` is resolved from the script location, so the repo
-can live anywhere — no path is tied to a specific machine.
+Both call `merge-mcp.py`; Claude also calls `merge-settings.py`. The **install
+scripts** back up each target file with a timestamp suffix before invoking the merge
+tools; the merge tools themselves write **atomically** (temp file + rename, via
+`internal/jsonorder.WriteFile` / `providers/shared/safe_io.py`) but do not create
+their own backups, so an interrupted merge never corrupts the live config (BUG-12).
+`DRY_RUN=1` makes every step print-only. `AGENTIC_ROOT` is resolved from the script
+location, so the repo can live anywhere — no path is tied to a specific machine.
 
 ## merge-mcp behavior (important invariants)
 
