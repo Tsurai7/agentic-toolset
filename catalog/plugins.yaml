@@ -125,6 +125,27 @@ plugins:
     setup_doc_url: https://github.com/obra/superpowers
     notes: Core workflow skills (TDD, debugging, brainstorming).
 
+  - id: ponytail
+    name: Ponytail (code minimalism)
+    cursor:
+      marketplace: github:DietrichGebert/ponytail
+      plugin: ponytail
+    claude:
+      marketplace: github:DietrichGebert/ponytail
+      plugin: ponytail
+    mcp: false
+    required_env: []
+    setup_doc_url: https://github.com/DietrichGebert/ponytail
+    notes: >-
+      Token-economy plugin: injects a do-less decision ladder
+      (need it? → reuse → stdlib → native → dep → one-liner → minimal code)
+      before implementing, plus /ponytail-review and /ponytail-audit for
+      over-engineering. Reinforces the model-orchestration "write less code"
+      lever (the cheapest tokens are the ones never generated). Multi-host
+      (Claude Code, Cursor, Codex, +). Add via each host's marketplace from the
+      GitHub repo, e.g. Claude Code: `/plugin marketplace add DietrichGebert/ponytail`
+      then `/plugin install ponytail`. Intensity: lite / full / ultra / off.
+
   - id: continual-learning
     name: Continual Learning
     cursor:

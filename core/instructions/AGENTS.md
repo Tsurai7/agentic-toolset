@@ -78,6 +78,7 @@ CI if a skill has no eval.
 | `terminal-rtk` | `rtk` command prefix on macOS |
 | `prompt-caching-playbook` | Maximize LLM prompt-cache hit rate / cut token cost |
 | `answer-shapes` | Optional output skeletons (bug fix / review / investigation) for complete, parseable answers |
+| `model-orchestration` | Route each sub-task to the cheapest capable model tier; plan strong, execute cheap, escalate |
 
 ## Marketplace plugins
 
