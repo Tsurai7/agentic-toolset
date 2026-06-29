@@ -17,6 +17,21 @@ bin/bootstrap.sh        # installs deps + config + runs doctor (macOS)
 Already have the deps? Just `bin/install.sh --provider all`. Either way, restart
 Cursor / Claude after install. Full walkthrough: [`SETUP.md`](SETUP.md).
 
+### Inject / eject (Claude)
+
+Add or cleanly remove the agentic-cfg footprint in your Claude config with a single,
+reversible, test-covered command (the `agentic` binary; alias it as `agentic-cfg` if you
+like). Both preserve your own `CLAUDE.md` text, `settings.json` `env`/hooks, and any real
+`~/.claude/skills` you already have:
+
+```bash
+agentic inject              # add: skills symlink, CLAUDE.md @import, hooks + permissions, MCP
+agentic eject               # remove exactly that, leaving your content untouched
+agentic inject --dry-run    # preview; --skip-mcp to leave MCP servers alone; --home DIR to target
+```
+
+Design rationale: [`docs/design/inject-eject-office-hours.md`](docs/design/inject-eject-office-hours.md).
+
 ## Layout
 
 | Path | Purpose |

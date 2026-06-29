@@ -81,3 +81,21 @@ arise.
   parity green (forced); `bin/ci-check.sh` all green.
 - **Marked fixed.** `plans/03-gaps-and-bugs.md` BUG-12 → ✅ FIXED; BUG-10 → ✅ FIXED (already
   guarded in Python; Go matches via the parity test — verified, not just assumed).
+
+### loop 04 — `agentic inject` / `agentic eject` (reversible, fully tested) · 2026-06-30
+- **Idea / office-hours.** Operator ask: add to the Claude config via `inject`, remove via
+  `eject`, fully tested. *Status quo:* install exists (shell, 4 steps) but there's **no
+  uninstall** and it isn't a single testable command. *Wedge:* one Go command pair on explicit
+  `--root`/`--home` so it's unit-testable; eject is the precise inverse of inject. North star:
+  every step preserves user content. Design doc: `docs/design/inject-eject-office-hours.md`.
+- **Change.** New `internal/lifecycle` (Inject/Eject/GeneratedMD); reversal primitives
+  `claudemd.StripBlock`/`Remove` and `settings.Unmerge`; `mcpmerge.ManagedServerNames`/
+  `RemoveClaudeUser`; `agentic inject|eject [--root --home --dry-run --skip-mcp]` in
+  `cmd/agentic/main.go`.
+- **Bench.** `internal/lifecycle/lifecycle_test.go` (round-trip preserves user CLAUDE.md +
+  settings env/hooks/allow/deny; idempotency; real skills-dir backup+restore; dry-run;
+  generated-md) + `internal/claudemd/strip_test.go` + `internal/settings/unmerge_test.go`.
+- **Validated.** All Go tests pass; real CLI `inject`/`eject --home <scratch> --skip-mcp`
+  round-tripped cleanly (user "keep me" survived; managed block/hooks/allow added then fully
+  removed); `bin/ci-check.sh` all green.
+- **Docs.** `README.md` (Inject/eject section) + design doc.

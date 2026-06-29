@@ -284,6 +284,45 @@ func RegisterClaudeUser(root string) error {
 	return nil
 }
 
+// ManagedServerNames returns the names of the MCP servers this repo manages
+// (integration fragments, placeholders resolved), sorted. Used by `agentic eject`
+// to know exactly which user-scope servers to remove, and unit-testable without
+// the `claude` CLI.
+func ManagedServerNames(root string) ([]string, error) {
+	managed, err := resolveManaged(root, false)
+	if err != nil {
+		return nil, err
+	}
+	names := append([]string(nil), managed.Keys()...)
+	sort.Strings(names)
+	return names, nil
+}
+
+// RemoveClaudeUser removes the managed servers from Claude Code user scope via the
+// `claude` CLI (the inverse of RegisterClaudeUser). Best-effort and idempotent: a
+// server already absent is fine. No-op with a warning if `claude` is absent.
+func RemoveClaudeUser(root string) error {
+	claude, err := exec.LookPath("claude")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "merge-mcp: 'claude' CLI not on PATH — skipping user-scope MCP removal")
+		return nil //nolint:nilerr // optional dependency: skip when the 'claude' CLI is absent
+	}
+	names, err := ManagedServerNames(root)
+	if err != nil {
+		return err
+	}
+	dry := os.Getenv("DRY_RUN") == "1"
+	for _, name := range names {
+		if dry {
+			fmt.Printf("[dry-run] claude mcp remove %s --scope user\n", name)
+			continue
+		}
+		_ = exec.Command(claude, "mcp", "remove", name, "--scope", "user").Run() //nolint:noctx // one-shot synchronous CLI call
+	}
+	fmt.Printf("Removed %d Claude user-scope MCP server(s): %s\n", len(names), join(names))
+	return nil
+}
+
 func join(ss []string) string {
 	if len(ss) == 0 {
 		return "none"

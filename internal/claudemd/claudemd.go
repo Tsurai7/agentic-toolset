@@ -34,6 +34,44 @@ func Render(existing, generatedAbs string) string {
 	}
 }
 
+// StripBlock removes the managed @import block from existing CLAUDE.md content,
+// returning the cleaned content and whether a block was present. Trailing blank
+// space left where the block was is collapsed to a single trailing newline, so
+// hand-written user content survives intact. The inverse of Render's block-add.
+func StripBlock(existing string) (string, bool) {
+	if !blockRe.MatchString(existing) {
+		return existing, false
+	}
+	out := blockRe.ReplaceAllLiteralString(existing, "")
+	out = strings.TrimRight(out, " \t\r\n")
+	if out != "" {
+		out += "\n"
+	}
+	return out, true
+}
+
+// Remove strips the managed block from claudeMdPath, preserving any user content.
+// If the file then holds only whitespace (it carried only the managed block) it is
+// deleted. Returns whether a block was found. No-op if the file is absent or has
+// no managed block.
+func Remove(claudeMdPath string) (bool, error) {
+	b, err := os.ReadFile(claudeMdPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	cleaned, had := StripBlock(string(b))
+	if !had {
+		return false, nil
+	}
+	if strings.TrimSpace(cleaned) == "" {
+		return true, os.Remove(claudeMdPath)
+	}
+	return true, os.WriteFile(claudeMdPath, []byte(cleaned), 0o644) //nolint:gosec // non-secret user config; 0644 is intentional
+}
+
 // Ensure writes or updates claudeMdPath so it imports generatedPath, preserving
 // any pre-existing user content.
 func Ensure(generatedPath, claudeMdPath string) error {

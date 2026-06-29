@@ -6,12 +6,15 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Tsurai7/agentic-cfg/internal/claudemd"
 	"github.com/Tsurai7/agentic-cfg/internal/gain"
 	"github.com/Tsurai7/agentic-cfg/internal/hook"
+	"github.com/Tsurai7/agentic-cfg/internal/lifecycle"
 	"github.com/Tsurai7/agentic-cfg/internal/mcpmerge"
 	"github.com/Tsurai7/agentic-cfg/internal/settings"
 )
@@ -32,6 +35,10 @@ func main() {
 		os.Exit(mergeClaudeMD(os.Args[2:]))
 	case "gain":
 		os.Exit(gain.Main(os.Args[2:]))
+	case "inject":
+		os.Exit(injectEject("inject", os.Args[2:]))
+	case "eject":
+		os.Exit(injectEject("eject", os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(0)
@@ -85,6 +92,54 @@ func mergeClaudeMD(args []string) int {
 	return 0
 }
 
+func injectEject(action string, args []string) int {
+	fs := flag.NewFlagSet(action, flag.ContinueOnError)
+	root := fs.String("root", defaultRoot(), "agentic-cfg repo root (default: derived from the binary location)")
+	home := fs.String("home", "", "target home dir (default: $HOME)")
+	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
+	skipMCP := fs.Bool("skip-mcp", false, "skip the MCP step (the `claude` CLI is global, not --home-scoped)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	h := *home
+	if h == "" {
+		var err error
+		if h, err = os.UserHomeDir(); err != nil {
+			fmt.Fprintf(os.Stderr, "agentic %s: cannot resolve home: %v\n", action, err)
+			return 1
+		}
+	}
+	opts := lifecycle.Options{Root: *root, Home: h, DryRun: *dryRun, SkipMCP: *skipMCP}
+	var err error
+	if action == "inject" {
+		err = lifecycle.Inject(opts)
+	} else {
+		err = lifecycle.Eject(opts)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "agentic %s: %v\n", action, err)
+		return 1
+	}
+	return 0
+}
+
+// defaultRoot derives the repo root from the running binary (repo/bin/agentic ->
+// repo). Falls back to the current directory.
+func defaultRoot() string {
+	exe, err := os.Executable()
+	if err == nil {
+		if root := filepath.Dir(filepath.Dir(exe)); root != "" {
+			if _, err := os.Stat(filepath.Join(root, "core", "skills")); err == nil {
+				return root
+			}
+		}
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return wd
+	}
+	return "."
+}
+
 func usage() {
 	fmt.Fprint(os.Stderr, `usage: agentic <command> [args]
 
@@ -95,5 +150,7 @@ commands:
   merge-mcp <root> --register-claude-user   register managed MCP servers at Claude user scope
   merge-claude-md <generated> <claude_md>   ensure CLAUDE.md @imports the generated config
   gain [--last N] [--project S] [--json]    performance readout: token volume, cache hit rate, cost saved
+  inject [--root DIR] [--home DIR] [--dry-run]   add the agentic-cfg footprint to a Claude config
+  eject  [--root DIR] [--home DIR] [--dry-run]   cleanly remove it (preserves your own content)
 `)
 }
