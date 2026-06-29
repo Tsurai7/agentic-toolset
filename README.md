@@ -27,6 +27,7 @@ Cursor / Claude after install. Full walkthrough: [`SETUP.md`](SETUP.md).
 | `core/rules/` | Cursor `.mdc` rules (symlinked to `~/.cursor/rules`) |
 | `integrations/` | Custom MCP server definitions (merged into provider configs) |
 | `catalog/plugins.yaml` | Marketplace plugins to enable manually (not vendored) |
+| `docs/` | Long-form docs (not rendered): the [office-hours design session](docs/design/model-orchestration-office-hours.md), the [AI-native research review](docs/research/ai-native-agentic-engineering.md), and practitioner [guides](docs/README.md) |
 | `providers/` | Per-provider install scripts and templates |
 | `evals/` | Behavioral evals — conformance (does it fire) + value A/B (is it worth it). Loop: [`evals/PLAYBOOK.md`](evals/PLAYBOOK.md); results: [`evals/BENCHMARKS.md`](evals/BENCHMARKS.md) |
 | `bin/` | `bootstrap.sh` (one-command setup), `install.sh`, `doctor.sh`, `ci-check.sh` |

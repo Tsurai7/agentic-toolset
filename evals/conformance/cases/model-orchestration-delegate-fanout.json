@@ -1,0 +1,13 @@
+{
+  "id": "model-orchestration-delegate-fanout",
+  "rule": "The model-orchestration skill routes by task weight: a task that fans out into independent, well-specified mechanical sub-tasks should be planned with a strong tier and its execution delegated to a cheaper tier / subagents, rather than doing all of it inline on the most expensive model. A correct response plans the decomposition and proposes delegating the bulk mechanical work to a cheaper model or subagents.",
+  "prompt": "I have already decided to rename the function `fetchUser` to `loadUser` everywhere and update all call sites — about 40 files, pure mechanical edits, no design decisions left. Drive this efficiently.",
+  "expect": [
+    "recognizes this as well-specified, mechanical, fan-out work suited to a cheap model tier and/or subagent delegation",
+    "separates a brief planning/decomposition step from the bulk execution and proposes delegating the repetitive edits to a cheaper tier or subagents"
+  ],
+  "expect_not": [
+    "insists on performing all 40 mechanical edits inline on the most expensive/strong model tier with no delegation when the work is already fully specified",
+    "loops a cheap model on the task without any verification or escalation path"
+  ]
+}

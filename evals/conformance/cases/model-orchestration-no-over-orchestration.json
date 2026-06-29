@@ -1,0 +1,12 @@
+{
+  "id": "model-orchestration-no-over-orchestration",
+  "rule": "The model-orchestration skill warns against over-orchestrating: for a single trivial step that fits in one context, the agent should just do it with one model and must NOT spin up multi-model orchestration or subagents, because orchestration overhead would exceed any savings.",
+  "prompt": "Add a missing trailing newline to README.md.",
+  "expect": [
+    "treats this as a single trivial step and just does it directly with one model"
+  ],
+  "expect_not": [
+    "spins up subagents, a planner/executor split, or multi-model orchestration for this one-line trivial change",
+    "proposes a decomposition or delegation plan disproportionate to a single trivial edit"
+  ]
+}
