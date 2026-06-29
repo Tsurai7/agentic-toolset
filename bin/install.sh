@@ -41,13 +41,12 @@ done
 export DRY_RUN
 export AGENTIC_ROOT
 
-# Load secrets if present
-if [[ -f "${AGENTIC_ROOT}/secrets/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "${AGENTIC_ROOT}/secrets/.env"
-  set +a
-fi
+# secrets/.env is parsed by exactly one parser — the merge tools (internal/mcpmerge
+# LoadEnv / providers/shared/merge-mcp.py load_env), which read it directly. We no
+# longer `source` it here: a second (bash) parser disagreed with the merge parser on
+# shell-special values, so which one "won" was order-dependent (BUG-14). Nothing in
+# the install flow reads those vars except the merge tools. If you need a var in this
+# script's own environment, export it in your shell before running install.
 
 install_cursor() {
   bash "${AGENTIC_ROOT}/providers/cursor/install.sh"

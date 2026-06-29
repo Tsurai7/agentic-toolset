@@ -199,3 +199,18 @@ arise.
 - **Bench.** Extracted-function harness for `backup_once` (run twice with the file changing →
   one `.bak`, retains ORIGINAL); `bash -n` + shellcheck (via ci-check).
 - **Validated.** `bin/ci-check.sh` all green. Backlog **20/23** — remaining: BUG-14, 19, 23.
+
+### loop 12 — single `.env` parser (BUG-14) + BUG-23 verified moot · 2026-06-30
+- **Idea / office-hours.** *BUG-14:* `secrets/.env` was parsed twice — `bin/install.sh` did
+  `set -a; source` (bash semantics) and the merge tools re-read the file (naive parser) — so
+  exotic values resolved differently install-driven vs standalone. *BUG-23:* re-verify the
+  report.py KeyError finding against current code.
+- **Change.** BUG-14: removed the `source` from `bin/install.sh` — the merge tools
+  (`LoadEnv`/`load_env`) are now the single `.env` authority; documented the literal
+  `KEY=value` / `~`-not-`$HOME` contract in `secrets/.env.example`. BUG-23: no change needed —
+  `bench.py`/`_render_bench` are gone and `report.py` reads via `.get()` with a guarded loader.
+- **Bench.** Verified `install --dry-run` still works; confirmed a `.env` `NPX=` override is
+  still applied through the single parser (temp `.env`, removed after); for BUG-23, read the
+  current `report.py`.
+- **Validated.** `bin/ci-check.sh` all green. **Backlog 22/23** — only BUG-19 (merge-output
+  dry-run preview) remains, partly mitigated by `agentic inject --dry-run`.

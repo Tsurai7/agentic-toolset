@@ -33,10 +33,11 @@ What this document defers to its siblings (referenced, not duplicated):
 | Low      | 6 | BUG-18 … BUG-23 |
 | **Total** | **23** | |
 
-> **✅ Fixed so far (improvement-loop, 2026-06-30):** BUG-01–08 (hook cluster, Go port),
-> BUG-10, BUG-12, BUG-18, BUG-20, BUG-21, BUG-22 — **14 of 23**, including both Criticals and
-> all six Highs. **Remaining:** BUG-09, 11, 13, 14, 15, 16, 17, 19, 23 (all Medium/Low). See
-> `plans/IMPROVEMENT-LOOP.md` for the per-iteration log.
+> **✅ Resolved so far (improvement-loop, 2026-06-30):** BUG-01–08 (hook cluster), BUG-10–18,
+> BUG-20, BUG-21, BUG-22, BUG-23 — **22 of 23** (BUG-09 closed as won't-fix-by-design; both
+> Criticals and all six Highs fixed). **Remaining:** **BUG-19** (dry-run doesn't preview merge
+> *output*) — partly mitigated by `agentic inject --dry-run`. See `plans/IMPROVEMENT-LOOP.md`
+> for the per-iteration log.
 
 The dominant theme: `shell-guard.sh` parses a structured JSON protocol with
 `grep`/`sed`/`case` glob matching. That approach is wrong in kind, not in detail — it
@@ -461,7 +462,15 @@ env.NODE_PATH = ''
 returned `None`), either emit a loud warning naming the missing tool, or refuse to write
 that server. At minimum, don't write `"NODE_PATH": ""` — omit empty env values.
 
-### BUG-14 — `.env` is parsed twice by two different parsers with divergent semantics — Medium — **Observed**
+### BUG-14 — `.env` is parsed twice by two different parsers with divergent semantics — Medium — **Observed** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** `bin/install.sh` no longer `source`s `secrets/.env`. The merge tools
+(`internal/mcpmerge.LoadEnv` / `merge-mcp.py:load_env`) read the file directly and are now the
+**single** parser, so install-driven and standalone merges resolve `.env` identically — the
+order/parser-dependent divergence is gone. Verified nothing else in the install flow consumes
+those vars, and that a `.env` override (`NPX=…`) is still applied after the change. The
+supported format is documented in `secrets/.env.example` (literal `KEY=value`, `~` for home,
+no shell expansion).
 
 `bin/install.sh:45-50` (bash `source`) vs `merge-mcp.py:41-49` (python `partition`).
 
@@ -690,7 +699,14 @@ an opaque traceback that aborts the whole CI lint. Bench: `evals/selftest.py::te
 `report.py`'s result-loader has a `try/except (JSONDecodeError, IndexError)` at its
 `json.loads` (`report.py:28-31`), and `bench.py` no longer exists in the tree.
 
-### BUG-23 — `report.py` / `bench.py` assume result-record shape; a partial or older artifact KeyErrors the rollup — Low — **Inferred (medium confidence)**
+### BUG-23 — `report.py` / `bench.py` assume result-record shape; a partial or older artifact KeyErrors the rollup — Low — **Inferred (medium confidence)** — ✅ RESOLVED (moot; verified 2026-06-30)
+
+**✅ Resolved (moot).** Re-checked the current code: `bench.py` and `_render_bench` no longer
+exist, and `report.py`'s `render()` now reads every field with `.get()` defaults
+(`rec.get("verdict","?")`, `rec.get("wins",{})`, …) while `_eff_delta` is guarded by
+`if "treatment" in r and "control" in r`. The loader wraps `json.loads` in
+`try/except (JSONDecodeError, IndexError)`. So the partial/old-artifact KeyError path the
+finding described is gone — no change needed.
 
 `evals/report.py:44-49` (`r["treatment"]["tool_calls"]`), `:85-90` (`b["baseline"]`,
 `b["kind"]`); `evals/bench.py:115` (`int(m[1])` only guarded by the `if m else` branch).
@@ -751,7 +767,7 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 | BUG-10 ✅ | `merge-settings.py` writes `"$schema": null` | Med | S | — | **FIXED** (guarded in Python; Go matches via parity test) |
 | BUG-11 ✅ | Doc claims merge scripts back up; they don't (standalone) | Med | S | BUG-12 | **FIXED** 2026-06-30 (loop) — ARCHITECTURE.md corrected (atomic write, installer backs up) |
 | BUG-13 ✅ | Missing `npx`/`npm` ⇒ green install, dead MCP server | Med | S | — | **FIXED** 2026-06-30 (loop) — loud npx warning (Go + Python); empty NODE_PATH residual |
-| BUG-14 | `.env` parsed twice (bash `source` vs python) with divergent semantics | Med | M | — | Partial — Go must pick one parser |
+| BUG-14 ✅ | `.env` parsed twice (bash `source` vs python) with divergent semantics | Med | M | — | **FIXED** 2026-06-30 (loop) — merge tools are the single `.env` parser (install no longer sources it) |
 | BUG-17 ✅ | Unbounded `.bak` proliferation in `$HOME` on every run | Med | S | — | **FIXED** 2026-06-30 (loop) — `backup_once` (single `.bak`, both installers) |
 | BUG-22 ✅ | Eval loaders crash hard on one malformed JSON (opaque CI failure) | Med | S | — | **FIXED** 2026-06-30 (loop) — Python fix landed (mirrors `merge.load_json`) |
 | BUG-09 ✅ | No `rtk`/`lean-ctx` ⇒ denies still fire but no compression (worst of both) | Med | S | BUG-03 | **WON'T FIX** 2026-06-30 (by design — deny is search-quality, not compression) |
@@ -761,7 +777,7 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 | BUG-19 | `--dry-run` never previews merge output | Low | M | BUG-13 | Partial — Go dry-run should print resolved JSON |
 | BUG-20 ✅ | `doctor.sh check_link` misclassifies a regular-file target | Low | S | — | **FIXED** 2026-06-30 (loop) — added regular-file `elif` branch |
 | BUG-21 ✅ | `ci-check.sh` YAML find uses inconsistent git-prune | Low | S | — | **FIXED** 2026-06-30 (loop) — `\( … \) -not -path` |
-| BUG-23 | `report.py` KeyErrors on partial/old result artifacts | Low | S | — | No — Python `.get` fix now |
+| BUG-23 ✅ | `report.py` KeyErrors on partial/old result artifacts | Low | S | — | **RESOLVED** (moot — `_render_bench`/bench.py gone; report.py uses `.get()`) |
 
 ### Recommended sequencing
 
