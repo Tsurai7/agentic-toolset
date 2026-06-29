@@ -111,3 +111,19 @@ arise.
 - **Bench.** `internal/gain/gain_test.go::TestGate` (pass / fail / inclusive boundary / skip).
 - **Validated.** Real `agentic gain --gate` → PASS 95.9% (exit 0); `--min-hit-rate 0.999` →
   FAIL (exit 1); `bin/ci-check.sh` all green. Docs: `telemetry/README.md`.
+
+### loop 06 — installer-ergonomics cluster (BUG-18, BUG-20, BUG-21) · 2026-06-30
+- **Idea / office-hours.** The backlog's own "batch these Low items" recommendation; each a
+  real footgun. *Wedge:* three small, shellcheck-clean fixes.
+- **Changes.**
+  - **BUG-18** `bin/bootstrap.sh`: full arg loop (`--provider/--dry-run/--help`); `--dry-run`
+    skips all dep installs + the build and runs `install.sh --dry-run` — a preview no longer
+    mutates the machine.
+  - **BUG-20** `bin/doctor.sh check_link`: added the `elif [[ -e ]]` branch so a regular-file
+    target warns "exists but is not a symlink" instead of "missing".
+  - **BUG-21** `bin/ci-check.sh`: YAML find now `\( -name … \) -not -path './.git/*'`, matching
+    the other loops.
+- **Bench.** `bin/ci-check.sh` (bash -n + shellcheck + YAML validity); behavioral checks:
+  `bootstrap --dry-run` makes no changes + previews; `check_link` regular-file repro warns
+  correctly (missing/symlink branches unchanged); YAML still validated.
+- **Validated.** `bin/ci-check.sh` all green. All three marked ✅ FIXED in `plans/03-gaps-and-bugs.md`.

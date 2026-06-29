@@ -502,7 +502,12 @@ not run against `$HOME` per the task rules.
 `.bak` (overwrite, or rotate with a cap), or write to a dedicated `~/.claude/.agentic-backups/`
 with pruning. Cross-ref doc 01 — a Go installer should diff-then-backup.
 
-### BUG-18 — `bin/bootstrap.sh` ignores `--dry-run` and any second flag; can trigger a real install when a preview was intended — Low — **Observed**
+### BUG-18 — `bin/bootstrap.sh` ignores `--dry-run` and any second flag; can trigger a real install when a preview was intended — Low — **Observed** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** `bootstrap.sh` now parses a full arg loop (`--provider`, `--dry-run`, `--help`,
+unknown→warn); under `--dry-run` it skips all dependency installs + the agentic build and runs
+`install.sh --provider … --dry-run` (read-only doctor still runs). Verified: `bin/bootstrap.sh
+--dry-run` makes no machine changes and previews the install.
 
 `bin/bootstrap.sh:13`.
 
@@ -537,7 +542,12 @@ mode to call.
 to stdout (and resolved tool paths) without writing, and have the installer call it. Cross-
 ref doc 01.
 
-### BUG-20 — `doctor.sh` `check_link` second branch silently misclassifies a non-symlink, non-dir path; `readlink` under `set -e` — Low — **Inferred (medium confidence)**
+### BUG-20 — `doctor.sh` `check_link` second branch silently misclassifies a non-symlink, non-dir path; `readlink` under `set -e` — Low — **Inferred (medium confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Added the explicit `elif [[ -e "$path" ]]; then warn "exists but is not a
+symlink"` branch. Verified against a scratch target: a regular file now warns "exists but is
+not a symlink" instead of "missing"; the missing-path and correct-symlink branches are
+unchanged.
 
 `bin/doctor.sh:14-29`.
 
@@ -553,7 +563,11 @@ Minor robustness, not a wrong-result-on-happy-path.
 **Fix.** Add an explicit `elif [[ -e "$path" ]]; then warn "$path exists but is not a
 symlink"`.
 
-### BUG-21 — `ci-check.sh` YAML discovery uses `find … -o …  | grep -v '.git/'` (precedence + grep filter) inconsistent with the `-not -path` filter used elsewhere — Low — **Observed**, partly [doc 05](05-test-coverage.md)
+### BUG-21 — `ci-check.sh` YAML discovery uses `find … -o …  | grep -v '.git/'` (precedence + grep filter) inconsistent with the `-not -path` filter used elsewhere — Low — **Observed**, partly [doc 05](05-test-coverage.md) — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Now `find . \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*'`,
+matching the shell/JSON loops. Verified `bin/ci-check.sh` still finds and validates
+`catalog/plugins.yaml`.
 
 `bin/ci-check.sh:43` vs `:16`/`:32`.
 
@@ -674,10 +688,10 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 | BUG-09 | No `rtk`/`lean-ctx` ⇒ denies still fire but no compression (worst of both) | Med | S | BUG-03 | Partial — Go should gate deny on availability |
 | BUG-15 | `substitute()` naive global replace; placeholder double-substitution | Med→Low | S | — | **Yes** — single-pass regex substitution |
 | BUG-16 | `data.get("mcpServers", data)` accepts malformed fragments silently | Low | S | — | Partial — Go should validate fragment shape |
-| BUG-18 | `bootstrap.sh` ignores `--dry-run`; can trigger real install | Low | S | — | No — arg-parsing fix now |
+| BUG-18 ✅ | `bootstrap.sh` ignores `--dry-run`; can trigger real install | Low | S | — | **FIXED** 2026-06-30 (loop) — arg loop + dry-run gating |
 | BUG-19 | `--dry-run` never previews merge output | Low | M | BUG-13 | Partial — Go dry-run should print resolved JSON |
-| BUG-20 | `doctor.sh check_link` misclassifies a regular-file target | Low | S | — | No — shell fix now |
-| BUG-21 | `ci-check.sh` YAML find uses inconsistent git-prune | Low | S | — | No — shell fix now; cross-ref [doc 05](05-test-coverage.md) |
+| BUG-20 ✅ | `doctor.sh check_link` misclassifies a regular-file target | Low | S | — | **FIXED** 2026-06-30 (loop) — added regular-file `elif` branch |
+| BUG-21 ✅ | `ci-check.sh` YAML find uses inconsistent git-prune | Low | S | — | **FIXED** 2026-06-30 (loop) — `\( … \) -not -path` |
 | BUG-23 | `report.py` KeyErrors on partial/old result artifacts | Low | S | — | No — Python `.get` fix now |
 
 ### Recommended sequencing

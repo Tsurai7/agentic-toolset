@@ -23,6 +23,8 @@ check_link() {
     fi
   elif [[ -d "$path" ]]; then
     warn "$path is a directory, not symlink to $expected"
+  elif [[ -e "$path" ]]; then
+    warn "$path exists but is not a symlink (expected -> $expected)"
   else
     fail "missing $path (run bin/install.sh)"
   fi

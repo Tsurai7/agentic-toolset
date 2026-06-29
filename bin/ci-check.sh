@@ -40,7 +40,7 @@ if python3 -c 'import yaml' 2>/dev/null; then
     else
       err "$f is invalid YAML"
     fi
-  done < <(find . -name '*.yaml' -o -name '*.yml' | grep -v '.git/')
+  done < <(find . \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*')
 else
   warn "PyYAML not installed — skipping YAML parse"
 fi

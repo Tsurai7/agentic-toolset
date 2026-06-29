@@ -10,7 +10,15 @@ set -euo pipefail
 
 AGENTIC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROVIDER="all"
-[[ "${1:-}" == "--provider" && -n "${2:-}" ]] && PROVIDER="$2"
+DRY_RUN=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --provider) PROVIDER="${2:-all}"; shift 2 ;;
+    --dry-run)  DRY_RUN=1; shift ;;
+    -h|--help)  echo "usage: bin/bootstrap.sh [--provider all|cursor|claude] [--dry-run]"; exit 0 ;;
+    *) printf '[bootstrap] WARN ignoring unknown argument: %s\n' "$1" >&2; shift ;;
+  esac
+done
 
 log()  { printf '[bootstrap] %s\n' "$*"; }
 warn() { printf '[bootstrap] WARN %s\n' "$*"; }
@@ -21,6 +29,10 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
+if [[ "$DRY_RUN" == "1" ]]; then
+  log "[dry-run] skipping dependency install + agentic build (no machine changes)"
+  log "[dry-run] would ensure: brew, git, python3, node, gh, ast-grep, rtk, lean-ctx, go, no-mistakes, bin/agentic"
+else
 # 1. Homebrew
 if ! command -v brew >/dev/null 2>&1; then
   log "installing Homebrew"
@@ -91,11 +103,18 @@ else
   warn "go not available — skipping agentic build (Python fallback will be used)"
 fi
 
-# 4. Install the config
-log "running install.sh --provider ${PROVIDER}"
-bash "${AGENTIC_ROOT}/bin/install.sh" --provider "$PROVIDER"
+fi
 
-# 5. Verify
+# 4. Install the config
+if [[ "$DRY_RUN" == "1" ]]; then
+  log "running install.sh --provider ${PROVIDER} (dry-run)"
+  DRY_RUN=1 bash "${AGENTIC_ROOT}/bin/install.sh" --provider "$PROVIDER" --dry-run
+else
+  log "running install.sh --provider ${PROVIDER}"
+  bash "${AGENTIC_ROOT}/bin/install.sh" --provider "$PROVIDER"
+fi
+
+# 5. Verify (read-only; safe under --dry-run)
 bash "${AGENTIC_ROOT}/bin/doctor.sh" --deep || true
 
 log "done — restart Cursor / Claude to pick up changes"
