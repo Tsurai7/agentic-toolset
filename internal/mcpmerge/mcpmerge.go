@@ -49,6 +49,25 @@ func LoadEnv(root string) map[string]string {
 	return env
 }
 
+// unresolvedLauncherWarning returns a warning when npx cannot be resolved on this
+// machine, so a "successful" install does not silently leave a dead MCP server
+// (BUG-13). npxValue is the resolved NPX env value; npxFound is whether npx was
+// actually located on PATH. Empty result ⇒ npx is fine.
+func unresolvedLauncherWarning(npxValue string, npxFound bool) string {
+	if !npxFound && (npxValue == "" || npxValue == "npx") {
+		return "merge-mcp: WARNING npx not found on PATH — managed MCP servers that use it " +
+			"(e.g. gitnexus) will not launch until you install Node/npx (e.g. `brew install node`)"
+	}
+	return ""
+}
+
+func warnIfNpxMissing(env map[string]string) {
+	_, err := exec.LookPath("npx")
+	if msg := unresolvedLauncherWarning(env["NPX"], err == nil); msg != "" {
+		fmt.Fprintln(os.Stderr, msg)
+	}
+}
+
 func which(name, fallback string) string {
 	if p, err := exec.LookPath(name); err == nil {
 		return p
@@ -204,6 +223,7 @@ func substituteServers(servers *jsonorder.Map, env map[string]string) *jsonorder
 // MergeCursor merges the managed servers into the mcp.json at outPath, preserving
 // any hand-added servers (and other top-level keys). Repo-managed servers win.
 func MergeCursor(root, outPath string) error {
+	warnIfNpxMissing(LoadEnv(root))
 	managed, err := resolveManaged(root, true)
 	if err != nil {
 		return err
@@ -256,6 +276,7 @@ func RegisterClaudeUser(root string) error {
 		fmt.Fprintln(os.Stderr, "merge-mcp: 'claude' CLI not on PATH — skipping user-scope MCP registration")
 		return nil //nolint:nilerr // optional dependency: skip user-scope registration when the 'claude' CLI is absent
 	}
+	warnIfNpxMissing(LoadEnv(root))
 	managed, err := resolveManaged(root, false)
 	if err != nil {
 		return err

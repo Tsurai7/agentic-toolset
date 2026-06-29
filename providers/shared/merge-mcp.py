@@ -120,6 +120,7 @@ def register_claude_user(agentic_root: Path) -> int:
         )
         return 0
     env = load_env(agentic_root)
+    warn_if_npx_missing(env)
     fragments = collect_fragments(agentic_root / "integrations")
     managed = substitute(fragments, env).get("mcpServers", {})
     dry = os.environ.get("DRY_RUN") == "1"
@@ -150,6 +151,18 @@ def register_claude_user(agentic_root: Path) -> int:
     return 0
 
 
+def warn_if_npx_missing(env: dict) -> None:
+    """Warn (stderr) when npx can't be resolved, so a 'successful' merge doesn't
+    silently leave a dead MCP server (BUG-13). Mirrors the Go path."""
+    npx = env.get("NPX", "")
+    if shutil.which("npx") is None and npx in ("", "npx"):
+        print(
+            "merge-mcp: WARNING npx not found on PATH — managed MCP servers that use it "
+            "(e.g. gitnexus) will not launch until you install Node/npx (e.g. `brew install node`)",
+            file=sys.stderr,
+        )
+
+
 def main() -> int:
     if len(sys.argv) < 3:
         print(
@@ -162,6 +175,7 @@ def main() -> int:
         return register_claude_user(agentic_root)
     output = Path(sys.argv[2]).resolve()
     env = load_env(agentic_root)
+    warn_if_npx_missing(env)
     overlay_path = agentic_root / "providers" / "cursor" / "mcp.overlay.json"
     base: dict = {"mcpServers": {}}
     if overlay_path.is_file():

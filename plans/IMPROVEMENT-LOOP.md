@@ -144,3 +144,18 @@ arise.
 - **Marked fixed.** `plans/03-gaps-and-bugs.md`: resolution banner on Area 1, severity-summary
   "fixed so far: 14/23", BUG-01–08 rows → ✅ FIXED, sequencing item 1 → ✅ DONE. Honest residual
   noted (mid-token code-ext filename edge). Both Criticals and all six Highs now closed.
+
+### loop 08 — warn on missing npx (BUG-13) · 2026-06-30
+- **Idea / office-hours.** North star: inject without surprises. *Status quo:* on a machine
+  without `npx`, the merge wrote a `gitnexus` server entry with `command: "npx"` and exited 0
+  — a green install that silently hides a dead MCP server, surfacing only later inside the
+  client. *Wedge:* a loud stderr warning at merge time in both the Go (primary) and Python
+  (fallback) paths.
+- **Change.** `mcpmerge.unresolvedLauncherWarning` (pure) + `warnIfNpxMissing` wired into
+  `MergeCursor`/`RegisterClaudeUser`; mirrored as `warn_if_npx_missing` in `merge-mcp.py` at
+  both entry points.
+- **Bench.** `internal/mcpmerge/launcher_test.go::TestUnresolvedLauncherWarning`; verified both
+  implementations print the warning under `PATH=/usr/bin`; `parity_test.go` (output files)
+  still matches Go vs Python — re-ran with `-count=1`.
+- **Validated.** `bin/ci-check.sh` all green. Marked ✅ FIXED (with honest empty-NODE_PATH
+  residual) in `plans/03-gaps-and-bugs.md`. Backlog now **15/23**; remaining all Medium/Low.

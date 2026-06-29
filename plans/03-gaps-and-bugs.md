@@ -409,7 +409,16 @@ parity. Bench: `providers/shared/selftest.py::test_failed_write_leaves_original_
 with no temp leak), wired into `bin/ci-check.sh`; `internal/installtest/parity_test.go` still
 matches Go vs Python byte-for-byte.
 
-### BUG-13 — Missing `npx`/`npm` produces a "successful" install with an unrunnable MCP server — Medium — **Observed**
+### BUG-13 — Missing `npx`/`npm` produces a "successful" install with an unrunnable MCP server — Medium — **Observed** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Both `mcpmerge` (Go) and `merge-mcp.py` (Python) now emit a loud stderr
+WARNING when `npx` can't be resolved on PATH ("managed MCP servers that use it … will not
+launch until you install Node/npx"), so a green install no longer silently hides a dead
+server. Bench: `internal/mcpmerge/launcher_test.go::TestUnresolvedLauncherWarning` (pure
+logic: bare-fallback/empty → warn; resolved/explicit-path → quiet); verified by running both
+implementations under `PATH=/usr/bin`. The parity test is unaffected (it compares output
+files, not stderr). **Residual (cosmetic):** an empty `NODE_PATH` is still written rather than
+omitted — left alone to avoid a Go/Python output-parity change; harmless at runtime.
 
 `merge-mcp.py:14-27`, `:34`, `:36`.
 
@@ -703,7 +712,7 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 | BUG-12 ✅ | Non-atomic `write_text` can corrupt live config on interruption | Med | S | — | **FIXED** 2026-06-30 (loop) — `safe_io.atomic_write_text` (Python); Go already atomic |
 | BUG-10 ✅ | `merge-settings.py` writes `"$schema": null` | Med | S | — | **FIXED** (guarded in Python; Go matches via parity test) |
 | BUG-11 | Doc claims merge scripts back up; they don't (standalone) | Med | S | BUG-12 | No — doc + move-backup-into-writer fix now |
-| BUG-13 | Missing `npx`/`npm` ⇒ green install, dead MCP server | Med | S | — | Partial — Go must still warn on unresolved launcher |
+| BUG-13 ✅ | Missing `npx`/`npm` ⇒ green install, dead MCP server | Med | S | — | **FIXED** 2026-06-30 (loop) — loud npx warning (Go + Python); empty NODE_PATH residual |
 | BUG-14 | `.env` parsed twice (bash `source` vs python) with divergent semantics | Med | M | — | Partial — Go must pick one parser |
 | BUG-17 | Unbounded `.bak` proliferation in `$HOME` on every run | Med | S | — | Partial — Go installer should diff-then-backup |
 | BUG-22 ✅ | Eval loaders crash hard on one malformed JSON (opaque CI failure) | Med | S | — | **FIXED** 2026-06-30 (loop) — Python fix landed (mirrors `merge.load_json`) |
