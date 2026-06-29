@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/Tsurai7/agentic-cfg/internal/claudemd"
+	"github.com/Tsurai7/agentic-cfg/internal/gain"
 	"github.com/Tsurai7/agentic-cfg/internal/hook"
 	"github.com/Tsurai7/agentic-cfg/internal/mcpmerge"
 	"github.com/Tsurai7/agentic-cfg/internal/settings"
@@ -29,6 +30,8 @@ func main() {
 		os.Exit(mergeMCP(os.Args[2:]))
 	case "merge-claude-md":
 		os.Exit(mergeClaudeMD(os.Args[2:]))
+	case "gain":
+		os.Exit(gain.Main(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(0)
@@ -91,5 +94,6 @@ commands:
   merge-mcp <root> <out>                    merge managed MCP servers into a mcp.json (Cursor)
   merge-mcp <root> --register-claude-user   register managed MCP servers at Claude user scope
   merge-claude-md <generated> <claude_md>   ensure CLAUDE.md @imports the generated config
+  gain [--last N] [--project S] [--json]    performance readout: token volume, cache hit rate, cost saved
 `)
 }

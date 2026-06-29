@@ -44,3 +44,22 @@ arise.
   `…/zzz-temp-broken.json: invalid JSON: …` and exits 1, then removed it.
 - **Validated.** `evals/selftest.py` 9 checks; `evals/lint.py` 20 cases; `bin/ci-check.sh` all green.
 - **Marked fixed.** `plans/03-gaps-and-bugs.md` BUG-22 → ✅ FIXED (report.py already guarded; bench.py gone).
+
+### loop 02 — `agentic gain`: built-in metrics & observability · 2026-06-30
+- **Idea / office-hours.** Operator ask: "built-in metrics & observability on the perf of
+  this cfg (reduced token usage, better LLM perf), accessible via `agentic gain`." *Status
+  quo:* `telemetry/report.py` already computes token/cache metrics, but it's a Python script
+  you must know to invoke — not surfaced through the `agentic` binary, not "built-in." *Wedge:*
+  one self-contained Go subcommand that leads with the **gain** (token-weighted cache-hit
+  rate + input cost avoided by caching) and agrees with report.py. *Non-breaking:* read-only
+  on transcripts, additive, zero new config.
+- **Change.** New `internal/gain/` package (parse `~/.claude/projects/**/*.jsonl`, dedup
+  usage per `message.id`, main/sub buckets, mirror report.py's pricing) + `agentic gain`
+  (`--last/--project/--json`) wired in `cmd/agentic/main.go`. Headline metric: input-cost
+  saved % — honestly negative for a write-heavy/no-reuse session.
+- **Bench.** `internal/gain/gain_test.go`: dedup, bucketing, hit-rate math, cost-saved math,
+  no-usable-turns → nil, and the negative-savings signal. Runs in `go test ./...` (ci-check).
+- **Validated.** Go test green; ran for real → 94.6% hit rate over 20 sessions, $409.75 (81%)
+  input bill avoided; cross-checked the hit rate vs `telemetry/report.py` (94.6% — agree);
+  `--json` and `--project` verified; `bin/ci-check.sh` all green.
+- **Docs.** `telemetry/README.md` (built-in readout section) + `README.md` (Metrics section).

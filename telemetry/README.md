@@ -7,7 +7,35 @@ subagent split, and tool-call distribution.
 
 Read-only on the transcripts. Stdlib only — no dependencies, no network.
 
-## Usage
+## Built-in readout: `agentic gain`
+
+The fastest way to see what this config is buying you is the built-in command in
+the `agentic` binary — no Python, no flags to remember:
+
+```bash
+agentic gain                       # last 20 sessions
+agentic gain --last 50 --project agentic-cfg
+agentic gain --json                # machine-readable
+```
+
+```
+agentic-cfg gain — over 20 session(s)
+  input (fresh)    : 168.4k
+  cache read       : 34.1M
+  cache hit rate   : 94.6%   (cache_read / total input) — healthy (≥ 80% floor)
+  subagent share   : 10.5%   (context isolated off the main thread)
+  input cost saved : $409.75  (81% of the would-be input bill, avoided by caching)
+  est. cost        : $118.05  (approximate — verify rates vs current pricing)
+```
+
+It mirrors `report.py`'s parsing (and agrees with it on the hit rate), but leads
+with the **gain**: the token-weighted cache-hit rate and the input-token cost the
+cache is avoiding — a write-heavy session that never reuses its cache correctly
+shows a *negative* saving. Use `report.py` below for the richer per-session table,
+tool breakdown, and cost detail. Implementation: `internal/gain/` (Go,
+unit-tested), wired in `cmd/agentic/main.go`.
+
+## Usage (`report.py`)
 
 ```bash
 python3 telemetry/report.py                # last 10 sessions

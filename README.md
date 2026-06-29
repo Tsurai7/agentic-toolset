@@ -59,6 +59,18 @@ python3 evals/run.py --track all   # behavioral evals (dry by default; see evals
 Measured value-A/B results per model: [`evals/BENCHMARKS.md`](evals/BENCHMARKS.md).
 How to add and maintain cases: [`evals/PLAYBOOK.md`](evals/PLAYBOOK.md).
 
+## Metrics
+
+See what the config is buying you — token volume, prompt-cache hit rate, and the
+input cost avoided by caching — straight from your own session transcripts:
+
+```bash
+agentic gain                 # last 20 sessions (read-only; built into the binary)
+agentic gain --json          # machine-readable
+```
+
+Richer per-session/cost/tool breakdown: [`telemetry/`](telemetry/README.md).
+
 ## Phase 2 (not automated yet)
 
 - **OpenAI Codex:** `~/.codex/config.toml` — add `integrations/*/mcp.codex.toml.fragment` later
