@@ -55,6 +55,12 @@ func TestShellGuard(t *testing.T) {
 		{"heredoc fail-open", "cat <<EOF\nhi\nEOF", "PASS", ""},
 		{"command-substitution fail-open", "echo $(date)", "PASS", ""},
 		{"cd chain fail-open", "cd /tmp && ls", "PASS", ""},
+		// BUG-02: a bit-shift contains `<<` but must not be mangled — fail open
+		// (run untouched) rather than the old glob's silent wrapping-skip.
+		{"bit-shift fail-open (BUG-02)", "python3 -c 'print(1 << 3)'", "PASS", ""},
+		// BUG-01: a real multiline command (decoded \n from the JSON) must fail
+		// open, never get a literal-\n-mangled rewrite from string-munged JSON.
+		{"plain multiline fail-open (BUG-01)", "echo a\necho b", "PASS", ""},
 	}
 	for _, c := range cases {
 		gotDec, gotCmd := decide(c.cmd)

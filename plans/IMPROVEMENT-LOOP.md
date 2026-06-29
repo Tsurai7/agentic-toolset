@@ -127,3 +127,20 @@ arise.
   `bootstrap --dry-run` makes no changes + previews; `check_link` regular-file repro warns
   correctly (missing/symlink branches unchanged); YAML still validated.
 - **Validated.** `bin/ci-check.sh` all green. All three marked ✅ FIXED in `plans/03-gaps-and-bugs.md`.
+
+### loop 07 — verify + close the hook correctness cluster (BUG-01…08) · 2026-06-30
+- **Idea / office-hours.** The backlog listed BUG-01/02 (Critical) + BUG-03–08 (High) as OPEN
+  — but the code moved: `shell-guard.sh` now `exec`s the Go hook (`internal/hook`, real JSON
+  parser) and its shell fallback was hardened. *Status quo:* the backlog overstated open risk.
+  *Wedge:* verify against the Go hook + its tests, add the two missing explicit regressions,
+  and correct the backlog (a stale Critical/High count is itself a hazard — it hides what's
+  actually left).
+- **Change.** Added two regression cases to `internal/hook/hook_test.go`: bit-shift
+  `python3 -c 'print(1 << 3)'` → fail-open (BUG-02), plain multiline `echo a\necho b` →
+  fail-open (BUG-01). No production code change needed — the cluster was already fixed.
+- **Bench.** `go test ./internal/hook` green; also exercised the real `bin/agentic hook
+  shell-guard` on the bug inputs (bit-shift → pass-through; quoted-pattern grep → not denied;
+  code-file grep → denied).
+- **Marked fixed.** `plans/03-gaps-and-bugs.md`: resolution banner on Area 1, severity-summary
+  "fixed so far: 14/23", BUG-01–08 rows → ✅ FIXED, sequencing item 1 → ✅ DONE. Honest residual
+  noted (mid-token code-ext filename edge). Both Criticals and all six Highs now closed.

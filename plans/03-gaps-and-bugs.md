@@ -33,6 +33,11 @@ What this document defers to its siblings (referenced, not duplicated):
 | Low      | 6 | BUG-18 … BUG-23 |
 | **Total** | **23** | |
 
+> **✅ Fixed so far (improvement-loop, 2026-06-30):** BUG-01–08 (hook cluster, Go port),
+> BUG-10, BUG-12, BUG-18, BUG-20, BUG-21, BUG-22 — **14 of 23**, including both Criticals and
+> all six Highs. **Remaining:** BUG-09, 11, 13, 14, 15, 16, 17, 19, 23 (all Medium/Low). See
+> `plans/IMPROVEMENT-LOOP.md` for the per-iteration log.
+
 The dominant theme: `shell-guard.sh` parses a structured JSON protocol with
 `grep`/`sed`/`case` glob matching. That approach is wrong in kind, not in detail — it
 produces both **false denies** (blocks legitimate plain-text greps) and **silent
@@ -53,6 +58,23 @@ tool is present.
 ## Area 1 — `shell-guard.sh` (the hook)
 
 File: `providers/claude/hooks/shell-guard.sh`.
+
+> **✅ RESOLVED — BUG-01…BUG-08 cluster (improvement loop, 2026-06-30).** The whole cluster is
+> closed on the primary path. `shell-guard.sh` now `exec`s the Go hook (`bin/agentic hook
+> shell-guard`, `internal/hook/hook.go`) when the binary is built — the default, since
+> `bootstrap.sh` builds it. The Go hook parses the hook JSON with a real decoder (eliminating
+> the grep/sed string-munging → BUG-01/05/08) and **fails open** on any command a wrapper would
+> mangle: `<<`/heredocs, embedded newlines, `$(…)`/backticks, `cd` chains (BUG-02/04 by design —
+> never mangle, accepting that e.g. a bit-shift goes uncompressed). The ast-grep deny strips
+> quoted substrings before the code-extension test (BUG-03); the wrapped-check strips leading
+> `VAR=` assignments (BUG-06); Go returns 0 on any internal error, so a parse miss degrades to
+> pass-through, never a spurious deny (BUG-07). The shell fallback below was hardened the same
+> way for machines without the Go binary. Defended by `internal/hook/hook_test.go` (quoted-pattern
+> grep not denied, code-file deny, env-prefix no-double-wrap, heredoc/multiline/bit-shift/
+> command-subst fail-open, unparseable-input fail-open). Residual edge (not a regression): a
+> non-code file whose name embeds a code extension mid-token (e.g. `report.go.txt`) can still
+> trip the deny — rare, and grep there is uncommon. Per-bug headings keep their original
+> severity for history.
 
 ### BUG-01 — Multiline / escaped-whitespace commands are silently corrupted — Critical — **Observed**
 
@@ -670,14 +692,14 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 
 | ID | Title | Sev | Effort | Depends-on | Go-fixes? |
 |----|-------|-----|--------|------------|-----------|
-| BUG-01 | Multiline/`\n`/`\t` commands silently corrupted (string-munged JSON) | Critical | M | — | **Yes** — `encoding/json` round-trips correctly |
-| BUG-02 | `*'<<'*` glob skips wrapping for bit-shift / any `<<` substring | Critical | S | — | **Yes** — token-aware command parsing |
-| BUG-03 | ast-grep deny false-positives on any code-ext substring | High | M | — | **Yes** — inspect file args only after shell-split |
-| BUG-04 | ast-grep deny false-negative in `$(grep …)` / non-leading position | High | S | BUG-03 | **Yes** — same shell-split |
-| BUG-06 | Double-wrap guard misses env-prefixed wrapped commands | High | S | — | **Yes** — inspect first command word |
-| BUG-05 | `extract()` breaks if protocol JSON spans lines | High | S | BUG-01 | **Yes** — whole-stdin JSON parse |
-| BUG-07 | `set -e`/`pipefail` control-flow fragility; hook can abort→deny | High | S | BUG-01 | **Yes** — Go won't use `-e` parsing; ensure exit 0 on internal error |
-| BUG-08 | JSON escaping via BSD/GNU-divergent `sed` blocks the real fix | High | S | BUG-01 | **Yes** — no `sed`; cross-ref [doc 04](04-portability-review.md) |
+| BUG-01 ✅ | Multiline/`\n`/`\t` commands silently corrupted (string-munged JSON) | Critical | M | — | **FIXED** — Go hook real JSON parse + fail-open on newline |
+| BUG-02 ✅ | `*'<<'*` glob skips wrapping for bit-shift / any `<<` substring | Critical | S | — | **FIXED** — deliberate fail-open on `<<` (no mangle) |
+| BUG-03 ✅ | ast-grep deny false-positives on any code-ext substring | High | M | — | **FIXED** — strips quoted substrings before the ext test |
+| BUG-04 ✅ | ast-grep deny false-negative in `$(grep …)` / non-leading position | High | S | BUG-03 | **FIXED** (by design) — `$(` fails open, no in-substitution analysis |
+| BUG-06 ✅ | Double-wrap guard misses env-prefixed wrapped commands | High | S | — | **FIXED** — strips leading `VAR=` before the wrapped-check |
+| BUG-05 ✅ | `extract()` breaks if protocol JSON spans lines | High | S | BUG-01 | **FIXED** — whole-stdin JSON parse |
+| BUG-07 ✅ | `set -e`/`pipefail` control-flow fragility; hook can abort→deny | High | S | BUG-01 | **FIXED** — Go returns 0 on any internal error |
+| BUG-08 ✅ | JSON escaping via BSD/GNU-divergent `sed` blocks the real fix | High | S | BUG-01 | **FIXED** — no `sed`; real JSON encoder |
 | BUG-12 ✅ | Non-atomic `write_text` can corrupt live config on interruption | Med | S | — | **FIXED** 2026-06-30 (loop) — `safe_io.atomic_write_text` (Python); Go already atomic |
 | BUG-10 ✅ | `merge-settings.py` writes `"$schema": null` | Med | S | — | **FIXED** (guarded in Python; Go matches via parity test) |
 | BUG-11 | Doc claims merge scripts back up; they don't (standalone) | Med | S | BUG-12 | No — doc + move-backup-into-writer fix now |
@@ -696,7 +718,8 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 
 ### Recommended sequencing
 
-1. **Hook correctness cluster (BUG-01, 02, 05, 06, 03, 04, 07, 08).** These are the
+1. **Hook correctness cluster (BUG-01, 02, 05, 06, 03, 04, 07, 08) — ✅ DONE (Go hook port +
+   shell hardening, 2026-06-30; see the banner at the top of Area 1).** These are the
    Critical/High mass and they share a single root cause: parsing a structured protocol and
    a shell command with `grep`/`sed`/glob. The highest-leverage move is the Go rewrite
    ([doc 01](01-go-rewrite.md)), which deletes the entire class. If the rewrite is not
