@@ -159,3 +159,15 @@ arise.
   still matches Go vs Python — re-ran with `-count=1`.
 - **Validated.** `bin/ci-check.sh` all green. Marked ✅ FIXED (with honest empty-NODE_PATH
   residual) in `plans/03-gaps-and-bugs.md`. Backlog now **15/23**; remaining all Medium/Low.
+
+### loop 09 — single-pass placeholder substitution (BUG-15) · 2026-06-30
+- **Idea / office-hours.** Correctness hardening of the merge hot path. *Status quo:* both
+  `substitute()`s looped over the env map doing repeated `replace("__KEY__", val)` — multi-pass,
+  so a resolved value containing a `__TOKEN__` could be re-substituted and a prefix key could
+  clobber a longer one. Latent today (no colliding keys) but fragile. *Wedge:* one regex pass.
+- **Change.** Go: `placeholderRe.ReplaceAllStringFunc`; Python: `re.compile(r"__([A-Z0-9_]+)__").sub`.
+  Each placeholder resolved once from the original text; unknown placeholders left untouched.
+- **Bench.** `internal/mcpmerge/substitute_test.go::TestSubstituteSinglePass` (double-sub,
+  prefix-collision, unknown, nested). Python spot-checked. Output unchanged for the current key
+  set → `parity_test.go` still matches (re-ran `-count=1`).
+- **Validated.** `bin/ci-check.sh` all green. Marked ✅ FIXED — backlog **16/23**.

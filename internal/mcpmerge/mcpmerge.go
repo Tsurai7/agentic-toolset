@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -105,15 +106,23 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
+var placeholderRe = regexp.MustCompile(`__([A-Z0-9_]+)__`)
+
 // substitute replaces __KEY__ tokens in every string leaf (recursively), like
-// the Python substitute(). Object keys are left untouched.
+// the Python substitute(). Object keys are left untouched. A single regex pass
+// resolves each placeholder exactly once from the original text, so a resolved
+// value that itself contains a __TOKEN__ is never re-substituted and a key that
+// is a prefix of another (__LEAN_CTX__ vs __LEAN_CTX_DATA_DIR__) cannot clobber
+// it (BUG-15). Unknown placeholders are left untouched.
 func substitute(v any, env map[string]string) any {
 	switch t := v.(type) {
 	case string:
-		for k, val := range env {
-			t = strings.ReplaceAll(t, "__"+k+"__", val)
-		}
-		return t
+		return placeholderRe.ReplaceAllStringFunc(t, func(m string) string {
+			if val, ok := env[m[2:len(m)-2]]; ok {
+				return val
+			}
+			return m
+		})
 	case map[string]any:
 		for k, vv := range t {
 			t[k] = substitute(vv, env)

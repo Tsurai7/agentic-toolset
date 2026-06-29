@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -52,11 +53,16 @@ def load_env(agentic_root: Path) -> dict[str, str]:
     return env
 
 
+_PLACEHOLDER = re.compile(r"__([A-Z0-9_]+)__")
+
+
 def substitute(obj: object, env: dict[str, str]) -> object:
     if isinstance(obj, str):
-        for key, value in env.items():
-            obj = obj.replace(f"__{key}__", value)
-        return obj
+        # Single pass: each __KEY__ is resolved once from the original text, so a
+        # resolved value containing a __TOKEN__ is not re-substituted and a
+        # prefix key cannot clobber a longer one (BUG-15). Unknown placeholders
+        # are left untouched.
+        return _PLACEHOLDER.sub(lambda m: env.get(m.group(1), m.group(0)), obj)
     if isinstance(obj, dict):
         return {k: substitute(v, env) for k, v in obj.items()}
     if isinstance(obj, list):

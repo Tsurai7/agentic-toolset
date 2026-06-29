@@ -472,7 +472,16 @@ either parser alone.
 read **only** from `os.environ` (drop the second file parse), or vice-versa. Don't parse the
 same file two ways. Cross-ref doc 01 (the Go rewrite should pick one).
 
-### BUG-15 — `substitute()` does naive global `__KEY__` replacement; value-injected placeholders double-substitute — Medium → Low — **Inferred (medium confidence)**
+### BUG-15 — `substitute()` does naive global `__KEY__` replacement; value-injected placeholders double-substitute — Medium → Low — **Inferred (medium confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Both implementations now substitute in a **single regex pass** over
+`__([A-Z0-9_]+)__`, resolving each placeholder exactly once from the original text (Go:
+`placeholderRe.ReplaceAllStringFunc`; Python: `re.compile(...).sub`). A resolved value that
+itself contains a `__TOKEN__` is no longer re-substituted, a prefix key
+(`__LEAN_CTX__` vs `__LEAN_CTX_DATA_DIR__`) cannot clobber the longer one, and unknown
+placeholders are left untouched. Bench: `internal/mcpmerge/substitute_test.go::TestSubstituteSinglePass`
+(double-substitution, prefix-collision, unknown, nested map/slice). Output is unchanged for the
+current key set, so `parity_test.go` still matches Go vs Python.
 
 `merge-mcp.py:52-61`.
 
@@ -717,7 +726,7 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 | BUG-17 | Unbounded `.bak` proliferation in `$HOME` on every run | Med | S | — | Partial — Go installer should diff-then-backup |
 | BUG-22 ✅ | Eval loaders crash hard on one malformed JSON (opaque CI failure) | Med | S | — | **FIXED** 2026-06-30 (loop) — Python fix landed (mirrors `merge.load_json`) |
 | BUG-09 | No `rtk`/`lean-ctx` ⇒ denies still fire but no compression (worst of both) | Med | S | BUG-03 | Partial — Go should gate deny on availability |
-| BUG-15 | `substitute()` naive global replace; placeholder double-substitution | Med→Low | S | — | **Yes** — single-pass regex substitution |
+| BUG-15 ✅ | `substitute()` naive global replace; placeholder double-substitution | Med→Low | S | — | **FIXED** 2026-06-30 (loop) — single-pass regex (Go + Python) |
 | BUG-16 | `data.get("mcpServers", data)` accepts malformed fragments silently | Low | S | — | Partial — Go should validate fragment shape |
 | BUG-18 ✅ | `bootstrap.sh` ignores `--dry-run`; can trigger real install | Low | S | — | **FIXED** 2026-06-30 (loop) — arg loop + dry-run gating |
 | BUG-19 | `--dry-run` never previews merge output | Low | M | BUG-13 | Partial — Go dry-run should print resolved JSON |
