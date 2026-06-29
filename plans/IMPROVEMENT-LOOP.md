@@ -99,3 +99,15 @@ arise.
   round-tripped cleanly (user "keep me" survived; managed block/hooks/allow added then fully
   removed); `bin/ci-check.sh` all green.
 - **Docs.** `README.md` (Inject/eject section) + design doc.
+
+### loop 05 — `agentic gain --gate`: token-efficiency regression gate · 2026-06-30
+- **Idea / office-hours.** North star: *measurable* reduced token usage. *Status quo:* `gain`
+  reports the cache hit rate but can't fail CI on a regression; `telemetry/gate.py` does, but
+  it's a separate Python script, not in the binary. *Wedge:* a `--gate` flag on `gain` that
+  turns the token-weighted hit rate into a pass/fail exit code, mirroring gate.py (skip on a
+  too-small sample so cold-start noise can't trip it).
+- **Change.** `gain.Gate(report, minRate, minTokens) (verdict, code)` (pure, testable) +
+  `--gate/--min-hit-rate/--min-tokens` flags in `gain.Main`.
+- **Bench.** `internal/gain/gain_test.go::TestGate` (pass / fail / inclusive boundary / skip).
+- **Validated.** Real `agentic gain --gate` → PASS 95.9% (exit 0); `--min-hit-rate 0.999` →
+  FAIL (exit 1); `bin/ci-check.sh` all green. Docs: `telemetry/README.md`.

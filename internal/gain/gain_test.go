@@ -80,6 +80,33 @@ func TestAggregateGain(t *testing.T) {
 	}
 }
 
+func TestGate(t *testing.T) {
+	cases := []struct {
+		name     string
+		r        Report
+		minRate  float64
+		minToks  int
+		wantCode int
+		wantHas  string
+	}{
+		{"pass above floor", Report{TotalInput: 100000, CacheRead: 95000, CacheHitRate: 0.95}, 0.80, 50000, 0, "PASS"},
+		{"fail below floor", Report{TotalInput: 100000, CacheRead: 50000, CacheHitRate: 0.50}, 0.80, 50000, 1, "FAIL"},
+		{"boundary inclusive", Report{TotalInput: 100000, CacheRead: 80000, CacheHitRate: 0.80}, 0.80, 50000, 0, "PASS"},
+		{"skip small sample", Report{TotalInput: 1000, CacheRead: 0, CacheHitRate: 0.0}, 0.80, 50000, 0, "SKIP"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			verdict, code := Gate(c.r, c.minRate, c.minToks)
+			if code != c.wantCode {
+				t.Errorf("code = %d, want %d (%q)", code, c.wantCode, verdict)
+			}
+			if !strings.Contains(verdict, c.wantHas) {
+				t.Errorf("verdict = %q, want to contain %q", verdict, c.wantHas)
+			}
+		})
+	}
+}
+
 func TestNoUsableTurns(t *testing.T) {
 	for _, in := range []string{"", "{bad\n{\"type\":\"user\"}\n", `{"type":"assistant","message":{"id":"x"}}`} {
 		s, err := ParseLines(strings.NewReader(in))

@@ -16,6 +16,7 @@ the `agentic` binary — no Python, no flags to remember:
 agentic gain                       # last 20 sessions
 agentic gain --last 50 --project agentic-cfg
 agentic gain --json                # machine-readable
+agentic gain --gate                # regression gate: exit 1 if hit rate < 80% (CI-friendly)
 ```
 
 ```

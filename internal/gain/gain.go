@@ -304,6 +304,23 @@ func Aggregate(sessions []*Session) Report {
 	return r
 }
 
+// Gate evaluates a report against a minimum cache-hit-rate floor. It returns a
+// verdict line and a process exit code: 0 = pass OR insufficient data (skip), 1 =
+// regression. Mirrors telemetry/gate.py — token-weighted, and skips rather than
+// fails when the sample is too small to judge, so cold-start noise can't trip it.
+func Gate(r Report, minRate float64, minTokens int) (string, int) {
+	if r.TotalInput < minTokens {
+		return fmt.Sprintf("SKIP: only %s input tokens (< %s) — too small to judge",
+			fmtK(r.TotalInput), fmtK(minTokens)), 0
+	}
+	if r.CacheHitRate+1e-9 < minRate {
+		return fmt.Sprintf("FAIL: cache hit rate %.1f%% < floor %.1f%% over %d session(s)",
+			r.CacheHitRate*100, minRate*100, r.Sessions), 1
+	}
+	return fmt.Sprintf("PASS: cache hit rate %.1f%% >= floor %.1f%% over %d session(s)",
+		r.CacheHitRate*100, minRate*100, r.Sessions), 0
+}
+
 func fmtK(n int) string {
 	switch {
 	case n >= 1_000_000:
@@ -349,10 +366,15 @@ func Main(args []string) int {
 	last := fs.Int("last", 20, "number of most-recent sessions to include (0 = all)")
 	project := fs.String("project", "", "filter by project/dir substring")
 	asJSON := fs.Bool("json", false, "emit JSON instead of a table")
+	gate := fs.Bool("gate", false, "regression gate: exit 1 if the cache hit rate is below --min-hit-rate")
+	minRate := fs.Float64("min-hit-rate", 0.80, "cache-hit-rate floor for --gate")
+	minTokens := fs.Int("min-tokens", 50000, "skip the gate (exit 0) below this many total input tokens")
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "usage: agentic gain [--root DIR] [--last N] [--project SUBSTR] [--json]\n\n"+
+		fmt.Fprint(os.Stderr, "usage: agentic gain [--root DIR] [--last N] [--project SUBSTR] [--json]\n"+
+			"       agentic gain --gate [--min-hit-rate 0.80] [--min-tokens 50000]\n\n"+
 			"Built-in performance readout from Claude Code transcripts: token volume,\n"+
-			"prompt-cache hit rate, input cost avoided by caching, and subagent share.\n")
+			"prompt-cache hit rate, input cost avoided by caching, and subagent share.\n"+
+			"--gate turns the cache hit rate into a pass/fail check for CI.\n")
 	}
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -366,7 +388,13 @@ func Main(args []string) int {
 		fmt.Fprintf(os.Stderr, "agentic gain: %v\n", err)
 		return 1
 	}
-	Render(os.Stdout, Aggregate(sessions), *asJSON)
+	report := Aggregate(sessions)
+	if *gate {
+		verdict, code := Gate(report, *minRate, *minTokens)
+		fmt.Println(verdict)
+		return code
+	}
+	Render(os.Stdout, report, *asJSON)
 	return 0
 }
 
