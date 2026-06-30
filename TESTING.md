@@ -170,12 +170,16 @@ first). The blocks are:
 4. YAML validity — `yaml.safe_load` on every `*.yaml`/`*.yml`; WARN/skip if PyYAML is absent.
 5. SKILL.md frontmatter — each `core/skills/*/SKILL.md` must start with `---` and contain `name:` and `description:`.
 6. Skill reference links — every `references/NAME.md` mentioned in a SKILL.md must exist on disk.
-7. Evals lint — `python3 evals/lint.py`.
-8. Evals self-test — `python3 evals/selftest.py`.
-9. Evals parse dry-run — `python3 evals/run.py --track all` (no `--confirm`, so zero tokens; a parse/load smoke test of the conformance + value cases only).
-10. Memory hygiene — `python3 core/memory/lint.py` on version-controlled seeds only (the `--live` path must never run in CI).
-11. Always-on prefix budget — `bash bin/prefix-budget.sh`: sums the source files rendered into the always-on Claude prefix (stub + AGENTS.md + principles + user-rules, excluding the Cursor-only `cursor-rules-pointer.md`) and fails if they exceed the committed `PREFIX_BUDGET_BYTES`, so the per-turn prefix cannot silently grow.
-12. Go block — only if `go` is present (else WARN): `gofmt -l cmd internal` must be empty, then `go vet ./...`, `go test ./...`, `go build -o bin/agentic ./cmd/agentic`.
+7. Markdown links (relative) — `python3 bin/check-links.py`; fails on a broken relative link.
+8. Evals lint — `python3 evals/lint.py`.
+9. Evals self-test — `python3 evals/selftest.py`.
+10. Merge helpers self-test — `python3 providers/shared/selftest.py` (atomic-write merge logic).
+11. Edit-lint hook self-test — `bash providers/claude/hooks/edit-lint.test.sh`; asserts the PostToolUse hook flags a broken `.py`/`.go`/`.sh` edit and stays silent otherwise.
+12. SWE benchmark self-test — `python3 evals/swe_bench.py --selftest`, only if `go` is present (else WARN).
+13. Evals parse dry-run — `python3 evals/run.py --track all` (no `--confirm`, so zero tokens; a parse/load smoke test of the conformance + value cases only).
+14. Memory hygiene — `python3 core/memory/lint.py` on version-controlled seeds only (the `--live` path must never run in CI).
+15. Always-on prefix budget — `bash bin/prefix-budget.sh`: sums the source files rendered into the always-on Claude prefix (stub + AGENTS.md + principles + user-rules, excluding the Cursor-only `cursor-rules-pointer.md`) and fails if they exceed the committed `PREFIX_BUDGET_BYTES`, so the per-turn prefix cannot silently grow.
+16. Go block — only if `go` is present (else WARN): `gofmt -l cmd internal` must be empty, then `go vet ./...`, `go test ./...`, `go build -o bin/agentic ./cmd/agentic`.
 
 The Go binary `bin/agentic` is gitignored and built fresh from the checkout; it is never
 vendored. The install integration test exercises the Go binary path only if a built,
