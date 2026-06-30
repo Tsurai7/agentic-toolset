@@ -24,9 +24,18 @@
 | **9** | **Conditional weak-tier self-critique** (W4 step 3, designed, unbuilt) — one bounded, hard-task-gated pass | Lifts weak+hard correctness without regressing the easy band | suite #0 `very_hard` × Haiku (two-band value case) | M | The self-critique paradox (hurts high-base tasks) — hard-task trigger only |
 | **10** | **Cache hygiene**: 1h TTL for spaced eval runs + byte-stable post-compaction prefix (extend `PreCompact` hook) | Holds cache hit ≥85% across spaced requests; cuts repeated turn-1 `cache_creation` | telemetry hit-rate before/after | S | 1h TTL costs ~2× on write — net loss on truly one-shot runs |
 
-## Measured so far (loops 25–26 — see [benchmark-results.md](benchmark-results.md))
+## Measured so far (loops 25–28 — see [benchmark-results.md](benchmark-results.md))
 
 The instrument now exists and has run live across all three tiers. What the data changed:
+
+- **Root cause found — items 2 & 3 target the wrong layer.** A captured ON-arm `easy` transcript
+  shows all 12 tool calls were **codebase-memory-mcp** (index the repo → Cypher `query_graph` →
+  six per-snippet fetches), driven by the user's personal `~/.claude/hooks/cbm-session-reminder`
+  SessionStart gate ("ALWAYS use codebase-memory-mcp tools FIRST"). **agentic-cfg's own tools
+  (gitnexus, ast-grep, lean-ctx) never fired**, and this repo has zero references to
+  codebase-memory. So the measured over-tooling is the user's cbm gate, not agentic-cfg — and the
+  real token-cut lever is making that gate conditional (don't index+graph a 2-file task), which
+  lives in the user's config. Items 2/3 below are re-scoped accordingly.
 
 - **Item 0 — tested, still open.** 30/30 matrix arms were correct, and the `expert` rung added
   specifically to break bare Haiku (loop 27) also went **5/5 at n=5** (loop 28). So a *correctness*
@@ -36,12 +45,12 @@ The instrument now exists and has run live across all three tiers. What the data
 - **Item 1 — partially done.** Per-rep min/median/max spread now ships (loop 26); the on-tier
   hypothesis held — Haiku's `easy` ratio moved 2.30× (n=1) → 1.67× (n=5 median), with a measured
   per-rep band. Still to do: raise default reps and persist full distributions to the JSONL.
-- **Item 2 — supported, magnitude tempered.** The weak-tier `easy` tax is real but ~1.67× (n=5),
-  not the ~2.3–2.6× the single draws suggested; Opus is unaffected (1.01×). The new datum is that
-  **Sonnet** carries a *small* tax (1.31×), so "extend the trimmed profile past Haiku" is a weaker
-  (still open) hypothesis.
-- **Item 3 — premise corrected** (see the row above): the inducer is a light-task, not a
-  trivial-task, effect.
+- **Item 2 — re-scoped.** The weak-tier `easy` tax is real (~1.67× at n=5, Opus unaffected) but
+  is the cbm gate, not agentic-cfg's render — so trimming gitnexus/precedence prose won't move it.
+  Item 2 is only measurable after the cbm confound is isolated.
+- **Item 3 — right idea, wrong target.** A conditional "fire only on large reads" gate is the fix,
+  but it belongs on `cbm-session-reminder` (the actual inducer), not agentic-cfg's lean-ctx
+  redirect; and the effect is light-task, not the `trivial` tier the item names.
 
 ## Sequencing rationale
 

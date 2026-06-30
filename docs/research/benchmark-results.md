@@ -86,6 +86,43 @@ correctness uplift needs either a genuinely failure-prone task class (multiple c
 non-local root cause) or a weaker executor. **Roadmap item 0 remains open**, now with a measured
 "still 5/5" data point rather than an assumption.
 
+## Root cause of the over-tooling — the codebase-memory-mcp discovery gate (NOT agentic-cfg)
+
+Reading the *count* of extra turns is not enough; the decisive question is *which tool* induces
+them. Capturing one ON-arm `easy` transcript and dumping the ordered tool calls answers it. On the
+"list the funcs returning `error` in two small files" task, Haiku made **12 tool calls, all
+`codebase-memory-mcp`**:
+
+```
+1. ToolSearch  (load codebase-memory-mcp tools)
+2. mcp__codebase-memory-mcp__index_status
+3. mcp__codebase-memory-mcp__index_repository      ← indexes the throwaway repo into a graph DB
+4. mcp__codebase-memory-mcp__query_graph           ← a Cypher MATCH query
+5. mcp__codebase-memory-mcp__search_graph
+6. ToolSearch  (load get_code_snippet)
+7-12. mcp__codebase-memory-mcp__get_code_snippet × 6
+```
+
+A two-file grep became an index-build + Cypher + six snippet fetches. **Not one agentic-cfg tool
+(gitnexus, ast-grep, lean-ctx) was used.** The pull comes from the user's personal
+`~/.claude/hooks/cbm-session-reminder` SessionStart hook, whose text is *"CRITICAL — Code Discovery
+Protocol: ALWAYS use codebase-memory-mcp tools FIRST for ANY code exploration."* A grep of this
+repository finds **zero** references to `codebase-memory` or "Code Discovery Protocol" — it is not
+part of agentic-cfg.
+
+**Consequences, stated plainly:**
+
+1. **The measured over-tooling is the user's codebase-memory-mcp gate, not agentic-cfg.** The ON
+   arm is the whole live `~/.claude` (agentic-cfg *plus* the personal cbm stack), so attributing
+   the 1.3–1.7× to agentic-cfg is wrong — agentic-cfg's own tools didn't fire.
+2. **Roadmap items 2/3 would not fix it.** Excluding gitnexus or stubbing the tool-precedence prose
+   (agentic-cfg changes) cannot reduce turns that come from the cbm SessionStart hook. The real
+   lever is **making `cbm-session-reminder` conditional** — don't push "index + graph + Cypher" on
+   tiny/local tasks — which lives in the user's config, not this repo.
+3. **A clean agentic-cfg overhead number needs isolation.** To measure agentic-cfg *alone*, run the
+   benchmark in a home where only agentic-cfg is injected (no cbm hook, no personal MCP), or with
+   the cbm SessionStart hook disabled.
+
 ## What the data says
 
 **1. The two-regime *direction* is consistent for Opus and Haiku — in a single-rep matrix.** Opus
@@ -157,8 +194,8 @@ re-run at reps=5 below.
 |---|---|
 | **0** — build a task where weak-bare *fails* | **Tested, still open.** The matrix was 30/30 correct, and the `expert` rung built to break bare Haiku also went 5/5 (n=5). The correctness question is now measured as *null* — needs a harder probe or a weaker executor, not just "build a task." |
 | **1** — harden `overhead.py` (per-rep, raise n) | **Reinforced.** On-tier evidence: Haiku's `easy` ratio moved 2.30× (n=1) → 1.67× (n=5 median), the exact wide-IQR-at-low-n the item predicts. (The standalone 3.22×→1.01× `trivial`-haiku swing is further, off-tier, n=1-noise evidence.) The cells need n≥5 persisted distributions. |
-| **2** — near-vanilla weak tier | **Supported, magnitude tempered.** Haiku's `easy` tax is real at n=5 (1.67×). Sonnet shows a *small* tax (1.31× total, 1.04× billed); the n=1 hint that it over-tools like Haiku did not survive reps=5, so "extend the trimmed profile to Sonnet" is a weaker (still testable) hypothesis than the matrix first suggested. |
-| **3** — conditional Read/Grep redirect | **Supported by the easy/medium tiers — and it corrects the item's own premise.** Roadmap item 3 names a "trivial-task turn-inducer (12–20 turns)", but every measured `trivial` cell is 3 ON turns (3/3, 3/4, 3/4) — parity or below OFF, no inducer there. The 12–26-turn inducer actually lives on `easy` (haiku 19, sonnet 18), `medium` (haiku 16) and `very_hard` (haiku 26); a redirect that doesn't fire on small/low-breadth reads should target *those* tiers, and item 3's trivial framing should be rewritten. |
+| **2** — near-vanilla weak tier | **Reframed by the root cause.** The `easy`/`medium` over-tooling is real (Haiku 1.67× at n=5) but the transcript shows it is the **codebase-memory-mcp gate**, not agentic-cfg's tools — so trimming agentic-cfg's weak render (excluding gitnexus, stubbing the precedence prose) won't reduce these turns. Item 2 only becomes measurable once the cbm confound is isolated. |
+| **3** — conditional Read/Grep redirect | **Right idea, wrong target.** A "fire only on large/structural reads" gate is exactly the fix — but it must be applied to the **`cbm-session-reminder` discovery gate** (the actual inducer: index + Cypher + per-snippet fetches on a 2-file task), not agentic-cfg's lean-ctx redirect. Also: the inducer is a light-task effect (`easy`/`medium`), not the `trivial` tier item 3 names (trivial = 3 turns). |
 | *(thesis claim, not a numbered item)* hard-task payoff is universal | **Not supported as stated; under-powered.** A win is *suggested* for Opus (`very_hard` 0.65×, n=1) and Haiku (`hard` 0.84× total / 0.96× cost, n=1), but both are single draws — as are the Sonnet `hard` 1.20× / `very_hard` 3.02×. No hard-tier cell has an n≥5 median, so per-model "payoff" is neither confirmed nor denied. |
 
 ## Caveats (from the design, restated honestly)
