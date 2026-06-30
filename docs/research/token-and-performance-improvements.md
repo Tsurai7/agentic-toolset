@@ -124,6 +124,24 @@ but most of its *quality* story is prose the data shows weak models ignore.
 - **`edit-lint` PostToolUse hook** — parse-checks `.py`/`.go`/`.js` after Edit/Write (fail-open)
   and injects a fix-it note. Mechanizes "don't ship code that doesn't parse."
 
+**Measured case — mechanizing a discovery gate beat softening its prose (live, loop 29).** The
+benchmark's weak-tier over-tooling turned out to be driven not by agentic-cfg but by an aggressive
+*discovery-gate* hook in the live environment (a "use the graph MCP FIRST; index_repository if
+needed" PreToolUse block on the first read of every session). On a 1–2 file task it forced a full
+graph index + Cypher to answer what a direct read solves — ~12 wasted tool calls. Two fixes were
+tried and measured on the same task:
+- **Softening the prose** (the SessionStart reminder → "right-size; read small things directly")
+  shifted behaviour only *probabilistically*: 1 of 4 Haiku runs skipped the graph, 3 of 4 still
+  indexed. A live re-proof of W1 — prose moves a weak model but does not enforce.
+- **Mechanizing it** (make the gate *skip the block when the working tree is < ~12 source files*)
+  was decisive: **4 of 4 runs used zero graph calls, zero indexing, all correct**, while the gate
+  still fires on real repos (verified on this 26-file checkout). 12 cbm calls → 0.
+
+The transferable pattern: **any "MCP-first / discovery-gate" hook should be scoped by working-tree
+size** (a `find | head -N` count is enough), so it never forces heavy structural tooling onto a
+trivial task. This is the same mechanical-over-prose lesson, now with a fresh before/after number
+behind it — and the strongest available evidence for the Stop-/plan-gate proposals below.
+
 **What's a nudge (the gap):** `karpathy-guidelines`, `honesty`, `coding-principles`,
 `verification-before-completion`, `model-orchestration`, `answer-shapes` are all prose — in the
 always-on prefix or an on-demand skill. The repo *already proved* (W1 falsified) that prompt
