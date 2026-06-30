@@ -20,15 +20,20 @@ Cursor / Claude after install. Full walkthrough: [`SETUP.md`](SETUP.md).
 ### Inject / eject (Claude)
 
 Add or cleanly remove the agentic-cfg footprint in your Claude config with a single,
-reversible, test-covered command (the `agentic` binary; alias it as `agentic-cfg` if you
-like). Both preserve your own `CLAUDE.md` text, `settings.json` `env`/hooks, and any real
-`~/.claude/skills` you already have:
+reversible, test-covered command. `agentic-cfg` ([`bin/agentic-cfg`](bin/agentic-cfg), also
+available as `agentic`) preserves your own `CLAUDE.md` text, `settings.json` `env`/hooks, and
+any real `~/.claude/skills` you already have:
 
 ```bash
-agentic inject              # add: skills symlink, CLAUDE.md @import, hooks + permissions, MCP
-agentic eject               # remove exactly that, leaving your content untouched
-agentic inject --dry-run    # preview; --skip-mcp to leave MCP servers alone; --home DIR to target
+agentic-cfg inject          # add: skills symlink, CLAUDE.md @import, hooks + permissions, MCP
+agentic-cfg eject           # remove exactly that, leaving your content untouched
+agentic-cfg inject --dry-run   # preview; --skip-mcp to leave MCP servers alone; --home DIR to target
 ```
+
+Fully covered by tests: `internal/lifecycle/` (round-trip preserves user content, idempotency,
+real-skills-dir backup/restore, dry-run), the reversal primitives
+(`internal/claudemd/strip_test.go`, `internal/settings/unmerge_test.go`), and the CLI dispatch
+(`cmd/agentic/main_test.go`).
 
 Design rationale: [`docs/design/inject-eject-office-hours.md`](docs/design/inject-eject-office-hours.md).
 

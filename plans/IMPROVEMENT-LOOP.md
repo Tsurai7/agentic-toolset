@@ -229,6 +229,20 @@ arise.
   merged JSON; `parity_test.go` unaffected (re-ran).
 - **Validated.** `bin/ci-check.sh` all green.
 
+### loop 14 — `agentic-cfg` command name + CLI dispatch tests (inject/eject) · 2026-06-30
+- **Idea.** Operator re-emphasized: add via `agentic-cfg inject`, remove via `agentic-cfg
+  eject`, *fully covered by tests*. The lifecycle + reversal logic was already covered (loop
+  04), but (a) the command was only `agentic …`, not `agentic-cfg …`, and (b) the CLI *dispatch*
+  path itself wasn't directly tested.
+- **Change.** Added [`bin/agentic-cfg`](../bin/agentic-cfg) — a committed wrapper that execs the
+  built binary (falls back to `go run`). Refactored `cmd/agentic/main.go` into a testable
+  `run(args) int` (main just adds `os.Exit`).
+- **Bench.** New `cmd/agentic/main_test.go`: `run(["inject" …])`/`run(["eject" …])` end-to-end
+  against a temp HOME (skills symlink + CLAUDE.md + settings.json created, then fully removed),
+  plus unknown-command/no-args/`--help` exit codes. Joins the existing lifecycle/strip/unmerge
+  tests. Validated the real `./bin/agentic-cfg inject|eject` round-trip preserves user content.
+- **Validated.** `bin/ci-check.sh` all green (shellcheck-clean wrapper + `go test`). README updated.
+
 ## ✅ Backlog complete — 23/23
 All of `plans/03-gaps-and-bugs.md` is resolved: both Criticals, all six Highs, every Medium and
 Low (BUG-09 as a justified won't-fix). Delivered across loops 01–13, each test-backed and

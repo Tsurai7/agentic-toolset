@@ -19,33 +19,38 @@ import (
 	"github.com/Tsurai7/agentic-cfg/internal/settings"
 )
 
-func main() {
-	if len(os.Args) < 2 {
+func main() { os.Exit(run(os.Args[1:])) }
+
+// run dispatches a subcommand and returns the process exit code. Split out from
+// main (which only adds os.Exit) so the CLI surface — including `inject`/`eject`,
+// invoked as either `agentic` or `agentic-cfg` — is unit-testable end to end.
+func run(args []string) int {
+	if len(args) < 1 {
 		usage()
-		os.Exit(2)
+		return 2
 	}
-	switch os.Args[1] {
+	switch args[0] {
 	case "hook":
-		os.Exit(hook.Main(os.Args[2:]))
+		return hook.Main(args[1:])
 	case "merge-settings":
-		os.Exit(mergeSettings(os.Args[2:]))
+		return mergeSettings(args[1:])
 	case "merge-mcp":
-		os.Exit(mergeMCP(os.Args[2:]))
+		return mergeMCP(args[1:])
 	case "merge-claude-md":
-		os.Exit(mergeClaudeMD(os.Args[2:]))
+		return mergeClaudeMD(args[1:])
 	case "gain":
-		os.Exit(gain.Main(os.Args[2:]))
+		return gain.Main(args[1:])
 	case "inject":
-		os.Exit(injectEject("inject", os.Args[2:]))
+		return injectEject("inject", args[1:])
 	case "eject":
-		os.Exit(injectEject("eject", os.Args[2:]))
+		return injectEject("eject", args[1:])
 	case "-h", "--help", "help":
 		usage()
-		os.Exit(0)
+		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "agentic: unknown command %q\n\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "agentic: unknown command %q\n\n", args[0])
 		usage()
-		os.Exit(2)
+		return 2
 	}
 }
 

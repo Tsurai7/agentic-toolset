@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# agentic-cfg — convenience entry point for the agentic CLI.
+#
+# Lets you run the toolset under the repo's own name, e.g.:
+#   agentic-cfg inject     # add the agentic-cfg footprint to your Claude config
+#   agentic-cfg eject      # cleanly remove it (preserves your own content)
+#   agentic-cfg gain       # token/cache performance readout
+#
+# Prefers the built binary; falls back to `go run` from the checkout so it works
+# even before `go build`. Put bin/ on your PATH, or call it as ./bin/agentic-cfg.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ -x "${ROOT}/bin/agentic" ]]; then
+  exec "${ROOT}/bin/agentic" "$@"
+elif command -v go >/dev/null 2>&1; then
+  exec go run "${ROOT}/cmd/agentic" "$@"
+else
+  echo "agentic-cfg: no built binary and 'go' not found. Build it with:" >&2
+  echo "  (cd \"${ROOT}\" && go build -o bin/agentic ./cmd/agentic)" >&2
+  exit 1
+fi
