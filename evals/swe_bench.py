@@ -269,11 +269,25 @@ _SOLUTIONS = {
 }
 
 
-def _run_arm(cwd: str, prompt: str, model: str) -> str:
+# Reasoning-effort level passed to `claude -p --effort` (e.g. low|medium|high).
+# None = the CLI's own default. Set once from --effort so an effort-routing
+# experiment varies the agent's thinking budget while holding model + task fixed.
+EFFORT = None
+
+
+def _arm_argv(model: str, prompt: str) -> list:
     argv = [
         "claude", "-p", "--output-format", "stream-json", "--verbose",
-        "--dangerously-skip-permissions", "--model", model, prompt,
+        "--dangerously-skip-permissions", "--model", model,
     ]
+    if EFFORT:
+        argv += ["--effort", EFFORT]
+    argv.append(prompt)
+    return argv
+
+
+def _run_arm(cwd: str, prompt: str, model: str) -> str:
+    argv = _arm_argv(model, prompt)
     try:
         p = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=PERCALL_TIMEOUT)
         return p.stdout or p.stderr
@@ -354,7 +368,12 @@ def measure_cell(task_name: str, model: str, reps: int) -> dict:
     return {
         "task": task_name,
         "model": model,
+        "effort": EFFORT,
         "reps": reps,
+        # Per-arm absolute medians, so an effort-routing experiment can compare the
+        # same arm across two effort runs (the ON/OFF ratio only measures config).
+        "abs_on": on_med,
+        "abs_off": off_med,
         "ratios": agent.overhead_ratios(on_med, off_med),
         "spread": {
             "total_input": _ratio_spread(on_runs, off_runs, "total_input_tokens"),
@@ -411,7 +430,19 @@ def selftest() -> int:
     assert _ratio_spread(on, off, "total_input_tokens") == (2.0, 3.0, 4.0)
     assert _ratio_spread([{"total_input_tokens": 5}], [{"total_input_tokens": 0}], "total_input_tokens") is None
     print("  ok  _ratio_spread reports per-rep min/median/max and skips zero denominators")
-    print(f"swe_bench selftest OK — {len(TASKS)} tasks, {checks} checks + error-guard + spread.")
+    # The --effort axis must reach the launch argv only when set, or an effort-routing
+    # experiment would silently run at the CLI default and measure nothing.
+    global EFFORT
+    saved = EFFORT
+    EFFORT = None
+    assert "--effort" not in _arm_argv("haiku", "p"), "effort leaked into argv when unset"
+    EFFORT = "low"
+    av = _arm_argv("haiku", "p")
+    assert av[-1] == "p", "prompt must stay last in argv"
+    assert "--effort" in av and av[av.index("--effort") + 1] == "low", "effort not threaded into argv"
+    EFFORT = saved
+    print("  ok  _arm_argv threads --effort only when set")
+    print(f"swe_bench selftest OK — {len(TASKS)} tasks, {checks} checks + error-guard + spread + effort.")
     return 0
 
 
@@ -456,6 +487,8 @@ def main(argv=None) -> int:
     ap.add_argument("--models", default="haiku,sonnet,opus", help="comma-separated model aliases/ids")
     ap.add_argument("--filter", default="all", help="all | a tier name (trivial|easy|medium|hard|very_hard)")
     ap.add_argument("--reps", type=int, default=1, help="repetitions per cell; the median is reported")
+    ap.add_argument("--effort", default=None,
+                    help="reasoning effort for `claude -p --effort` (e.g. low|medium|high); default = CLI default")
     ap.add_argument("--selftest", action="store_true", help="zero-token validation of the task checks")
     ap.add_argument("--json", action="store_true", help="emit raw JSON")
     ap.add_argument("--out", default=None, help="append each completed cell as a JSON line (crash-resilient)")
@@ -463,6 +496,9 @@ def main(argv=None) -> int:
 
     if args.selftest:
         return selftest()
+
+    global EFFORT
+    EFFORT = args.effort
 
     tasks = TIERS if args.filter == "all" else [args.filter]
     if any(t not in TASKS for t in tasks):

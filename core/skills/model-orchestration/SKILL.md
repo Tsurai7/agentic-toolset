@@ -41,7 +41,19 @@ often a finer, cheaper lever than changing model:
 So the ladder is **right effort → right tier → orchestration**: reach for the next lever only
 when the cheaper one is exhausted.
 
+> Measured caveat (Haiku × trivial/easy SWE tasks, n=3, 2026-06): the effort dial moved **neither
+> correctness nor cost** on these tiers — `trivial` was identical low-vs-high to the dollar, and
+> `easy` was noise-dominated (the bare and configured arms disagreed on the *sign* of the effect).
+> Effort bites on **reasoning-bound** work; where a weak model's cost is dominated by **tool turns**
+> (the `easy` configured arm ran 10–12 turns vs 5–6 bare), gate the *tools* — right-size the
+> tooling — not the thinking. Details: [model-routing review](../../../docs/research/model-routing-agentrq-fugu.md).
+
 ## The default pattern: plan strong, execute cheap, escalate on failure
+
+These three steps are a **Thinker → Worker → Verifier** division of labor — the same role taxonomy
+Sakana's [Fugu / TRINITY router](../../../docs/research/model-routing-agentrq-fugu.md) routes over
+per turn (a learned policy emits a role *and* a model each step). Reserve the strong tier for the
+**Thinker** step; a cheap tier handles **Worker** (execute) and **Verifier** (check).
 
 1. **Plan with the strong tier.** Decompose the task into sub-tasks each small enough to
    hand off with an unambiguous spec: the file(s), the exact change, and a verifiable

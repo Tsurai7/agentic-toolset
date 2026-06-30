@@ -413,3 +413,31 @@ accepts the known solution.
   matched), caught an asymmetric n=1 walk-back (Opus/Haiku hard "wins" stated as settled while
   Sonnet's were demoted) and two roadmap cell-citation mismatches; all 8 issues (0 blocker) fixed
   in the doc. `bin/check-links.py` + `--selftest` green.
+
+### loop 30 — external-router review (AgentRQ / Fugu / fugusashi) + measured the effort dial · 2026-06-30
+- **Idea.** The operator pointed at four external sources (AgentRQ blog + repo, Sakana Fugu,
+  the fugusashi-router) and asked what, if anything, to adopt. Run the standing loop: research →
+  measurer → measure → change → re-measure → commit, with a gstack office-hours premise challenge.
+- **Research (4 parallel agents, then a 3-agent adversarial verify Workflow).** All four sources are
+  **INSPIRE-ONLY**. fugusashi is a flat 385-float head over MiniLM trained on 20 samples whose
+  reference code is mathematically inconsistent (argmax over a scalar → always model 0; verified by
+  reproducing the dot-product over 1000 embeddings). Sakana Fugu is a proprietary serving product;
+  its TRINITY paper (arXiv 2512.04695, citation verified) contributes a clean **Thinker/Worker/Verifier**
+  role taxonomy. AgentRQ is a hosted human-in-loop task server — un-hostable here. The verify Workflow
+  confirmed all three load-bearing external claims (arXiv ids, the Fugu benchmark table, the fugusashi
+  bug) against primary sources at high confidence.
+- **Office-hours verdict.** "Build a model router" fails three ways: one model per session (a hook can't
+  swap it), **zero measured cross-tier correctness divergence** so a learned router has no signal, and a
+  heavy ML dependency for a trivial decision. The surviving, on-thesis, measurable lever is the
+  reasoning-**effort** dial (`claude -p --effort`, roadmap item 4).
+- **Change / data.** Added an `--effort` axis to `swe_bench.py` (threads `--effort` into the launch
+  argv; zero-token selftest). Ran Haiku × {trivial, easy} × effort {low, high}, reps=3
+  ([`data/swe-bench-effort-2026-06-30.jsonl`](data/swe-bench-effort-2026-06-30.jsonl)).
+- **Finding — null result.** Effort moved **neither correctness (100% across all 8 arm×effort cells)
+  nor cost**: `trivial` identical low-vs-high; `easy` noise-dominated (bare and configured arms
+  disagreed on the *sign*). Cause: Haiku's `easy` cost is tool-turn-bound (10–12 turns), not
+  reasoning-bound. So a per-tier effort default would be cosmetic — **not shipped** (acceptance rule).
+  Shipped instead: the reusable measurer, the verified [model-routing review](../docs/research/model-routing-agentrq-fugu.md),
+  the **Thinker/Worker/Verifier** naming + a measured effort caveat in the `model-orchestration` skill,
+  and the roadmap-item-4 status update. Also archived four completed bug/design docs to `archive/`.
+- **Verification.** `bin/check-links.py` + `bin/ci-check.sh` green (below).

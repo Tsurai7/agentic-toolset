@@ -24,7 +24,7 @@
 | **9** | **Conditional weak-tier self-critique** (W4 step 3, designed, unbuilt) — one bounded, hard-task-gated pass | Lifts weak+hard correctness without regressing the easy band | suite #0 `very_hard` × Haiku (two-band value case) | M | The self-critique paradox (hurts high-base tasks) — hard-task trigger only |
 | **10** | **Cache hygiene**: 1h TTL for spaced eval runs + byte-stable post-compaction prefix (extend `PreCompact` hook) | Holds cache hit ≥85% across spaced requests; cuts repeated turn-1 `cache_creation` | telemetry hit-rate before/after | S | 1h TTL costs ~2× on write — net loss on truly one-shot runs |
 
-## Measured so far (loops 25–28 — see [benchmark-results.md](benchmark-results.md))
+## Measured so far (loops 25–30 — see [benchmark-results.md](benchmark-results.md), [model-routing review](model-routing-agentrq-fugu.md))
 
 The instrument now exists and has run live across all three tiers. What the data changed:
 
@@ -51,6 +51,14 @@ The instrument now exists and has run live across all three tiers. What the data
 - **Item 3 — right idea, wrong target.** A conditional "fire only on large reads" gate is the fix,
   but it belongs on `cbm-session-reminder` (the actual inducer), not agentic-cfg's lean-ctx
   redirect; and the effect is light-task, not the `trivial` tier the item names.
+- **Item 4 — tested (loop 30), null on the regime measured.** An `--effort` axis was added to
+  `swe_bench.py` and run on Haiku × {trivial, easy}, effort low vs high, n=3. The dial moved **neither
+  correctness (100% everywhere) nor cost** — `trivial` was identical low-vs-high; `easy` was
+  noise-dominated (the bare and configured arms disagreed on the *sign*). Mechanistic cause: Haiku's
+  `easy` cost is tool-turn-bound (10–12 turns), not reasoning-bound, so a reasoning-effort knob has
+  nothing to bite on. **Deprioritized:** a per-tier effort default would be cosmetic here. Item 4 stays
+  open only for a genuinely *reasoning-bound* regime (untested). Full writeup + the verified review of
+  the externally-suggested routers (AgentRQ, Sakana Fugu, fugusashi): [model-routing-agentrq-fugu.md](model-routing-agentrq-fugu.md).
 
 ## Sequencing rationale
 
