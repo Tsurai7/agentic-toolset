@@ -261,6 +261,19 @@ arise.
   `cmd/agentic/main_test.go::TestRunStatus` (CLI exit codes). Validated the real
   `agentic-cfg status` before/after inject/eject. `bin/ci-check.sh` green.
 
+### loop 17 — `agentic link` (put the commands on PATH) · 2026-06-30
+- **Idea.** Complete the global UX: you asked to run `agentic-cfg inject` — that needs the
+  command on PATH. *Wedge:* `agentic link` symlinks both names onto PATH; root-resolution
+  follows symlinks so a linked binary still finds the repo.
+- **Change.** `defaultRoot` now `filepath.EvalSymlinks`-resolves the executable; new `link`
+  subcommand + `linkInto` (idempotent, replaces a stale symlink, never clobbers a real file)
+  symlinks `agentic` + `agentic-cfg` → the binary in `~/.local/bin` (`--dir` to change), with a
+  PATH-not-found hint.
+- **Bench.** `cmd/agentic/main_test.go::TestLinkInto` (creates both, idempotent, skips a real
+  file). Validated for real: linked into a scratch dir, then ran the **symlinked**
+  `agentic-cfg status` — it resolved the repo root and worked.
+- **Validated.** `bin/ci-check.sh` green. README updated.
+
 ## ✅ Backlog complete — 23/23
 All of `plans/03-gaps-and-bugs.md` is resolved: both Criticals, all six Highs, every Medium and
 Low (BUG-09 as a justified won't-fix). Delivered across loops 01–13, each test-backed and

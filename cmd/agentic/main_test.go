@@ -65,6 +65,42 @@ func TestRunStatus(t *testing.T) {
 	}
 }
 
+func TestLinkInto(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(t.TempDir(), "agentic")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	created, skipped, err := linkInto(exe, dir, []string{"agentic", "agentic-cfg"})
+	if err != nil || len(created) != 2 || len(skipped) != 0 {
+		t.Fatalf("linkInto: created=%v skipped=%v err=%v", created, skipped, err)
+	}
+	for _, name := range []string{"agentic", "agentic-cfg"} {
+		if dest, _ := os.Readlink(filepath.Join(dir, name)); dest != exe {
+			t.Errorf("%s -> %s, want %s", name, dest, exe)
+		}
+	}
+
+	// Idempotent: re-linking is fine and leaves the correct symlink.
+	if c, _, err := linkInto(exe, dir, []string{"agentic"}); err != nil || len(c) != 1 {
+		t.Errorf("re-link not idempotent: %v %v", c, err)
+	}
+
+	// A real (non-symlink) file is skipped, never clobbered.
+	real := filepath.Join(dir, "realfile")
+	if err := os.WriteFile(real, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, skip, _ := linkInto(exe, dir, []string{"realfile"})
+	if len(skip) != 1 {
+		t.Errorf("a real file should be skipped, got skipped=%v", skip)
+	}
+	if b, _ := os.ReadFile(real); string(b) != "keep" {
+		t.Error("linkInto clobbered a real file")
+	}
+}
+
 func TestRunDispatchErrors(t *testing.T) {
 	if code := run([]string{"bogus-subcommand"}); code != 2 {
 		t.Errorf("unknown command exit = %d, want 2", code)

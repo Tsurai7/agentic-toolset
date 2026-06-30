@@ -31,10 +31,16 @@ agentic-cfg inject --dry-run   # preview; --skip-mcp to leave MCP servers alone;
 agentic-cfg status             # report whether it's injected (exit 0 if yes, 1 if not); --json for scripts
 ```
 
+To run these from anywhere, put them on your PATH once:
+
+```bash
+agentic link        # symlinks agentic + agentic-cfg into ~/.local/bin (--dir to change)
+```
+
 Fully covered by tests: `internal/lifecycle/` (round-trip preserves user content, idempotency,
 real-skills-dir backup/restore, dry-run), the reversal primitives
 (`internal/claudemd/strip_test.go`, `internal/settings/unmerge_test.go`), and the CLI dispatch
-(`cmd/agentic/main_test.go`).
++ PATH linking (`cmd/agentic/main_test.go`).
 
 Design rationale: [`docs/design/inject-eject-office-hours.md`](docs/design/inject-eject-office-hours.md).
 

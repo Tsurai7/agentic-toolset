@@ -47,6 +47,8 @@ func run(args []string) int {
 		return injectEject("eject", args[1:])
 	case "status":
 		return statusCmd(args[1:])
+	case "link":
+		return linkCmd(args[1:])
 	case "-h", "--help", "help":
 		usage()
 		return 0
@@ -164,8 +166,12 @@ func statusCmd(args []string) int {
 // defaultRoot derives the repo root from the running binary (repo/bin/agentic ->
 // repo). Falls back to the current directory.
 func defaultRoot() string {
-	exe, err := os.Executable()
-	if err == nil {
+	if exe, err := os.Executable(); err == nil {
+		// Resolve symlinks so a binary linked onto PATH (agentic link) still
+		// resolves back to repo/bin/agentic -> repo.
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = resolved
+		}
 		if root := filepath.Dir(filepath.Dir(exe)); root != "" {
 			if _, err := os.Stat(filepath.Join(root, "core", "skills")); err == nil {
 				return root
@@ -176,6 +182,81 @@ func defaultRoot() string {
 		return wd
 	}
 	return "."
+}
+
+// linkCmd symlinks `agentic` and `agentic-cfg` into a PATH directory so they can
+// be run from anywhere.
+func linkCmd(args []string) int {
+	fs := flag.NewFlagSet("link", flag.ContinueOnError)
+	dir := fs.String("dir", defaultBinDir(), "directory (on your PATH) to link the commands into")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "agentic link: %v\n", err)
+		return 1
+	}
+	if resolved, e := filepath.EvalSymlinks(exe); e == nil {
+		exe = resolved
+	}
+	created, skipped, err := linkInto(exe, *dir, []string{"agentic", "agentic-cfg"})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "agentic link: %v\n", err)
+		return 1
+	}
+	for _, c := range created {
+		fmt.Printf("linked %s -> %s\n", c, exe)
+	}
+	for _, s := range skipped {
+		fmt.Printf("skipped %s (exists and is not our symlink — remove it first)\n", s)
+	}
+	if !dirOnPath(*dir) {
+		fmt.Printf("note: %s is not on your PATH. Add it, e.g.:\n  echo 'export PATH=\"%s:$PATH\"' >> ~/.zshrc\n", *dir, *dir)
+	}
+	return 0
+}
+
+// linkInto symlinks exe into dir under each name. An existing matching symlink is
+// left in place (idempotent); a stale symlink is replaced; a real file is skipped
+// (never clobbered).
+func linkInto(exe, dir string, names []string) (created, skipped []string, err error) {
+	if err = os.MkdirAll(dir, 0o755); err != nil {
+		return nil, nil, err
+	}
+	for _, name := range names {
+		target := filepath.Join(dir, name)
+		if fi, e := os.Lstat(target); e == nil {
+			if fi.Mode()&os.ModeSymlink == 0 {
+				skipped = append(skipped, target) // a real file — don't clobber
+				continue
+			}
+			if dest, _ := os.Readlink(target); dest != exe {
+				_ = os.Remove(target) // replace a stale/other symlink
+			}
+		}
+		if e := os.Symlink(exe, target); e != nil && !os.IsExist(e) {
+			return created, skipped, e
+		}
+		created = append(created, target)
+	}
+	return created, skipped, nil
+}
+
+func defaultBinDir() string {
+	if h, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(h, ".local", "bin")
+	}
+	return "/usr/local/bin"
+}
+
+func dirOnPath(dir string) bool {
+	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
+		if p == dir {
+			return true
+		}
+	}
+	return false
 }
 
 func usage() {
@@ -191,5 +272,6 @@ commands:
   inject [--root DIR] [--home DIR] [--dry-run]   add the agentic-cfg footprint to a Claude config
   eject  [--root DIR] [--home DIR] [--dry-run]   cleanly remove it (preserves your own content)
   status [--root DIR] [--home DIR] [--json]      report whether agentic-cfg is injected
+  link   [--dir DIR]                             symlink agentic + agentic-cfg onto your PATH (~/.local/bin)
 `)
 }
