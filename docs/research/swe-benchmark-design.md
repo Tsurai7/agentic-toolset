@@ -112,15 +112,18 @@ and survives a kill.
 
 ### Prerequisite: the nested agent must be able to authenticate
 
-Each arm shells out to `claude -p`. That subprocess needs its own working login — and a
-**`claude` launched from inside a running Claude Code session does not inherit one** (the live
-app holds the refreshed OAuth credential in memory; the on-disk/keychain copy a child process
-sees is not usable, so the child returns `Not logged in · Please run /login` and exits in ~1 s).
-The harness now detects this and **fails fast** with a clear message rather than recording the
-failed launches as phantom `0%`-correct cells.
+Each arm shells out to `claude -p`. That subprocess needs its own working login, and **a `claude`
+launched from inside a running Claude Code session inherits one only intermittently.** The nested
+child reads the OAuth credential from the keychain; when that copy is currently valid it
+authenticates and runs, but when it is stale (observed in practice as `expiresAt=0`) the child
+returns `Not logged in · Please run /login` and exits in ~1 s — the live app refreshes its own
+token in memory and does not always write a usable copy back in time. (Both states were observed
+in one session: the same nested call failed, then succeeded minutes later after the credential
+refreshed.) The harness **fails fast** on the failure mode with a clear message rather than
+recording the failed launches as phantom `0%`-correct cells.
 
-So run the live matrix from a **plain terminal**, not from within an agent session. Verify auth
-first with a one-liner, then run:
+So for a reliable run, use a **plain terminal**, not an agent session. Verify auth first with a
+one-liner, then run:
 
 ```bash
 claude -p "say hi"                         # must print a normal reply, NOT "Not logged in"
