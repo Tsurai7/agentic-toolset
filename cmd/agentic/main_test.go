@@ -49,6 +49,22 @@ func TestRunInjectEject(t *testing.T) {
 	}
 }
 
+func TestRunStatus(t *testing.T) {
+	root := repoRoot(t)
+	home := t.TempDir()
+	// Not injected -> exit 1.
+	if code := run([]string{"status", "--root", root, "--home", home}); code != 1 {
+		t.Errorf("status on fresh home exit = %d, want 1", code)
+	}
+	if code := run([]string{"inject", "--root", root, "--home", home, "--skip-mcp"}); code != 0 {
+		t.Fatalf("inject exit = %d", code)
+	}
+	// Injected -> exit 0.
+	if code := run([]string{"status", "--root", root, "--home", home, "--json"}); code != 0 {
+		t.Errorf("status after inject exit = %d, want 0", code)
+	}
+}
+
 func TestRunDispatchErrors(t *testing.T) {
 	if code := run([]string{"bogus-subcommand"}); code != 2 {
 		t.Errorf("unknown command exit = %d, want 2", code)

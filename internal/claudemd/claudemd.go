@@ -35,6 +35,11 @@ func Render(existing, generatedAbs string) string {
 	}
 }
 
+// BlockPresent reports whether content contains the managed @import block.
+func BlockPresent(content string) bool {
+	return blockRe.MatchString(content)
+}
+
 // StripBlock removes the managed @import block from existing CLAUDE.md content,
 // returning the cleaned content and whether a block was present. Trailing blank
 // space left where the block was is collapsed to a single trailing newline, so

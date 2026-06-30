@@ -243,6 +243,24 @@ arise.
   tests. Validated the real `./bin/agentic-cfg inject|eject` round-trip preserves user content.
 - **Validated.** `bin/ci-check.sh` all green (shellcheck-clean wrapper + `go test`). README updated.
 
+### loop 15 — markdown link checker in CI · 2026-06-30
+- **Idea.** Heavy cross-linking (docs/plans/skills/READMEs) with nothing verifying relative
+  links resolve — a moved file silently breaks them (I'd needed an ad-hoc checker earlier).
+- **Change.** `bin/check-links.py` (strips fenced + inline code so a Python `d["k"](x)` isn't
+  mistaken for a link; resolves `](rel)` targets, skipping http/mailto/#, stripping #frag/:line),
+  wired into `bin/ci-check.sh`.
+- **Bench.** Self-checking: 128 links / 64 files resolve; verified it catches an injected broken
+  link (exit 1). `bin/ci-check.sh` green.
+
+### loop 16 — `agentic status` (inject-state observability) · 2026-06-30
+- **Idea.** Round out the lifecycle/observability CLI: report whether the config is injected.
+- **Change.** `lifecycle.Status` (read-only: skills linked/foreign/absent, CLAUDE.md block,
+  generated md, managed hooks → `injected`) + `claudemd.BlockPresent`; `agentic status
+  [--home --root --json]` (exit 0 if injected, 1 if not). README updated.
+- **Bench.** `internal/lifecycle/status_test.go` (reflects inject→eject; foreign-dir case) +
+  `cmd/agentic/main_test.go::TestRunStatus` (CLI exit codes). Validated the real
+  `agentic-cfg status` before/after inject/eject. `bin/ci-check.sh` green.
+
 ## ✅ Backlog complete — 23/23
 All of `plans/03-gaps-and-bugs.md` is resolved: both Criticals, all six Highs, every Medium and
 Low (BUG-09 as a justified won't-fix). Delivered across loops 01–13, each test-backed and

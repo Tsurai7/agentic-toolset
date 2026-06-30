@@ -28,6 +28,7 @@ any real `~/.claude/skills` you already have:
 agentic-cfg inject          # add: skills symlink, CLAUDE.md @import, hooks + permissions, MCP
 agentic-cfg eject           # remove exactly that, leaving your content untouched
 agentic-cfg inject --dry-run   # preview; --skip-mcp to leave MCP servers alone; --home DIR to target
+agentic-cfg status             # report whether it's injected (exit 0 if yes, 1 if not); --json for scripts
 ```
 
 Fully covered by tests: `internal/lifecycle/` (round-trip preserves user content, idempotency,

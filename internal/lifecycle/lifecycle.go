@@ -202,6 +202,70 @@ func Eject(o Options) error {
 	return nil
 }
 
+// StatusReport summarizes the agentic-cfg footprint in a Claude config.
+type StatusReport struct {
+	Injected     bool   `json:"injected"` // all core pieces present
+	Skills       string `json:"skills"`   // "linked" | "foreign" | "absent"
+	ClaudeMDLink bool   `json:"claude_md_block"`
+	GeneratedMD  bool   `json:"generated_md"`
+	ManagedHooks bool   `json:"managed_hooks"`
+}
+
+// Status inspects Home/.claude and reports which inject artifacts are present.
+// Read-only; safe to call any time.
+func Status(o Options) StatusReport {
+	cd := o.claudeDir()
+	var r StatusReport
+
+	switch fi, err := os.Lstat(filepath.Join(cd, "skills")); {
+	case err != nil:
+		r.Skills = "absent"
+	case fi.Mode()&os.ModeSymlink != 0:
+		if dest, _ := os.Readlink(filepath.Join(cd, "skills")); dest == o.skillsSource() {
+			r.Skills = "linked"
+		} else {
+			r.Skills = "foreign"
+		}
+	default:
+		r.Skills = "foreign"
+	}
+
+	if b, err := os.ReadFile(filepath.Join(cd, "CLAUDE.md")); err == nil {
+		r.ClaudeMDLink = claudemd.BlockPresent(string(b))
+	}
+	if _, err := os.Stat(filepath.Join(cd, generatedName)); err == nil {
+		r.GeneratedMD = true
+	}
+	if b, err := os.ReadFile(filepath.Join(cd, "settings.json")); err == nil {
+		r.ManagedHooks = strings.Contains(string(b), "/providers/claude/hooks/")
+	}
+
+	r.Injected = r.Skills == "linked" && r.ClaudeMDLink && r.GeneratedMD && r.ManagedHooks
+	return r
+}
+
+// Render writes a human-readable status report to w.
+func (r StatusReport) Render(w io.Writer, home string) {
+	yn := func(b bool) string {
+		if b {
+			return "present"
+		}
+		return "absent"
+	}
+	state := "NOT injected"
+	if r.Injected {
+		state = "injected"
+	} else if r.Skills != "absent" || r.ClaudeMDLink || r.GeneratedMD || r.ManagedHooks {
+		state = "PARTIAL"
+	}
+	fmt.Fprintf(w, "agentic-cfg status (%s/.claude)\n", home)
+	fmt.Fprintf(w, "  skills          : %s\n", r.Skills)
+	fmt.Fprintf(w, "  CLAUDE.md block : %s\n", yn(r.ClaudeMDLink))
+	fmt.Fprintf(w, "  generated md    : %s\n", yn(r.GeneratedMD))
+	fmt.Fprintf(w, "  managed hooks   : %s\n", yn(r.ManagedHooks))
+	fmt.Fprintf(w, "  => %s\n", state)
+}
+
 // injectSkills symlinks Home/.claude/skills -> Root/core/skills. An existing symlink
 // is refreshed; a real directory (user content) is backed up rather than clobbered.
 func injectSkills(o *Options, cd string) error {

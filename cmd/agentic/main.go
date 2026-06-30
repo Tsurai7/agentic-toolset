@@ -6,6 +6,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -44,6 +45,8 @@ func run(args []string) int {
 		return injectEject("inject", args[1:])
 	case "eject":
 		return injectEject("eject", args[1:])
+	case "status":
+		return statusCmd(args[1:])
 	case "-h", "--help", "help":
 		usage()
 		return 0
@@ -128,6 +131,36 @@ func injectEject(action string, args []string) int {
 	return 0
 }
 
+func statusCmd(args []string) int {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	root := fs.String("root", defaultRoot(), "agentic-cfg repo root")
+	home := fs.String("home", "", "target home dir (default: $HOME)")
+	asJSON := fs.Bool("json", false, "emit JSON instead of a table")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	h := *home
+	if h == "" {
+		var err error
+		if h, err = os.UserHomeDir(); err != nil {
+			fmt.Fprintf(os.Stderr, "agentic status: cannot resolve home: %v\n", err)
+			return 1
+		}
+	}
+	rep := lifecycle.Status(lifecycle.Options{Root: *root, Home: h})
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(rep)
+	} else {
+		rep.Render(os.Stdout, h)
+	}
+	if rep.Injected { // exit 1 when not (fully) injected — handy for scripts
+		return 0
+	}
+	return 1
+}
+
 // defaultRoot derives the repo root from the running binary (repo/bin/agentic ->
 // repo). Falls back to the current directory.
 func defaultRoot() string {
@@ -157,5 +190,6 @@ commands:
   gain [--last N] [--project S] [--json]    performance readout: token volume, cache hit rate, cost saved
   inject [--root DIR] [--home DIR] [--dry-run]   add the agentic-cfg footprint to a Claude config
   eject  [--root DIR] [--home DIR] [--dry-run]   cleanly remove it (preserves your own content)
+  status [--root DIR] [--home DIR] [--json]      report whether agentic-cfg is injected
 `)
 }
