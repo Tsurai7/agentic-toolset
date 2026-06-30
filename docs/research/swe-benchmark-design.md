@@ -32,7 +32,7 @@ the trivial-regime overhead *without* regressing the hard-regime gain or correct
 
 ## The difficulty ladder
 
-Five tiers, each a throwaway git repo with a **deterministic** check (`evals/swe_bench.py`):
+Six tiers, each a throwaway git repo with a **deterministic** check (`evals/swe_bench.py`):
 
 | Tier | Task | Check | What it stresses |
 |------|------|-------|------------------|
@@ -41,14 +41,17 @@ Five tiers, each a throwaway git repo with a **deterministic** check (`evals/swe
 | `medium` | Fix a single-file off-by-one so `go test` passes | **state** (`go test`) | Read → edit → self-verify loop |
 | `hard` | Count call sites of a package-level `Send`, excluding a same-named method, strings, comments | text | Structural disambiguation a regex grep flails on |
 | `very_hard` | Finish a half-applied signature refactor across 3 files so it compiles + tests pass | **state** (`go test`) | Impact analysis (find every caller) + multi-file edit |
+| `expert` | Fix a subtle two-part interval-merge bug (must add a sort *and* make touching intervals merge) so `go test` passes | **state** (`go test`) | **Intrinsic-reasoning correctness** — the obvious one-character fix (`<`→`<=`) still fails the unsorted case. Built for [roadmap](improvement-roadmap.md) item 0: probe whether the config lifts weak-model *correctness*. The difficulty is reasoning, **not** search, so it does not flatter the structural tools. Whether bare-weak actually fails it is an **open live measurement**, not an assertion. |
 
 Two task *kinds*: **lookup** (graded on the answer text) and **edit** (graded on repo state —
 a command that must pass *after* the arm runs). Edit tasks are the honest SWE signal: the
 agent must actually change code, and `go test`/`go build` is an unforgeable oracle.
 
 **Gameproofing.** `very_hard` pins behaviour with a test *and* forbids reverting the new
-signature, so the model can't "fix" compilation by undoing the refactor. Edit checks run the
-real toolchain, so a plausible-but-wrong answer fails. The harness self-test
+signature, so the model can't "fix" compilation by undoing the refactor. `expert` pairs the
+merge case with a *disjoint* case, so a fix that over-merges (or just flips the operator without
+sorting) still fails. Edit checks run the real toolchain, so a plausible-but-wrong answer fails.
+The harness self-test
 (`--selftest`, in CI) proves each check **rejects the initial/wrong state and accepts the
 known solution** — zero tokens, so the ladder itself can't silently rot.
 
@@ -105,7 +108,7 @@ python3 evals/swe_bench.py --confirm --filter trivial --models haiku,opus   # on
 python3 evals/swe_bench.py --confirm --reps 3 --out results.jsonl --json     # full matrix, medians, persisted
 ```
 
-The full matrix is `models × tiers × 2 arms × reps` invocations (default 3×5×2×1 = 30). Start
+The full matrix is `models × tiers × 2 arms × reps` invocations (default 3×6×2×1 = 36). Start
 narrow (`--filter trivial --models haiku,opus`) to see the regime split cheaply, then widen.
 `--out` appends each cell as a JSON line *as it finishes*, so a long run is observable mid-flight
 and survives a kill.

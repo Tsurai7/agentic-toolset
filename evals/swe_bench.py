@@ -180,15 +180,93 @@ def _solution_very_hard(d: str) -> None:
     Path(d, "invoice.go").write_text("package sweb\nfunc Invoice() int { return Discount(50, 0.10) }\n")
 
 
+def _make_expert():
+    """EXPERT correctness probe — a subtle TWO-part bug: `MergeOverlapping` neither
+    sorts its input nor treats *touching* intervals ([1,2],[2,3]) as mergeable. The
+    obvious one-character fix (`<` → `<=`) still fails the unsorted case, so passing
+    requires reasoning about the real invariant (sort, then merge inclusively), not
+    pattern-matching a single operator. The difficulty is intrinsic reasoning, not
+    search — it is built to probe whether the config lifts weak-model *correctness*.
+    Whether bare-weak actually fails it is an OPEN live measurement, not an assertion
+    (the design doc says so explicitly). Verified by `go test`."""
+    d = tempfile.mkdtemp(prefix="swe-expert-")
+    Path(d, "go.mod").write_text("module sweb\n\ngo 1.21\n")
+    Path(d, "merge.go").write_text(
+        "package sweb\n"
+        "// MergeOverlapping merges overlapping or touching intervals and returns them\n"
+        "// sorted by start. E.g. [[1,3],[2,5],[5,6]] -> [[1,6]]. It is currently buggy.\n"
+        "func MergeOverlapping(in [][2]int) [][2]int {\n"
+        "\tvar out [][2]int\n"
+        "\tfor _, iv := range in {\n"
+        "\t\tif n := len(out); n > 0 && iv[0] < out[n-1][1] {\n"  # bug: needs a prior sort, and <= for touching
+        "\t\t\tif iv[1] > out[n-1][1] {\n"
+        "\t\t\t\tout[n-1][1] = iv[1]\n"
+        "\t\t\t}\n"
+        "\t\t} else {\n"
+        "\t\t\tout = append(out, iv)\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\treturn out\n}\n"
+    )
+    Path(d, "merge_test.go").write_text(
+        "package sweb\n"
+        'import (\n\t"fmt"\n\t"testing"\n)\n'
+        "func TestMergeOverlapping(t *testing.T) {\n"
+        "\tcases := []struct{ in, want [][2]int }{\n"
+        "\t\t{[][2]int{{1, 3}, {6, 9}, {2, 5}, {5, 6}}, [][2]int{{1, 9}}},\n"  # unsorted + touching -> all merge
+        "\t\t{[][2]int{{1, 2}, {4, 5}}, [][2]int{{1, 2}, {4, 5}}},\n"  # disjoint -> unchanged (guards over-merge)
+        "\t}\n"
+        "\tfor _, c := range cases {\n"
+        "\t\tif got := MergeOverlapping(c.in); fmt.Sprint(got) != fmt.Sprint(c.want) {\n"
+        "\t\t\tt.Fatalf(\"MergeOverlapping(%v) = %v, want %v\", c.in, got, c.want)\n"
+        "\t\t}\n"
+        "\t}\n}\n"
+    )
+    _git_init(d)
+    task = (
+        "`go test ./...` fails. `MergeOverlapping` should merge overlapping or touching "
+        "intervals and return them sorted by start, but it is buggy. Fix it so the tests "
+        "pass. Do not change the test."
+    )
+    return d, task, ("state", (["go", "test", "./..."], 0))
+
+
+def _solution_expert(d: str) -> None:
+    Path(d, "merge.go").write_text(
+        "package sweb\n"
+        'import "sort"\n'
+        "func MergeOverlapping(in [][2]int) [][2]int {\n"
+        "\ts := make([][2]int, len(in))\n"
+        "\tcopy(s, in)\n"
+        "\tsort.Slice(s, func(i, j int) bool { return s[i][0] < s[j][0] })\n"
+        "\tvar out [][2]int\n"
+        "\tfor _, iv := range s {\n"
+        "\t\tif n := len(out); n > 0 && iv[0] <= out[n-1][1] {\n"
+        "\t\t\tif iv[1] > out[n-1][1] {\n"
+        "\t\t\t\tout[n-1][1] = iv[1]\n"
+        "\t\t\t}\n"
+        "\t\t} else {\n"
+        "\t\t\tout = append(out, iv)\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\treturn out\n}\n"
+    )
+
+
 TASKS = {
     "trivial": _make_trivial,
     "easy": _make_easy,
     "medium": _make_medium,
     "hard": _make_hard,
     "very_hard": _make_very_hard,
+    "expert": _make_expert,
 }
 TIERS = list(TASKS)
-_SOLUTIONS = {"medium": _solution_medium, "very_hard": _solution_very_hard}
+_SOLUTIONS = {
+    "medium": _solution_medium,
+    "very_hard": _solution_very_hard,
+    "expert": _solution_expert,
+}
 
 
 def _run_arm(cwd: str, prompt: str, model: str) -> str:
