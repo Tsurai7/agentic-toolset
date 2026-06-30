@@ -4,11 +4,14 @@ set -euo pipefail
 
 AGENTIC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAIL=0
+WARNED=0
 DEEP=0
 [[ "${1:-}" == "--deep" ]] && DEEP=1
 
 ok() { printf '  OK  %s\n' "$*"; }
-warn() { printf '  WARN %s\n' "$*"; }
+# warn() counts: a run with warnings must not report "All checks passed" (that was
+# dishonest — a broken skills symlink only warns, yet the summary claimed success).
+warn() { printf '  WARN %s\n' "$*"; WARNED=$((WARNED + 1)); }
 fail() { printf '  FAIL %s\n' "$*"; FAIL=1; }
 
 check_link() {
@@ -87,7 +90,11 @@ for skill in "${AGENTIC_ROOT}/core/skills"/*/SKILL.md; do
   [[ -f "$skill" ]] || continue
   count=$((count + 1))
 done
-ok "found $count skill(s) in core/skills"
+if [[ "$count" -eq 0 ]]; then
+  fail "no skills found in core/skills (broken checkout?)"
+else
+  ok "found $count skill(s) in core/skills"
+fi
 echo ""
 
 echo "Secrets"
@@ -137,9 +144,13 @@ if [[ "$DEEP" -eq 1 ]]; then
   echo ""
 fi
 
-if [[ "$FAIL" -eq 0 ]]; then
-  echo "All checks passed."
+if [[ "$FAIL" -ne 0 ]]; then
+  echo "Some checks failed."
+  exit 1
+fi
+if [[ "$WARNED" -ne 0 ]]; then
+  echo "Passed with $WARNED warning(s) — review the WARN lines above."
   exit 0
 fi
-echo "Some checks failed."
-exit 1
+echo "All checks passed."
+exit 0

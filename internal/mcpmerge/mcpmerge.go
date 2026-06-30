@@ -354,15 +354,27 @@ func RemoveClaudeUser(root string) error {
 	if err != nil {
 		return err
 	}
-	dry := os.Getenv("DRY_RUN") == "1"
-	for _, name := range names {
-		if dry {
+	if os.Getenv("DRY_RUN") == "1" {
+		for _, name := range names {
 			fmt.Printf("[dry-run] claude mcp remove %s --scope user\n", name)
-			continue
 		}
-		_ = exec.Command(claude, "mcp", "remove", name, "--scope", "user").Run() //nolint:noctx // one-shot synchronous CLI call
+		return nil
 	}
-	fmt.Printf("Removed %d Claude user-scope MCP server(s): %s\n", len(names), join(names))
+	// Report only what the CLI actually removed (exit 0). A non-zero exit means the
+	// server was already absent or the removal failed — either way it was NOT removed,
+	// so don't claim it was (the old code printed len(names) unconditionally).
+	var removed, skipped []string
+	for _, name := range names {
+		if err := exec.Command(claude, "mcp", "remove", name, "--scope", "user").Run(); err == nil { //nolint:noctx // one-shot synchronous CLI call
+			removed = append(removed, name)
+		} else {
+			skipped = append(skipped, name)
+		}
+	}
+	fmt.Printf("Removed %d Claude user-scope MCP server(s): %s\n", len(removed), join(removed))
+	if len(skipped) > 0 {
+		fmt.Printf("  %d already absent or not removed: %s\n", len(skipped), join(skipped))
+	}
 	return nil
 }
 

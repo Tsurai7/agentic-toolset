@@ -27,7 +27,12 @@ func Render(existing, generatedAbs string) string {
 	case blockRe.MatchString(existing):
 		return blockRe.ReplaceAllLiteralString(existing, block) // refresh managed block
 	case strings.HasPrefix(strings.TrimLeft(existing, " \t\r\n"), legacySignature):
-		return block + "\n" // migrate a legacy fully-generated file
+		// Migrate a legacy fully-generated file. A legacy file is a header comment
+		// followed by inline generated content with NO end marker, so there is no
+		// reliable boundary between generated text and anything a user appended; this
+		// replaces the whole file. The install scripts' one-time CLAUDE.md.bak backup
+		// is the safety net (the legacy format was explicitly "do not edit by hand").
+		return block + "\n"
 	case strings.TrimSpace(existing) != "":
 		return strings.TrimRight(existing, "\n") + "\n\n" + block + "\n" // keep user content
 	default:
@@ -75,7 +80,36 @@ func Remove(claudeMdPath string) (bool, error) {
 	if strings.TrimSpace(cleaned) == "" {
 		return true, os.Remove(claudeMdPath)
 	}
-	return true, os.WriteFile(claudeMdPath, []byte(cleaned), 0o644) //nolint:gosec // non-secret user config; 0644 is intentional
+	return true, atomicWrite(claudeMdPath, []byte(cleaned), 0o644)
+}
+
+// atomicWrite writes data to path via a same-directory temp file + fsync + rename,
+// so an interrupted write can never leave the user's CLAUDE.md truncated or empty
+// (the plain os.WriteFile it replaces truncates in place — BUG-12 parity for the
+// hand-written file most at risk). Mirrors internal/jsonorder.WriteFile and
+// providers/shared/safe_io.atomic_write_text.
+func atomicWrite(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".claudemd-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op once the rename succeeds
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // Ensure writes or updates claudeMdPath so it imports generatedPath, preserving
@@ -97,6 +131,5 @@ func Ensure(generatedPath, claudeMdPath string) error {
 		fmt.Printf("[dry-run] would write %s:\n%s\n", claudeMdPath, content)
 		return nil
 	}
-	// G306: CLAUDE.md is non-secret user config; 0644 matches the install convention.
-	return os.WriteFile(claudeMdPath, []byte(content), 0o644) //nolint:gosec // non-secret user config; 0644 is intentional
+	return atomicWrite(claudeMdPath, []byte(content), 0o644)
 }

@@ -14,6 +14,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from safe_io import atomic_write_text  # noqa: E402
+
 BEGIN = "<!-- BEGIN agentic-cfg (managed) -->"
 END = "<!-- END agentic-cfg (managed) -->"
 # Prefix the legacy installer wrote straight into CLAUDE.md. An existing file
@@ -46,7 +49,7 @@ def main() -> int:
         print(f"[dry-run] would write {target}:\n{content}")
         return 0
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
+    atomic_write_text(target, content)  # temp + rename: never truncate a user's CLAUDE.md mid-write
     print(f"agentic-cfg @import ensured in {target} -> {generated}")
     return 0
 

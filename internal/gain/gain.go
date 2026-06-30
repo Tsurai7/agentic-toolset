@@ -1,13 +1,24 @@
-// Package gain computes the agentic-cfg performance readout — "what is this
-// config actually saving?" — from Claude Code session transcripts.
+// Package gain computes a session token-economy readout from Claude Code
+// transcripts: how the prompt cache and subagent isolation are shaping your
+// token bill.
 //
-// It reads the JSONL transcripts Claude Code writes under
-// ~/.claude/projects/**/<session>.jsonl (read-only) and reports, in aggregate:
-// token volume, the token-weighted prompt-cache hit rate (the dominant
-// token-cost lever), the input-token cost the cache is avoiding (the "gain"),
-// the subagent share (context isolated off the main thread), and an estimated
-// cost. It is the built-in, dependency-free counterpart to telemetry/report.py
-// and deliberately mirrors that script's parsing so the two agree.
+// Honesty note on attribution. The dollar figure this reports as "cache
+// avoided" is what Anthropic's *prompt cache* saves versus re-sending the same
+// context uncached. Prompt caching is a Claude **platform** feature — it works
+// in any session, with or without agentic-cfg. So this is NOT a measure of what
+// the config itself saves; agentic-cfg's lever here is narrow (cache-hygiene:
+// keeping the prefix byte-stable so the platform cache stays warm — see the
+// prompt-caching-playbook skill). To measure the config's *own* effect you need
+// an A/B with the config on vs off (that is what evals/swe_bench.py does), not
+// this readout. This command reports the actual input bill alongside the
+// counterfactual so the avoided figure can't be mistaken for money pocketed.
+//
+// It reads the JSONL transcripts under ~/.claude/projects/**/<session>.jsonl
+// (read-only) and reports, in aggregate: token volume, the token-weighted
+// cache hit rate, the actual input-side cost, the cost the cache avoided vs an
+// uncached baseline, the subagent share, and an estimated total cost. It is the
+// built-in, dependency-free counterpart to telemetry/report.py and mirrors that
+// script's parsing so the two agree.
 //
 // Surfaced via `agentic gain`. Pure stdlib, no network.
 package gain
@@ -288,7 +299,8 @@ type Report struct {
 	SubInput       int         `json:"subagent_input"`
 	CacheHitRate   float64     `json:"cache_hit_rate"`
 	SubagentShare  float64     `json:"subagent_share"`
-	InputCostSaved float64     `json:"input_cost_saved_usd"`
+	InputCostReal  float64     `json:"input_cost_real_usd"`  // actual input-side bill (input + cache), what you paid
+	InputCostSaved float64     `json:"input_cost_saved_usd"` // counterfactual: cost the cache avoided vs sending uncached
 	InputSavedPct  float64     `json:"input_cost_saved_pct"`
 	EstCostUSD     float64     `json:"est_cost_usd"`
 	ByModel        []ModelStat `json:"by_model"`
@@ -352,6 +364,7 @@ func Aggregate(sessions []*Session) Report {
 		r.ByModel = append(r.ByModel, ms)
 	}
 	sort.Slice(r.ByModel, func(i, j int) bool { return r.ByModel[i].TotalInput > r.ByModel[j].TotalInput })
+	r.InputCostReal = actual
 	r.InputCostSaved = gross - actual
 	if gross > 0 {
 		r.InputSavedPct = (gross - actual) / gross
@@ -401,15 +414,18 @@ func Render(w io.Writer, r *Report, asJSON, byModel bool) {
 		fmt.Fprintln(w, "No sessions matched — run some work first, then `agentic gain`.")
 		return
 	}
-	fmt.Fprintf(w, "agentic-cfg gain — over %d session(s)\n", r.Sessions)
-	fmt.Fprintf(w, "  input (fresh)    : %s\n", fmtK(r.Input))
-	fmt.Fprintf(w, "  cache read       : %s\n", fmtK(r.CacheRead))
-	fmt.Fprintf(w, "  cache write      : %s\n", fmtK(r.CacheWrite))
-	fmt.Fprintf(w, "  output           : %s\n", fmtK(r.Output))
-	fmt.Fprintf(w, "  cache hit rate   : %.1f%%   (cache_read / total input) — %s\n", r.CacheHitRate*100, cacheVerdict(r.CacheHitRate))
-	fmt.Fprintf(w, "  subagent share   : %.1f%%   (context isolated off the main thread)\n", r.SubagentShare*100)
-	fmt.Fprintf(w, "  input cost saved : $%.2f  (%.0f%% of the would-be input bill, avoided by caching)\n", r.InputCostSaved, r.InputSavedPct*100)
-	fmt.Fprintf(w, "  est. cost        : $%.2f  (approximate — verify rates vs current pricing)\n", r.EstCostUSD)
+	fmt.Fprintf(w, "agentic-cfg gain — session token economy over %d session(s)\n", r.Sessions)
+	fmt.Fprintf(w, "  input (fresh)      : %s\n", fmtK(r.Input))
+	fmt.Fprintf(w, "  cache read         : %s\n", fmtK(r.CacheRead))
+	fmt.Fprintf(w, "  cache write        : %s\n", fmtK(r.CacheWrite))
+	fmt.Fprintf(w, "  output             : %s\n", fmtK(r.Output))
+	fmt.Fprintf(w, "  cache hit rate     : %.1f%%   (cache_read / total input) — %s\n", r.CacheHitRate*100, cacheVerdict(r.CacheHitRate))
+	fmt.Fprintf(w, "  subagent share     : %.1f%%   (context isolated off the main thread)\n", r.SubagentShare*100)
+	fmt.Fprintf(w, "  input bill (actual): $%.2f  (input + cache — what you actually paid)\n", r.InputCostReal)
+	fmt.Fprintf(w, "  cache avoided      : $%.2f  (%.0f%% — vs re-sending the same context uncached)\n", r.InputCostSaved, r.InputSavedPct*100)
+	fmt.Fprintf(w, "  est. total cost    : $%.2f  (incl. output; approximate — verify rates)\n", r.EstCostUSD)
+	fmt.Fprintln(w, "  note: prompt caching is a Claude platform feature; agentic-cfg's lever is cache")
+	fmt.Fprintln(w, "        hygiene (a warm, byte-stable prefix), not the avoided figure itself.")
 
 	if byModel && len(r.ByModel) > 0 {
 		fmt.Fprintf(w, "\nby model (total input share — is the cheap tier carrying the bulk?):\n")
@@ -437,12 +453,13 @@ func RenderCache(w io.Writer, r *Report, byModel bool) {
 		fmt.Fprintln(w, "No sessions matched — run some work first, then `agentic cache`.")
 		return
 	}
-	fmt.Fprintf(w, "agentic-cfg cache — prompt-cache hit rate over %d session(s)\n", r.Sessions)
-	fmt.Fprintf(w, "  cache hit rate   : %.1f%%   (cache_read / total input) — %s\n", r.CacheHitRate*100, cacheVerdict(r.CacheHitRate))
-	fmt.Fprintf(w, "  input (fresh)    : %s\n", fmtK(r.Input))
-	fmt.Fprintf(w, "  cache read       : %s\n", fmtK(r.CacheRead))
-	fmt.Fprintf(w, "  cache write      : %s\n", fmtK(r.CacheWrite))
-	fmt.Fprintf(w, "  input cost saved : $%.2f  (%.0f%% of the would-be input bill, avoided by caching)\n", r.InputCostSaved, r.InputSavedPct*100)
+	fmt.Fprintf(w, "agentic-cfg cache — prompt-cache economy over %d session(s)\n", r.Sessions)
+	fmt.Fprintf(w, "  cache hit rate     : %.1f%%   (cache_read / total input) — %s\n", r.CacheHitRate*100, cacheVerdict(r.CacheHitRate))
+	fmt.Fprintf(w, "  input (fresh)      : %s\n", fmtK(r.Input))
+	fmt.Fprintf(w, "  cache read         : %s\n", fmtK(r.CacheRead))
+	fmt.Fprintf(w, "  cache write        : %s\n", fmtK(r.CacheWrite))
+	fmt.Fprintf(w, "  input bill (actual): $%.2f  (input + cache — what you actually paid)\n", r.InputCostReal)
+	fmt.Fprintf(w, "  cache avoided      : $%.2f  (%.0f%% — vs re-sending uncached; the Claude platform cache, kept warm by cache hygiene)\n", r.InputCostSaved, r.InputSavedPct*100)
 	if byModel && len(r.ByModel) > 0 {
 		fmt.Fprintf(w, "\nby model (cache hit rate per tier):\n")
 		for _, m := range r.ByModel {
@@ -462,10 +479,10 @@ func Main(args []string) int {
 	cacheView := fs.Bool("cache", false, "cache-focused readout (hit rate + token split + cost saved)")
 	gate := fs.Bool("gate", false, "regression gate: exit 1 if the cache hit rate is below --min-hit-rate")
 	minRate := fs.Float64("min-hit-rate", 0.80, "cache-hit-rate floor for --gate")
-	minTokens := fs.Int("min-tokens", 50000, "skip the gate (exit 0) below this many total input tokens")
+	minTokens := fs.Int("min-tokens", 200000, "skip the gate (exit 0) below this many total input tokens (matches telemetry/gate.py)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, "usage: agentic gain [--root DIR] [--last N] [--project SUBSTR] [--by-model] [--cache] [--json]\n"+
-			"       agentic gain --gate [--min-hit-rate 0.80] [--min-tokens 50000]\n\n"+
+			"       agentic gain --gate [--min-hit-rate 0.80] [--min-tokens 200000]\n\n"+
 			"Built-in performance readout from Claude Code transcripts: token volume,\n"+
 			"prompt-cache hit rate, input cost avoided by caching, and subagent share.\n"+
 			"--cache shows a cache-focused view (also reachable as `agentic cache`).\n"+

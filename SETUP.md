@@ -52,7 +52,7 @@ What each provider gets:
 | Provider | Installed |
 |----------|-----------|
 | **Cursor** | `~/.cursor/skills` → symlink to `core/skills`; rule `core/rules/lean-ctx.mdc` → `~/.cursor/rules`; hooks → `~/.cursor/hooks.json`; MCP **merged into** `~/.cursor/mcp.json` (existing servers preserved) |
-| **Claude** | `~/.claude/skills` → symlink; `~/.claude/CLAUDE.md` generated from `AGENTS.md` + user-rules; MCP merged into `~/.claude/.mcp.json`; `settings.json` created from template if absent |
+| **Claude** | `~/.claude/skills` → symlink; `~/.claude/CLAUDE.md` generated from `AGENTS.md` + user-rules; MCP registered into `~/.claude.json` (user scope, via the `claude` CLI — PORT-03, *not* `~/.claude/.mcp.json`); hooks + permissions merged into `settings.json` |
 
 Restart Cursor / Claude afterwards.
 
@@ -87,6 +87,54 @@ skills in the project's own `.cursor/skills` / `.claude/skills`; personal skills
 stay in `$HOME` via the symlink.
 
 GitNexus indexes per repo — run `npx gitnexus analyze` from a project root once.
+
+## The `agentic` CLI — install, apply to Claude, verify, remove
+
+`bin/bootstrap.sh` / `bin/install.sh` above sync the *config* (skills, CLAUDE.md, MCP,
+hooks). The `agentic` Go binary is a second, optional surface: one reversible command to
+inject/eject the agentic-cfg footprint in Claude, plus read-only token-economy metrics. It
+is gitignored and built fresh from the checkout.
+
+Build it and put it on PATH once:
+
+```bash
+make build            # builds ./bin/agentic (equivalently: go build -o bin/agentic ./cmd/agentic)
+./bin/agentic link    # symlinks `agentic` + `agentic-cfg` into ~/.local/bin (override with --dir)
+```
+
+Apply to local Claude — two equivalent entry points:
+
+```bash
+bin/install.sh --provider claude     # full sync: skills, CLAUDE.md, MCP, hooks + permissions
+# ...or the reversible, test-covered front door:
+agentic inject                       # skills symlink + CLAUDE.md @import + hooks/permissions + MCP
+agentic inject --dry-run             # preview; --skip-mcp to leave MCP alone; --home DIR to target
+```
+
+Both preserve your own CLAUDE.md text, your `settings.json` `env`/hooks, and any real
+`~/.claude/skills` you already have (a real skills dir is backed up, not clobbered). Restart
+Claude Code afterwards to pick up MCP and skills.
+
+Verify, and read the session token economy:
+
+```bash
+bin/doctor.sh                # health check — "Passed with N warning(s)" is honest; read the WARN lines
+agentic status               # is agentic-cfg injected? exit 0 = yes, 1 = no (--json for scripts)
+agentic gain                 # session token economy: cache hit rate + the ACTUAL input bill + cache-avoided
+agentic cache                # cache-focused view (alias for `agentic gain --cache`)
+```
+
+`agentic gain` reports the *session's* prompt-cache economy, not a config-attributed saving:
+prompt caching is a Claude platform feature, so the "cache avoided" figure is what caching
+saves versus re-sending context uncached — it is shown next to the actual bill so it can't be
+read as money the config pocketed. To measure the *config's own* effect, use the A/B
+benchmark (`evals/swe_bench.py`), not this readout.
+
+Remove cleanly — the exact inverse of inject, leaving your own content untouched:
+
+```bash
+agentic eject
+```
 
 ## Notes
 

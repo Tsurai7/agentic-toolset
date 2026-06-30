@@ -67,6 +67,9 @@ func TestAggregateGain(t *testing.T) {
 	// haiku m2: gross=510*1=510µ$, real=10*1+500*0.1=60µ$
 	wantGross := (36000.0 + 510.0) / 1e6
 	wantReal := (10125.0 + 60.0) / 1e6
+	if !approx(r.InputCostReal, wantReal, 1e-9) { // the actual input bill must be exposed, not just the counterfactual
+		t.Errorf("InputCostReal = %v, want %v", r.InputCostReal, wantReal)
+	}
 	if !approx(r.InputCostSaved, wantGross-wantReal, 1e-9) {
 		t.Errorf("InputCostSaved = %v, want %v", r.InputCostSaved, wantGross-wantReal)
 	}
@@ -146,13 +149,15 @@ func TestNoUsableTurns(t *testing.T) {
 func TestRenderCache(t *testing.T) {
 	r := Report{
 		Sessions: 3, Input: 100, CacheRead: 9000, CacheWrite: 200, Output: 500,
-		CacheHitRate: 0.981, InputCostSaved: 42.50, InputSavedPct: 0.87,
+		CacheHitRate: 0.981, InputCostReal: 7.00, InputCostSaved: 42.50, InputSavedPct: 0.87,
 		SubagentShare: 0.2, EstCostUSD: 12.0,
 	}
 	var b strings.Builder
 	RenderCache(&b, &r, false)
 	out := b.String()
-	for _, want := range []string{"cache hit rate", "98.1%", "healthy", "input cost saved", "$42.50"} {
+	// Honest framing: the actual bill is shown, and the counterfactual is labeled
+	// "cache avoided" (vs the old "cost saved"), not attributed to the config.
+	for _, want := range []string{"cache hit rate", "98.1%", "healthy", "input bill (actual)", "$7.00", "cache avoided", "$42.50"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("RenderCache output missing %q:\n%s", want, out)
 		}

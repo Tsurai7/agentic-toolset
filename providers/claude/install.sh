@@ -103,6 +103,9 @@ install_mcp() {
   # `claude` CLI), NOT ~/.claude/.mcp.json. Register through the CLI so servers
   # like gitnexus actually load (PORT-03).
   run mkdir -p "${HOME}/.claude"
+  # The `claude` CLI rewrites ~/.claude.json in place; back it up once first, matching
+  # the CLAUDE.md / settings.json backups (this file was previously mutated with none).
+  if [[ "$DRY_RUN" != "1" ]]; then backup_once "${HOME}/.claude.json"; fi
   # Weak tier: don't register the lean-ctx MCP server (its ctx_* tools + "always use
   # lean-ctx" instructions drive the orientation dance that over-tools weak models).
   local exclude=""
