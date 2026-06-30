@@ -13,14 +13,14 @@ marked **Observed**; everything else is marked **Inferred** with a confidence le
 
 What this document defers to its siblings (referenced, not duplicated):
 
-- **Go-rewrite design** → [`01-go-rewrite.md`](01-go-rewrite.md). The remediation table
+- **Go-rewrite design** → [`01-go-rewrite.md`](../plans/01-go-rewrite.md). The remediation table
   cross-references which bugs disappear for free under a real JSON parser + structured
   exec, versus which need a shell fix *now* because the rewrite is not landed.
-- **Strategy / maturity** → [`02-maturity-review.md`](02-maturity-review.md).
-- **Portability as a strategy** → [`04-portability-review.md`](04-portability-review.md). I
+- **Strategy / maturity** → [`02-maturity-review.md`](../plans/02-maturity-review.md).
+- **Portability as a strategy** → [`04-portability-review.md`](../plans/04-portability-review.md). I
   *report* portability bugs I found (BSD vs GNU `sed`, bash 3.2) and cross-link, but the
   compat strategy is theirs.
-- **Test-coverage gaps** ("what is untested") → [`05-test-coverage.md`](05-test-coverage.md).
+- **Test-coverage gaps** ("what is untested") → [`05-test-coverage.md`](../plans/05-test-coverage.md).
   I own *bugs in the harness code*; I defer the coverage assessment.
 
 ### Severity summary
@@ -274,7 +274,7 @@ for this script (it's a small filter) or, better, replace the grep/sed parsing w
 (BUG-01). Ensure the hook **always** exits 0 on its own internal errors so a parse failure
 degrades to "pass through" rather than "deny". Cross-ref doc 01.
 
-### BUG-08 — Hook re-escape uses BSD/GNU-divergent `sed`; portability of the emitted JSON — High → Medium — **Inferred (medium confidence)**, cross-ref [doc 04](04-portability-review.md)
+### BUG-08 — Hook re-escape uses BSD/GNU-divergent `sed`; portability of the emitted JSON — High → Medium — **Inferred (medium confidence)**, cross-ref [doc 04](../plans/04-portability-review.md)
 
 `shell-guard.sh:26`, `:57`, `:76`.
 
@@ -651,7 +651,7 @@ Minor robustness, not a wrong-result-on-happy-path.
 **Fix.** Add an explicit `elif [[ -e "$path" ]]; then warn "$path exists but is not a
 symlink"`.
 
-### BUG-21 — `ci-check.sh` YAML discovery uses `find … -o …  | grep -v '.git/'` (precedence + grep filter) inconsistent with the `-not -path` filter used elsewhere — Low — **Observed**, partly [doc 05](05-test-coverage.md) — ✅ FIXED (improvement loop, 2026-06-30)
+### BUG-21 — `ci-check.sh` YAML discovery uses `find … -o …  | grep -v '.git/'` (precedence + grep filter) inconsistent with the `-not -path` filter used elsewhere — Low — **Observed**, partly [doc 05](../plans/05-test-coverage.md) — ✅ FIXED (improvement loop, 2026-06-30)
 
 **✅ Resolved.** Now `find . \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*'`,
 matching the shell/JSON loops. Verified `bin/ci-check.sh` still finds and validates
@@ -675,7 +675,7 @@ loops. Coverage of *what ci-check validates* is doc 05's scope.
 
 ---
 
-## Area 4 — eval harness (`evals/*.py`) — bugs in the code (coverage gaps → [doc 05](05-test-coverage.md))
+## Area 4 — eval harness (`evals/*.py`) — bugs in the code (coverage gaps → [doc 05](../plans/05-test-coverage.md))
 
 ### BUG-22 — `cases.load()` / `report.py` / `bench.py` crash hard on a single malformed JSON file — Medium — **Inferred (high confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
 
@@ -760,7 +760,7 @@ hooks.
 ## Prioritized remediation backlog
 
 Effort: S ≈ <1h, M ≈ a few hours, L ≈ a day+. "Go-fixes?" = does the planned Go rewrite
-([doc 01](01-go-rewrite.md)) eliminate this defect for free (a real JSON parser +
+([doc 01](../plans/01-go-rewrite.md)) eliminate this defect for free (a real JSON parser +
 structured command handling + atomic writes), or is a shell/Python fix needed *now*?
 
 | ID | Title | Sev | Effort | Depends-on | Go-fixes? |
@@ -795,7 +795,7 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
    shell hardening, 2026-06-30; see the banner at the top of Area 1).** These are the
    Critical/High mass and they share a single root cause: parsing a structured protocol and
    a shell command with `grep`/`sed`/glob. The highest-leverage move is the Go rewrite
-   ([doc 01](01-go-rewrite.md)), which deletes the entire class. If the rewrite is not
+   ([doc 01](../plans/01-go-rewrite.md)), which deletes the entire class. If the rewrite is not
    imminent, the cheapest interim shell mitigations are: route all JSON in/out through
    `python3 -c` (kills BUG-01/05/08), tighten the `<<` test (BUG-02), and tighten the grep
    token/file detection (BUG-03/04/06). Ensure the hook **always exits 0 on internal error**
@@ -803,7 +803,7 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 2. **Merge-script robustness now (BUG-10, 11, 12, 13).** Small, independent, and they
    protect the user's live config; do them in Python immediately rather than waiting on Go.
 3. **Harness hardening (BUG-22, 23).** Cheap; they make CI failures legible. Coordinate the
-   *coverage* story with [doc 05](05-test-coverage.md).
+   *coverage* story with [doc 05](../plans/05-test-coverage.md).
 4. **Installer ergonomics (BUG-17, 18, 19, 20, 21).** Low severity; batch them.
 
 ### Verification notes (honesty)

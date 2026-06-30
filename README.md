@@ -42,7 +42,7 @@ real-skills-dir backup/restore, dry-run), the reversal primitives
 (`internal/claudemd/strip_test.go`, `internal/settings/unmerge_test.go`), and the CLI dispatch
 + PATH linking (`cmd/agentic/main_test.go`).
 
-Design rationale: [`docs/design/inject-eject-office-hours.md`](docs/design/inject-eject-office-hours.md).
+Design rationale: [`archive/inject-eject-office-hours.md`](archive/inject-eject-office-hours.md).
 
 ## Layout
 
@@ -54,7 +54,7 @@ Design rationale: [`docs/design/inject-eject-office-hours.md`](docs/design/injec
 | `core/rules/` | Cursor `.mdc` rules (symlinked to `~/.cursor/rules`) |
 | `integrations/` | Custom MCP server definitions (merged into provider configs) |
 | `catalog/plugins.yaml` | Marketplace plugins to enable manually (not vendored) |
-| `docs/` | Long-form docs (not rendered): the [office-hours design session](docs/design/model-orchestration-office-hours.md), the [AI-native research review](docs/research/ai-native-agentic-engineering.md), and practitioner [guides](docs/README.md) |
+| `docs/` | Long-form docs (not rendered): the [office-hours design session](archive/model-orchestration-office-hours.md), the [AI-native research review](docs/research/ai-native-agentic-engineering.md), and practitioner [guides](docs/README.md) |
 | `providers/` | Per-provider install scripts and templates |
 | `evals/` | Behavioral evals — conformance (does it fire) + value A/B (is it worth it). Loop: [`evals/PLAYBOOK.md`](evals/PLAYBOOK.md); results: [`evals/BENCHMARKS.md`](evals/BENCHMARKS.md) |
 | `bin/` | `bootstrap.sh` (one-command setup), `install.sh`, `doctor.sh`, `ci-check.sh` |

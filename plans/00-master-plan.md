@@ -16,7 +16,7 @@ sequences the work into a roadmap tied to the repo's north-star goals.
 |-----|------|----------|
 | [01-go-rewrite.md](01-go-rewrite.md) | The `agentic` Go CLI migration | Phased port of install + merge-mcp + merge-settings + shell-guard into one cross-platform binary; evals stay Python. |
 | [02-maturity-review.md](02-maturity-review.md) | Principal-engineer maturity vs AI/agentic SOTA | Strong architecture & docs; the gap is **measurement** — nothing proves the token/weak-agent wins on real sessions. |
-| [03-gaps-and-bugs.md](03-gaps-and-bugs.md) | Concrete defect catalog | 23 findings (2 Critical, 6 High). The whole top cluster is one root cause: the shell hook parses JSON with grep/sed. |
+| [03-gaps-and-bugs.md](../archive/03-gaps-and-bugs.md) | Concrete defect catalog (archived — all 23/23 resolved) | 23 findings (2 Critical, 6 High). The whole top cluster is one root cause: the shell hook parses JSON with grep/sed. |
 | [04-portability-review.md](04-portability-review.md) | Cross-provider + co-existence with existing configs | Install **clobbers** a pre-existing `CLAUDE.md` and user `settings.json` hooks — directly violates the "don't lose existing configs" goal. |
 | [05-test-coverage.md](05-test-coverage.md) | Test/harness coverage; "works together" | Good per-tool-in-isolation; **no integration test, no Haiku-uplift eval, no CI**. |
 

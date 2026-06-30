@@ -238,4 +238,4 @@ The skill and this repo apply the above at config altitude, not as a runtime ser
 ## See also
 
 - Practitioner habits drawn from these sources: [AI for software engineering](../guides/ai-for-software-engineering.md).
-- The scope rationale (office-hours session): [model-orchestration-office-hours.md](../design/model-orchestration-office-hours.md).
+- The scope rationale (office-hours session): [model-orchestration-office-hours.md](../../archive/model-orchestration-office-hours.md).

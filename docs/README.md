@@ -6,7 +6,7 @@ agents that go looking).
 
 | Path | What |
 |------|------|
-| [`design/model-orchestration-office-hours.md`](design/model-orchestration-office-hours.md) | The gstack `office-hours` forcing-questions session that scoped the model-orchestration work (why it's a skill, not an always-on principle). |
+| [`../archive/model-orchestration-office-hours.md`](../archive/model-orchestration-office-hours.md) | The gstack `office-hours` forcing-questions session that scoped the model-orchestration work (why it's a skill, not an always-on principle). Archived — shipped. |
 | [`research/ai-native-agentic-engineering.md`](research/ai-native-agentic-engineering.md) | Reviewed, cited snapshot of how Anthropic / OpenAI / Google / Cursor do model orchestration + token efficiency, and the vendor-neutral patterns. |
 | [`research/token-and-performance-improvements.md`](research/token-and-performance-improvements.md) | **The improvement research.** 2026 SOTA token-reduction + performance methods mapped onto agentic-cfg's measured data; what to keep/fix/drop; each rec a testable hypothesis. |
 | [`research/current-design-critique.md`](research/current-design-critique.md) | Adversarial keep/fix/drop audit of the current methods, grounded in the repo's own n=3 over-tooling data. |
