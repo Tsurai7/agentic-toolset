@@ -48,6 +48,10 @@ case "$FILE" in
     command -v node >/dev/null 2>&1 || exit 0
     err=$(node --check -- "$FILE" 2>&1) || true
     ;;
+  *.sh | *.bash)
+    command -v bash >/dev/null 2>&1 || exit 0
+    err=$(bash -n -- "$FILE" 2>&1) || true
+    ;;
   *)
     exit 0
     ;;

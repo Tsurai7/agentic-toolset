@@ -441,3 +441,23 @@ accepts the known solution.
   the **Thinker/Worker/Verifier** naming + a measured effort caveat in the `model-orchestration` skill,
   and the roadmap-item-4 status update. Also archived four completed bug/design docs to `archive/`.
 - **Verification.** `bin/check-links.py` + `bin/ci-check.sh` green (below).
+
+### loop 31 — self-analysis surfaced an `edit-lint` shell gap; closed it test-first · 2026-06-30
+- **Idea.** Asked to analyze my own behavior through agentic-cfg and find bugs/improvements. The
+  sharpest finding: I wrote a `.sh` script this session and the repo-owned `edit-lint` PostToolUse
+  hook — whose whole job is catching a broken edit before the failed-run round-trip — stayed
+  **silent**, because it checked `.py/.go/.js` but not `.sh`, in a repo that is mostly shell.
+- **Measurer.** New `providers/claude/hooks/edit-lint.test.sh` feeds the hook crafted PostToolUse
+  payloads and asserts: broken `.sh` → note, valid `.sh` → silent, with regression guards for
+  `.py`/`.go` and the fail-open invariants (missing file, non-edit tool). Wired into `bin/ci-check.sh`.
+- **Measure (baseline).** Against the unmodified hook the suite failed on exactly one case —
+  `broken .sh → <empty>` — isolating the gap; every other case passed.
+- **Change.** Added a `*.sh | *.bash)` case running `bash -n -- "$FILE"`, symmetric with the existing
+  checkers. Re-measure: 7/7 green (broken `.sh` now injects the note; valid `.sh` stays silent, so
+  `bash -n --` produces no false positive). Updated the stale `TESTING.md` claim that the hook was
+  "validated during development" — it now has a committed CI selftest covering shell too.
+- **Other findings (logged, not actioned).** `swe_bench` forces both A/B arms even for a single-config
+  sweep (niche); I defaulted to native `rtk`/`Read` over lean-ctx `ctx_*` despite the precedence table
+  (prose-not-enforced — the repo's own thesis); `agentic gain` pricing audited and **correct**.
+- **Verification.** `bin/ci-check.sh` green incl. shellcheck on both new/edited scripts + the new
+  selftest. Landed via the `no-mistakes` gate.
