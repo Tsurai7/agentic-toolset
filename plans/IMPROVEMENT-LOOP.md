@@ -333,6 +333,15 @@ arise.
 - **Bench.** `golangci-lint run ./...` → **0 issues**; `go test ./...` green; `bin/ci-check.sh`
   green (validates the workflow YAML).
 
+### loop 23 — doctor checks the right Claude MCP file · 2026-06-30
+- **Idea.** Surfaced while self-applying agentic-cfg: `doctor.sh` reported `~/.claude/.mcp.json
+  missing gitnexus`, but Claude Code reads user-scope MCP servers from `~/.claude.json`
+  (registered via the `claude` CLI, PORT-03) — doctor was checking the wrong file.
+- **Change.** Both MCP loops in `bin/doctor.sh` now check `~/.claude.json` for the Claude side
+  (Cursor still uses `~/.cursor/mcp.json`), with a comment explaining PORT-03.
+- **Bench.** shellcheck clean; `bin/doctor.sh` now reports both Cursor and Claude MCP as OK
+  against the real (injected) config — overall ALL PASS.
+
 ## ✅ Backlog complete — 23/23
 All of `plans/03-gaps-and-bugs.md` is resolved: both Criticals, all six Highs, every Medium and
 Low (BUG-09 as a justified won't-fix). Delivered across loops 01–13, each test-backed and

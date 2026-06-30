@@ -39,7 +39,10 @@ check_link "${HOME}/.claude/skills" "${AGENTIC_ROOT}/core/skills"
 echo ""
 
 echo "MCP configs"
-for f in "${HOME}/.cursor/mcp.json" "${HOME}/.claude/.mcp.json"; do
+# Cursor reads ~/.cursor/mcp.json. Claude Code reads user-scope MCP servers from
+# ~/.claude.json (registered via the `claude` CLI), NOT ~/.claude/.mcp.json (PORT-03),
+# so that is the file to check for the Claude side.
+for f in "${HOME}/.cursor/mcp.json" "${HOME}/.claude.json"; do
   if [[ -f "$f" ]]; then
   if grep -q '"gitnexus"' "$f" 2>/dev/null; then
       ok "$f contains gitnexus"
@@ -107,7 +110,7 @@ if [[ "$DEEP" -eq 1 ]]; then
   elif [[ -n "$pinned" ]]; then
     ok "gitnexus pinned: $pinned"
   fi
-  for f in "${HOME}/.cursor/mcp.json" "${HOME}/.claude/.mcp.json"; do
+  for f in "${HOME}/.cursor/mcp.json" "${HOME}/.claude.json"; do
     [[ -f "$f" ]] || continue
     if python3 -m json.tool "$f" >/dev/null 2>&1; then
       ok "$f is valid JSON"
