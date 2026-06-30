@@ -140,6 +140,35 @@ func TestNoUsableTurns(t *testing.T) {
 	}
 }
 
+// The cache-focused view leads with the hit rate, keeps the token split + cost
+// saved, and drops the non-cache lines (output, subagent share, est. cost). Its
+// empty-state message must name the `cache` command, not `gain`.
+func TestRenderCache(t *testing.T) {
+	r := Report{
+		Sessions: 3, Input: 100, CacheRead: 9000, CacheWrite: 200, Output: 500,
+		CacheHitRate: 0.981, InputCostSaved: 42.50, InputSavedPct: 0.87,
+		SubagentShare: 0.2, EstCostUSD: 12.0,
+	}
+	var b strings.Builder
+	RenderCache(&b, &r, false)
+	out := b.String()
+	for _, want := range []string{"cache hit rate", "98.1%", "healthy", "input cost saved", "$42.50"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("RenderCache output missing %q:\n%s", want, out)
+		}
+	}
+	for _, drop := range []string{"subagent share", "est. cost"} {
+		if strings.Contains(out, drop) {
+			t.Errorf("RenderCache should drop %q from the cache view:\n%s", drop, out)
+		}
+	}
+	var empty strings.Builder
+	RenderCache(&empty, &Report{Sessions: 0}, false)
+	if !strings.Contains(empty.String(), "agentic cache") {
+		t.Errorf("empty-state message should name `agentic cache`: %q", empty.String())
+	}
+}
+
 // A cache-write-heavy session with no reuse must show NEGATIVE savings — writing
 // cache costs more than fresh input (5m write ~1.25x), so the metric is honest
 // rather than always-positive.

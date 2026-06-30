@@ -41,6 +41,9 @@ func run(args []string) int {
 		return mergeClaudeMD(args[1:])
 	case "gain":
 		return gain.Main(args[1:])
+	case "cache":
+		// Discoverable alias for the cache-focused gain view.
+		return gain.Main(append([]string{"--cache"}, args[1:]...))
 	case "inject":
 		return injectEject("inject", args[1:])
 	case "eject":
@@ -269,6 +272,7 @@ commands:
   merge-mcp <root> --register-claude-user   register managed MCP servers at Claude user scope
   merge-claude-md <generated> <claude_md>   ensure CLAUDE.md @imports the generated config
   gain [--last N] [--project S] [--json]    performance readout: token volume, cache hit rate, cost saved
+  cache [--last N] [--by-model] [--json]    cache-focused readout: prompt-cache hit rate + cost saved
   inject [--root DIR] [--home DIR] [--dry-run]   add the agentic-cfg footprint to a Claude config
   eject  [--root DIR] [--home DIR] [--dry-run]   cleanly remove it (preserves your own content)
   status [--root DIR] [--home DIR] [--json]      report whether agentic-cfg is injected

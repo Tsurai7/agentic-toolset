@@ -112,3 +112,11 @@ func TestRunDispatchErrors(t *testing.T) {
 		t.Errorf("--help exit = %d, want 0", code)
 	}
 }
+
+// The `cache` subcommand is the discoverable alias for `gain --cache`; dispatch
+// must reach gain.Main (which exits 0 on an existing-but-empty transcript root).
+func TestRunCacheAlias(t *testing.T) {
+	if code := run([]string{"cache", "--root", t.TempDir()}); code != 0 {
+		t.Errorf("cache alias exit = %d, want 0 (empty root handled gracefully)", code)
+	}
+}

@@ -94,8 +94,12 @@ input cost avoided by caching — straight from your own session transcripts:
 ```bash
 agentic gain                 # last 20 sessions (read-only; built into the binary)
 agentic gain --json          # machine-readable
+agentic cache                # cache-focused view: hit rate + token split + cost saved
+agentic cache --by-model     # cache hit rate per model tier
 ```
 
+`agentic cache` (alias for `agentic gain --cache`) leads with the prompt-cache hit
+rate — the headline token-economy number — and the input bill caching avoided.
 Richer per-session/cost/tool breakdown: [`telemetry/`](telemetry/README.md).
 
 ## Phase 2 (not automated yet)

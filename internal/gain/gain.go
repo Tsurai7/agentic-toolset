@@ -401,16 +401,12 @@ func Render(w io.Writer, r *Report, asJSON, byModel bool) {
 		fmt.Fprintln(w, "No sessions matched — run some work first, then `agentic gain`.")
 		return
 	}
-	verdict := "below the 80% floor — check cache hygiene (telemetry/gate.py, prompt-caching-playbook)"
-	if r.CacheHitRate >= 0.80 {
-		verdict = "healthy (≥ 80% floor)"
-	}
 	fmt.Fprintf(w, "agentic-cfg gain — over %d session(s)\n", r.Sessions)
 	fmt.Fprintf(w, "  input (fresh)    : %s\n", fmtK(r.Input))
 	fmt.Fprintf(w, "  cache read       : %s\n", fmtK(r.CacheRead))
 	fmt.Fprintf(w, "  cache write      : %s\n", fmtK(r.CacheWrite))
 	fmt.Fprintf(w, "  output           : %s\n", fmtK(r.Output))
-	fmt.Fprintf(w, "  cache hit rate   : %.1f%%   (cache_read / total input) — %s\n", r.CacheHitRate*100, verdict)
+	fmt.Fprintf(w, "  cache hit rate   : %.1f%%   (cache_read / total input) — %s\n", r.CacheHitRate*100, cacheVerdict(r.CacheHitRate))
 	fmt.Fprintf(w, "  subagent share   : %.1f%%   (context isolated off the main thread)\n", r.SubagentShare*100)
 	fmt.Fprintf(w, "  input cost saved : $%.2f  (%.0f%% of the would-be input bill, avoided by caching)\n", r.InputCostSaved, r.InputSavedPct*100)
 	fmt.Fprintf(w, "  est. cost        : $%.2f  (approximate — verify rates vs current pricing)\n", r.EstCostUSD)
@@ -424,6 +420,37 @@ func Render(w io.Writer, r *Report, asJSON, byModel bool) {
 	}
 }
 
+// cacheVerdict labels a cache hit rate against the 80% hygiene floor.
+func cacheVerdict(rate float64) string {
+	if rate >= 0.80 {
+		return "healthy (≥ 80% floor)"
+	}
+	return "below the 80% floor — check cache hygiene (telemetry/gate.py, prompt-caching-playbook)"
+}
+
+// RenderCache is the `agentic cache` view: the same numbers as gain, led by the
+// prompt-cache hit rate and the fresh/read/write split and input bill behind it.
+// It drops the non-cache lines (output, subagent share, est. cost) so the stat
+// the user asked for is front and centre.
+func RenderCache(w io.Writer, r *Report, byModel bool) {
+	if r.Sessions == 0 {
+		fmt.Fprintln(w, "No sessions matched — run some work first, then `agentic cache`.")
+		return
+	}
+	fmt.Fprintf(w, "agentic-cfg cache — prompt-cache hit rate over %d session(s)\n", r.Sessions)
+	fmt.Fprintf(w, "  cache hit rate   : %.1f%%   (cache_read / total input) — %s\n", r.CacheHitRate*100, cacheVerdict(r.CacheHitRate))
+	fmt.Fprintf(w, "  input (fresh)    : %s\n", fmtK(r.Input))
+	fmt.Fprintf(w, "  cache read       : %s\n", fmtK(r.CacheRead))
+	fmt.Fprintf(w, "  cache write      : %s\n", fmtK(r.CacheWrite))
+	fmt.Fprintf(w, "  input cost saved : $%.2f  (%.0f%% of the would-be input bill, avoided by caching)\n", r.InputCostSaved, r.InputSavedPct*100)
+	if byModel && len(r.ByModel) > 0 {
+		fmt.Fprintf(w, "\nby model (cache hit rate per tier):\n")
+		for _, m := range r.ByModel {
+			fmt.Fprintf(w, "  %-26s hit %4.0f%%   in %8s\n", m.Model, m.CacheHitRate*100, fmtK(m.TotalInput))
+		}
+	}
+}
+
 // Main is the `agentic gain` entry point.
 func Main(args []string) int {
 	fs := flag.NewFlagSet("gain", flag.ContinueOnError)
@@ -432,14 +459,16 @@ func Main(args []string) int {
 	project := fs.String("project", "", "filter by project/dir substring")
 	asJSON := fs.Bool("json", false, "emit JSON instead of a table")
 	byModel := fs.Bool("by-model", false, "append a per-model token breakdown")
+	cacheView := fs.Bool("cache", false, "cache-focused readout (hit rate + token split + cost saved)")
 	gate := fs.Bool("gate", false, "regression gate: exit 1 if the cache hit rate is below --min-hit-rate")
 	minRate := fs.Float64("min-hit-rate", 0.80, "cache-hit-rate floor for --gate")
 	minTokens := fs.Int("min-tokens", 50000, "skip the gate (exit 0) below this many total input tokens")
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "usage: agentic gain [--root DIR] [--last N] [--project SUBSTR] [--by-model] [--json]\n"+
+		fmt.Fprint(os.Stderr, "usage: agentic gain [--root DIR] [--last N] [--project SUBSTR] [--by-model] [--cache] [--json]\n"+
 			"       agentic gain --gate [--min-hit-rate 0.80] [--min-tokens 50000]\n\n"+
 			"Built-in performance readout from Claude Code transcripts: token volume,\n"+
 			"prompt-cache hit rate, input cost avoided by caching, and subagent share.\n"+
+			"--cache shows a cache-focused view (also reachable as `agentic cache`).\n"+
 			"--gate turns the cache hit rate into a pass/fail check for CI.\n")
 	}
 	if err := fs.Parse(args); err != nil {
@@ -460,7 +489,14 @@ func Main(args []string) int {
 		fmt.Println(verdict)
 		return code
 	}
-	Render(os.Stdout, &report, *asJSON, *byModel)
+	switch {
+	case *asJSON:
+		Render(os.Stdout, &report, true, *byModel)
+	case *cacheView:
+		RenderCache(os.Stdout, &report, *byModel)
+	default:
+		Render(os.Stdout, &report, false, *byModel)
+	}
 	return 0
 }
 
