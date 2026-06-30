@@ -348,3 +348,49 @@ Low (BUG-09 as a justified won't-fix). Delivered across loops 01–13, each test
 committed to `master`. Standing themes also shipped: **metrics/observability** (`agentic gain`
 + `--gate`), **reversible install** (`agentic inject`/`eject`), and **atomic, non-corrupting,
 single-parser, bounded-backup merges**.
+
+---
+
+## Phase 2 — improvement research + SWE benchmark instrument
+
+After the bug backlog closed, the loop turned to the operator's standing ask: make this the
+best Claude/Claude-Code tool for *cutting tokens* and *lifting model performance*, backed by a
+real SWE benchmark across `opus`/`sonnet`/`haiku` and difficulty tiers.
+
+### Research (committed `6b56251`, `a0cf6ad`, `df91e97`)
+`docs/research/token-and-performance-improvements.md` (master review), `current-design-critique.md`
+(keep/fix/drop, grounded in the repo's n=3 data), `improvement-roadmap.md` (instrument-first
+priority list, each item a falsifiable hypothesis naming the benchmark cell that decides it),
+and `swe-benchmark-design.md` (methodology). Built from a verified deep-research workflow; the
+verifier's caveats are folded in. Central finding restated: the toolset **over-tools weak
+models on trivial tasks** (Haiku 3.15× vs Opus 1.0×) and **pays off on hard tasks** (0.65×);
+the cost driver is *turns*, not prefix bytes; correctness uplift is **unmeasured** — which is
+why the roadmap leads with building a correctness suite.
+
+### `evals/swe_bench.py` — the instrument (committed `6b56251`)
+A 5-tier ladder (trivial → very_hard, mixing lookups, structural disambiguation, and multi-file
+edit/build/test tasks graded by `go test`) × model tiers, two arms (ON full config / OFF
+prompt-isolated). Zero-token `--selftest` (in CI) proves each check rejects the wrong state and
+accepts the known solution.
+
+### loop 24 — fail loudly on agent-launch errors + auth finding · 2026-06-30
+- **Idea.** A live smoke run (`--filter trivial --models haiku`) returned in ~3 s with null
+  metrics and `0%` correctness — *too fast to be real*. Root cause: a nested `claude -p`
+  launched from inside a running Claude Code session **cannot authenticate** (`Not logged in ·
+  apiKeySource: none`); the live app holds the refreshed OAuth token in memory and the keychain
+  copy a child sees reads `expiresAt=0`. Ruled out concurrency (other sessions closed) and the
+  Bash sandbox (disabled — still failed); it is intrinsic to nesting. The harness was silently
+  recording these failed launches as phantom `0%`-correct cells.
+- **Change.** `agent.result_error()` detects an `is_error` terminal result (auth/API/timeout) or
+  a transcript with no result event; `measure_cell` tracks per-arm errors and no longer scores
+  an errored arm as 0% (correctness → NA); `main` adds incremental per-cell output + `--out`
+  JSONL (crash-resilient) and **fails fast** with an actionable message when the first cell
+  errors on both arms. `swe-benchmark-design.md` gained a "Prerequisite: the nested agent must
+  authenticate" section (run the live matrix from a plain terminal, or export
+  `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY`).
+- **Bench.** `--selftest` gains a zero-token guard that `result_error` discriminates
+  auth/timeout/empty from a clean run; `bin/ci-check.sh` green.
+- **Honest status.** The live opus/sonnet/haiku matrix **was not run from this session** — it
+  cannot be, by the auth constraint above. The instrument is built, hardened, and
+  selftest-validated; producing the real numbers requires running it from a normally
+  authenticated shell. The repo's existing measured data remains `plans/06` (n=3).

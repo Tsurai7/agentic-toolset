@@ -102,11 +102,33 @@ subprocess arms don't run inside the live PreToolUse hook; and flat-rate Max pri
 python3 evals/swe_bench.py --selftest                       # zero tokens — validate the checks (CI runs this)
 python3 evals/swe_bench.py                                  # dry-run: print the matrix plan, spend nothing
 python3 evals/swe_bench.py --confirm --filter trivial --models haiku,opus   # one tier, two models
-python3 evals/swe_bench.py --confirm --reps 3 --json        # full matrix, medians, machine-readable
+python3 evals/swe_bench.py --confirm --reps 3 --out results.jsonl --json     # full matrix, medians, persisted
 ```
 
 The full matrix is `models × tiers × 2 arms × reps` invocations (default 3×5×2×1 = 30). Start
 narrow (`--filter trivial --models haiku,opus`) to see the regime split cheaply, then widen.
+`--out` appends each cell as a JSON line *as it finishes*, so a long run is observable mid-flight
+and survives a kill.
+
+### Prerequisite: the nested agent must be able to authenticate
+
+Each arm shells out to `claude -p`. That subprocess needs its own working login — and a
+**`claude` launched from inside a running Claude Code session does not inherit one** (the live
+app holds the refreshed OAuth credential in memory; the on-disk/keychain copy a child process
+sees is not usable, so the child returns `Not logged in · Please run /login` and exits in ~1 s).
+The harness now detects this and **fails fast** with a clear message rather than recording the
+failed launches as phantom `0%`-correct cells.
+
+So run the live matrix from a **plain terminal**, not from within an agent session. Verify auth
+first with a one-liner, then run:
+
+```bash
+claude -p "say hi"                         # must print a normal reply, NOT "Not logged in"
+python3 evals/swe_bench.py --confirm --reps 3 --out results.jsonl
+```
+
+For headless/CI use, export a long-lived token (`claude setup-token` →
+`CLAUDE_CODE_OAUTH_TOKEN`) or an `ANTHROPIC_API_KEY` (billed separately from a Max plan).
 
 ## How to test a config idea with it
 
