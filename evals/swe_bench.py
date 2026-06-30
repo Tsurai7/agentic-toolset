@@ -214,6 +214,25 @@ def _check(spec, answer: str, cwd: str) -> bool:
     return False
 
 
+def _ratio_spread(on_runs: list, off_runs: list, key: str):
+    """Per-rep paired ratios `on[i][key] / off[i][key]`, as `(min, median, max)`.
+
+    Reporting only the median (see `measure_cell`) hides how noisy a cell is — the
+    live run that motivated this saw an `easy` cell swing 2.62× → 1.31× across reps.
+    Surfacing the spread lets a reader judge whether the median is trustworthy.
+    Returns None when no rep has both arms present (a zero/absent OFF denominator
+    is skipped, never divided by).
+    """
+    vals = sorted(
+        o[key] / f[key]
+        for o, f in zip(on_runs, off_runs)
+        if o.get(key) is not None and f.get(key)
+    )
+    if not vals:
+        return None
+    return (vals[0], vals[len(vals) // 2], vals[-1])
+
+
 def measure_cell(task_name: str, model: str, reps: int) -> dict:
     """Run one (task, model) cell `reps` times, both arms; report median metrics
     and correctness rates so a single noisy run can't decide the verdict."""
@@ -259,6 +278,10 @@ def measure_cell(task_name: str, model: str, reps: int) -> dict:
         "model": model,
         "reps": reps,
         "ratios": agent.overhead_ratios(on_med, off_med),
+        "spread": {
+            "total_input": _ratio_spread(on_runs, off_runs, "total_input_tokens"),
+            "cost": _ratio_spread(on_runs, off_runs, "cost_usd"),
+        },
         "turns_on": on_med["num_turns"],
         "turns_off": off_med["num_turns"],
         "correct_on_rate": (on_ok / on_n) if on_n else None,
@@ -303,7 +326,14 @@ def selftest() -> int:
     assert agent.result_error("not json at all") == "no result event (agent produced no usable output)"
     assert agent.result_error(clean) is None, "result_error flagged a clean run"
     print("  ok  result_error discriminates auth/timeout/empty from a clean run")
-    print(f"swe_bench selftest OK — {len(TASKS)} tasks, {checks} checks + error-guard.")
+    # The per-rep spread must report the actual min/median/max and never divide by a
+    # zero/absent OFF denominator (else a noisy cell looks as clean as a stable one).
+    on = [{"total_input_tokens": 200}, {"total_input_tokens": 400}, {"total_input_tokens": 300}]
+    off = [{"total_input_tokens": 100}, {"total_input_tokens": 100}, {"total_input_tokens": 100}]
+    assert _ratio_spread(on, off, "total_input_tokens") == (2.0, 3.0, 4.0)
+    assert _ratio_spread([{"total_input_tokens": 5}], [{"total_input_tokens": 0}], "total_input_tokens") is None
+    print("  ok  _ratio_spread reports per-rep min/median/max and skips zero denominators")
+    print(f"swe_bench selftest OK — {len(TASKS)} tasks, {checks} checks + error-guard + spread.")
     return 0
 
 
@@ -328,8 +358,12 @@ def _matrix_row(c: dict) -> str:
         msg = c.get("on_error") or c.get("off_error")
         return f"{c['task']:<10} {c['model']:<8} {'ERR':>10}  {str(msg)[:38]}"
     correct = f"{_pct(c['correct_on_rate'])}/{_pct(c['correct_off_rate'])}"
-    return (f"{c['task']:<10} {c['model']:<8} {_fmt(ra['total_input_ratio']):>10} "
-            f"{_fmt(ra['cost_ratio']):>7} {turns:>9} {correct:>15}")
+    row = (f"{c['task']:<10} {c['model']:<8} {_fmt(ra['total_input_ratio']):>10} "
+           f"{_fmt(ra['cost_ratio']):>7} {turns:>9} {correct:>15}")
+    sp = (c.get("spread") or {}).get("total_input")
+    if c.get("reps", 1) > 1 and sp:  # show the per-rep noise band behind the median
+        row += f"  in[{sp[0]:.2f}–{sp[2]:.2f}]"
+    return row
 
 
 def _print_matrix(cells: list[dict]) -> None:
