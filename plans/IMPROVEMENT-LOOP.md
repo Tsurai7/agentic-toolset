@@ -303,7 +303,12 @@ arise.
   scope). The scope is now present, so wire it up: every future change gets gated.
 - **Change.** `.github/workflows/ci.yml` runs `bin/ci-check.sh` on push to `master` + PRs
   (Go from `go.mod`, Python 3.12, shellcheck + PyYAML). Corrected the ARCHITECTURE gotcha.
-- **Bench.** `bin/ci-check.sh` validates the workflow YAML itself (passes) and stays green.
+- **Bench.** `bin/ci-check.sh` validates the workflow YAML itself and stays green.
+- **Outcome.** The first runner exposed two pre-existing shellcheck warnings the local run had
+  been *skipping* (shellcheck wasn't installed here): `ci-check.sh` SC2164 (`cd` without
+  `|| exit`) and `doctor.sh` SC2088 (word-initial quoted `~/` in two log messages). Fixed both,
+  installed shellcheck locally so future runs catch this class, and confirmed the **CI run is
+  green** (`conclusion=success`). The gate paid for itself on its first run.
 
 ## ✅ Backlog complete — 23/23
 All of `plans/03-gaps-and-bugs.md` is resolved: both Criticals, all six Highs, every Medium and
