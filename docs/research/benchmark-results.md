@@ -14,10 +14,12 @@
 - **Arms:** ON = the full applied agentic-cfg environment (skills, hooks, MCP, prefix); OFF =
   prompt-isolated bare agent (same binary, told to ignore the custom skills/rules/rtk/lean-ctx/
   ast-grep/gitnexus and use only built-in tools).
-- **Reps:** 1 for the full matrix (**directional, not a verdict** — see the variance note), plus a
-  **reps=5** confirmation pass on the `easy` tier for the headline.
-- Raw per-cell JSON: [`plans/data/swe-bench-2026-06-30.jsonl`](../../plans/data/swe-bench-2026-06-30.jsonl)
-  and [`plans/data/swe-bench-easy-n5-2026-06-30.jsonl`](../../plans/data/swe-bench-easy-n5-2026-06-30.jsonl).
+- **Reps:** 1 for the full matrix (**directional, not a verdict** — see the variance note), plus
+  **reps=5** passes on the `easy` tier (headline) and the `expert` correctness probe (added after
+  the matrix; see its section below).
+- Raw per-cell JSON: [`plans/data/swe-bench-2026-06-30.jsonl`](../../plans/data/swe-bench-2026-06-30.jsonl),
+  [`…-easy-n5-…`](../../plans/data/swe-bench-easy-n5-2026-06-30.jsonl), and
+  [`…-expert-n5-…`](../../plans/data/swe-bench-expert-n5-2026-06-30.jsonl).
 
 ## The matrix (reps=1)
 
@@ -62,6 +64,28 @@ overhead is small for all three (1.02–1.19×); the visible cost overhead is th
 effect, largest on Haiku (1.38×). This is the single most important result in the run — see
 finding 2.
 
+## Expert tier — the correctness probe (live, reps=5)
+
+The `expert` rung (loop 27) was built specifically to make bare Haiku *fail* — a subtle two-part
+interval-merge bug where the obvious one-character fix is insufficient — so the benchmark could
+finally measure a *correctness* effect (roadmap item 0). The live result, `expert × haiku` at five
+reps:
+
+| metric | ON | OFF |
+|--------|----|----|
+| correctness (passes / reps) | **5 / 5** | **5 / 5** |
+| total input (median, spread) | 1.47× ([1.19–2.24]) | — |
+| cost (median) | 1.17× | — |
+| turns | 11 | 8 |
+
+**The probe did not discriminate: both arms passed all five reps.** Haiku 4.5 solved the bug every
+time, with or without the config, so this still shows **no correctness divergence** — only the
+familiar light over-tooling (1.47× input, 11 vs 8 turns). The honest read: this rung is *hard to
+author but still not hard enough* — a single subtle bug is within Haiku 4.5's reach. Probing
+correctness uplift needs either a genuinely failure-prone task class (multiple coupled bugs, a
+non-local root cause) or a weaker executor. **Roadmap item 0 remains open**, now with a measured
+"still 5/5" data point rather than an assumption.
+
 ## What the data says
 
 **1. The two-regime *direction* is consistent for Opus and Haiku — in a single-rep matrix.** Opus
@@ -102,10 +126,11 @@ turns.
 30 arms (15 cells × ON/OFF) were correct, *including* the multi-file `very_hard` refactor on bare
 Haiku. So nothing here shows the custom layer making a model *succeed where it would have failed*;
 its only measured effect is the turn-count delta (a tax on light tasks, a saving on hard ones for
-Haiku/Opus). This directly **reaffirms roadmap item 0**: the suite still lacks a task where
-weak-bare actually fails, so the central open question — does the toolset lift *correctness* for
-weak models? — remains unanswered. The `very_hard` task needs to be made genuinely harder (or run
-at higher n where bare-Haiku flakiness would show) before any quality lever can be proven.
+Haiku/Opus). The `expert` probe built to break this (above) **also** went 5/5 on bare Haiku, so the
+central open question — does the toolset lift *correctness* for weak models? — is now measured as
+*null*, not merely unmeasured. **Roadmap item 0 still stands**, and the lesson is that the probe
+must be harder still (coupled bugs / non-local root cause) or run on a weaker executor before any
+quality lever can be proven.
 
 **5. n=1 is genuinely noisy — quantified.** Minutes before this matrix, a standalone
 `trivial × haiku` cell measured **3.22×** (9 turns vs 3); in the matrix the same cell measured
@@ -130,7 +155,7 @@ re-run at reps=5 below.
 
 | Roadmap item / claim | This run says |
 |---|---|
-| **0** — build a task where weak-bare *fails* | **Reinforced.** 30/30 arms correct; the hardest task didn't break bare Haiku. The correctness question is still unmeasured. |
+| **0** — build a task where weak-bare *fails* | **Tested, still open.** The matrix was 30/30 correct, and the `expert` rung built to break bare Haiku also went 5/5 (n=5). The correctness question is now measured as *null* — needs a harder probe or a weaker executor, not just "build a task." |
 | **1** — harden `overhead.py` (per-rep, raise n) | **Reinforced.** On-tier evidence: Haiku's `easy` ratio moved 2.30× (n=1) → 1.67× (n=5 median), the exact wide-IQR-at-low-n the item predicts. (The standalone 3.22×→1.01× `trivial`-haiku swing is further, off-tier, n=1-noise evidence.) The cells need n≥5 persisted distributions. |
 | **2** — near-vanilla weak tier | **Supported, magnitude tempered.** Haiku's `easy` tax is real at n=5 (1.67×). Sonnet shows a *small* tax (1.31× total, 1.04× billed); the n=1 hint that it over-tools like Haiku did not survive reps=5, so "extend the trimmed profile to Sonnet" is a weaker (still testable) hypothesis than the matrix first suggested. |
 | **3** — conditional Read/Grep redirect | **Supported by the easy/medium tiers — and it corrects the item's own premise.** Roadmap item 3 names a "trivial-task turn-inducer (12–20 turns)", but every measured `trivial` cell is 3 ON turns (3/3, 3/4, 3/4) — parity or below OFF, no inducer there. The 12–26-turn inducer actually lives on `easy` (haiku 19, sonnet 18), `medium` (haiku 16) and `very_hard` (haiku 26); a redirect that doesn't fire on small/low-breadth reads should target *those* tiers, and item 3's trivial framing should be rewritten. |

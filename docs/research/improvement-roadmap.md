@@ -28,9 +28,11 @@
 
 The instrument now exists and has run live across all three tiers. What the data changed:
 
-- **Item 0 — reinforced.** 30/30 arms were correct, *including* bare Haiku on the `very_hard`
-  refactor. No current task makes weak-bare fail, so a *correctness* effect is still unprovable.
-  This is the top open item.
+- **Item 0 — tested, still open.** 30/30 matrix arms were correct, and the `expert` rung added
+  specifically to break bare Haiku (loop 27) also went **5/5 at n=5** (loop 28). So a *correctness*
+  effect is now measured as *null*, not merely unmeasured — Haiku 4.5 solves a subtle two-part bug
+  unaided. Next: a genuinely failure-prone probe (coupled bugs / non-local root cause) or a weaker
+  executor. Still the top open item.
 - **Item 1 — partially done.** Per-rep min/median/max spread now ships (loop 26); the on-tier
   hypothesis held — Haiku's `easy` ratio moved 2.30× (n=1) → 1.67× (n=5 median), with a measured
   per-rep band. Still to do: raise default reps and persist full distributions to the JSONL.
