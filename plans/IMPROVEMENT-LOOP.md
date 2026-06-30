@@ -286,6 +286,17 @@ arise.
   skill (now 21 cases); value track parses; `bin/ci-check.sh` green. (The A/B itself runs under
   the value track with an LLM judge, not in token-free CI.)
 
+### loop 19 — enrich model-orchestration with two verified levers · 2026-06-30
+- **Idea.** The skill covered tier routing but missed two high-value, research-verified levers.
+- **Change.** Added to `core/skills/model-orchestration/SKILL.md`: (1) **"Effort before
+  model-switch"** — tune the reasoning-effort/thinking-level dial (a finer, cheaper lever than
+  changing tier; higher effort isn't automatically better), giving the ladder *right effort →
+  right tier → orchestration*; (2) a **cost-justification** rule in "When NOT to orchestrate" —
+  single-agent ~4× / multi-agent ~15× the tokens of a chat, so reserve fan-out for high-value
+  parallelizable work. Both cite the research doc.
+- **Bench.** `bin/check-links.py` confirms the new research-doc cross-link resolves (129 links);
+  conformance/value eval coverage for the skill unchanged; `bin/ci-check.sh` green.
+
 ## ✅ Backlog complete — 23/23
 All of `plans/03-gaps-and-bugs.md` is resolved: both Criticals, all six Highs, every Medium and
 Low (BUG-09 as a justified won't-fix). Delivered across loops 01–13, each test-backed and

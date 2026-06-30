@@ -27,6 +27,20 @@ Think in three tiers so the policy survives model renames. Today's mapping:
 Other providers tier the same way (GPT-5 / mini / nano; Gemini Pro / Flash / Flash-Lite).
 Route by the task's *shape*; let the harness or `/model` pick the concrete model.
 
+## Effort before model-switch
+
+Switching tier is not the only knob. Modern models expose a **reasoning-effort / thinking-level**
+dial (Claude effort low→max; GPT-5 `reasoning.effort`; Gemini thinking level), and tuning it is
+often a finer, cheaper lever than changing model:
+
+- **Lower** effort (or `none`) for easy, well-specified, latency-sensitive work — it cuts billed
+  reasoning tokens without dropping a tier.
+- **Higher** effort only for genuinely hard reasoning; more is *not* automatically better — on a
+  weakly-specified task high effort causes overthinking and wasted tokens.
+
+So the ladder is **right effort → right tier → orchestration**: reach for the next lever only
+when the cheaper one is exhausted.
+
 ## The default pattern: plan strong, execute cheap, escalate on failure
 
 1. **Plan with the strong tier.** Decompose the task into sub-tasks each small enough to
@@ -52,6 +66,9 @@ A single capable model in one context often wins. **Stay single-model when:**
 - The work is exploratory/ambiguous throughout (no stable spec to hand off) — keep it with
   the strong tier rather than thrashing a cheap one.
 - Splitting would duplicate context across agents that all need the same large file set.
+- **The task value can't justify the overhead.** A single agent can use ~4× the tokens of a
+  chat and a multi-agent run ~15× — reserve fan-out for high-value, parallelizable tasks, not
+  routine edits (figures: [research doc](../../../docs/research/ai-native-agentic-engineering.md)).
 
 Rule of thumb: orchestrate when the task **fans out into independent, well-specified
 pieces**. If you can't write the sub-task spec in two sentences, it isn't ready to delegate.
