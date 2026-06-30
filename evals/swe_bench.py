@@ -200,7 +200,7 @@ def _run_arm(cwd: str, prompt: str, model: str) -> str:
         p = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=PERCALL_TIMEOUT)
         return p.stdout or p.stderr
     except subprocess.TimeoutExpired:
-        return '{"type":"result","result":"<TIMEOUT>","usage":{}}'
+        return '{"type":"result","is_error":true,"subtype":"timeout","result":"<TIMEOUT>","usage":{}}'
 
 
 def _check(spec, answer: str, cwd: str) -> bool:
@@ -219,24 +219,33 @@ def measure_cell(task_name: str, model: str, reps: int) -> dict:
     and correctness rates so a single noisy run can't decide the verdict."""
     maker = TASKS[task_name]
     on_runs, off_runs = [], []
-    correct_on = correct_off = 0
-    for _ in range(reps):
+    on_ok = off_ok = 0          # passes, counted only over non-errored reps
+    on_n = off_n = 0            # non-errored reps per arm
+    on_err = off_err = None     # last error string seen on each arm, if any
+
+    def run_arm(prompt_prefix, accum_runs):
+        nonlocal_err = None
         d, task, spec = maker()
         try:
-            on_raw = _run_arm(d, task, model)
-            on_ok = _check(spec, agent.final_text(on_raw), d)
+            raw = _run_arm(d, prompt_prefix + task, model)
+            nonlocal_err = agent.result_error(raw)
+            ok = None if nonlocal_err else _check(spec, agent.final_text(raw), d)
         finally:
             shutil.rmtree(d, ignore_errors=True)
-        d2, task2, spec2 = maker()
-        try:
-            off_raw = _run_arm(d2, OFF_PREFIX + task2, model)
-            off_ok = _check(spec2, agent.final_text(off_raw), d2)
-        finally:
-            shutil.rmtree(d2, ignore_errors=True)
-        on_runs.append(agent.metrics(on_raw))
-        off_runs.append(agent.metrics(off_raw))
-        correct_on += int(on_ok)
-        correct_off += int(off_ok)
+        accum_runs.append(agent.metrics(raw))
+        return ok, nonlocal_err
+
+    for _ in range(reps):
+        ok, err = run_arm("", on_runs)
+        if err:
+            on_err = err
+        else:
+            on_ok += int(ok); on_n += 1
+        ok, err = run_arm(OFF_PREFIX, off_runs)
+        if err:
+            off_err = err
+        else:
+            off_ok += int(ok); off_n += 1
 
     def med(runs, k):
         vals = sorted(r.get(k) for r in runs if r.get(k) is not None)
@@ -252,8 +261,10 @@ def measure_cell(task_name: str, model: str, reps: int) -> dict:
         "ratios": agent.overhead_ratios(on_med, off_med),
         "turns_on": on_med["num_turns"],
         "turns_off": off_med["num_turns"],
-        "correct_on_rate": correct_on / reps,
-        "correct_off_rate": correct_off / reps,
+        "correct_on_rate": (on_ok / on_n) if on_n else None,
+        "correct_off_rate": (off_ok / off_n) if off_n else None,
+        "on_error": on_err,
+        "off_error": off_err,
     }
 
 
@@ -282,7 +293,17 @@ def selftest() -> int:
         finally:
             shutil.rmtree(d, ignore_errors=True)
         print(f"  ok  {name}")
-    print(f"swe_bench selftest OK — {len(TASKS)} tasks, {checks} checks.")
+    # The error-detection guard: a failed/auth-errored launch must NOT be recorded
+    # as a real run, or the matrix shows phantom 0%-correct cells (see result_error).
+    auth_fail = '{"type":"result","is_error":true,"result":"Not logged in · Please run /login"}'
+    timeout = '{"type":"result","is_error":true,"subtype":"timeout","result":"<TIMEOUT>"}'
+    clean = '{"type":"result","is_error":false,"result":"(int, error)","num_turns":1}'
+    assert agent.result_error(auth_fail), "result_error missed an auth failure"
+    assert agent.result_error(timeout), "result_error missed a timeout"
+    assert agent.result_error("not json at all") == "no result event (agent produced no usable output)"
+    assert agent.result_error(clean) is None, "result_error flagged a clean run"
+    print("  ok  result_error discriminates auth/timeout/empty from a clean run")
+    print(f"swe_bench selftest OK — {len(TASKS)} tasks, {checks} checks + error-guard.")
     return 0
 
 
@@ -290,15 +311,31 @@ def _fmt(x, suffix="x"):
     return "—" if x is None else f"{x:.2f}{suffix}"
 
 
+_MATRIX_HEADER = (
+    f"\n{'task':<10} {'model':<8} {'in ON/OFF':>10} {'cost':>7} {'turns':>9} {'correct ON/OFF':>15}"
+    f"\n{'-' * 64}"
+)
+
+
+def _pct(x):
+    return "NA" if x is None else f"{x:.0%}"
+
+
+def _matrix_row(c: dict) -> str:
+    ra = c["ratios"]
+    turns = f"{c['turns_on']}/{c['turns_off']}"
+    if c.get("on_error") or c.get("off_error"):
+        msg = c.get("on_error") or c.get("off_error")
+        return f"{c['task']:<10} {c['model']:<8} {'ERR':>10}  {str(msg)[:38]}"
+    correct = f"{_pct(c['correct_on_rate'])}/{_pct(c['correct_off_rate'])}"
+    return (f"{c['task']:<10} {c['model']:<8} {_fmt(ra['total_input_ratio']):>10} "
+            f"{_fmt(ra['cost_ratio']):>7} {turns:>9} {correct:>15}")
+
+
 def _print_matrix(cells: list[dict]) -> None:
-    print(f"\n{'task':<10} {'model':<8} {'in ON/OFF':>10} {'cost':>7} {'turns':>9} {'correct ON/OFF':>15}")
-    print("-" * 64)
+    print(_MATRIX_HEADER)
     for c in cells:
-        ra = c["ratios"]
-        turns = f"{c['turns_on']}/{c['turns_off']}"
-        correct = f"{c['correct_on_rate']:.0%}/{c['correct_off_rate']:.0%}"
-        print(f"{c['task']:<10} {c['model']:<8} {_fmt(ra['total_input_ratio']):>10} "
-              f"{_fmt(ra['cost_ratio']):>7} {turns:>9} {correct:>15}")
+        print(_matrix_row(c))
 
 
 def main(argv=None) -> int:
@@ -309,6 +346,7 @@ def main(argv=None) -> int:
     ap.add_argument("--reps", type=int, default=1, help="repetitions per cell; the median is reported")
     ap.add_argument("--selftest", action="store_true", help="zero-token validation of the task checks")
     ap.add_argument("--json", action="store_true", help="emit raw JSON")
+    ap.add_argument("--out", default=None, help="append each completed cell as a JSON line (crash-resilient)")
     args = ap.parse_args(argv)
 
     if args.selftest:
@@ -330,12 +368,31 @@ def main(argv=None) -> int:
         print("\nValidate the task checks now, free:  python3 evals/swe_bench.py --selftest")
         return 0
 
-    cells = [measure_cell(t, m, args.reps) for m in models for t in tasks]
+    # Run incrementally so a long matrix is observable mid-run and survives a kill:
+    # each cell prints as it finishes and is appended to --out (if given) before the next starts.
+    print(_MATRIX_HEADER, flush=True)
+    cells = []
+    for m in models:
+        for t in tasks:
+            c = measure_cell(t, m, args.reps)
+            cells.append(c)
+            print(_matrix_row(c), flush=True)
+            if args.out:
+                with open(args.out, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(c) + "\n")
+            # Fail fast on a systemic launch failure (e.g. auth): if the very first
+            # cell errored on BOTH arms, every later cell will too — don't grind
+            # through a matrix of phantom data.
+            if len(cells) == 1 and c.get("on_error") and c.get("off_error"):
+                print(f"\nAborting: the agent CLI failed to run — {c['on_error']}\n"
+                      "Both arms errored on the first cell, so this is systemic (not a task failure).\n"
+                      "Most likely the nested `claude` could not authenticate. Run from a shell where\n"
+                      "`claude -p \"hi\"` works (a fresh login, or export CLAUDE_CODE_OAUTH_TOKEN / "
+                      "ANTHROPIC_API_KEY).", file=sys.stderr)
+                return 1
     if args.json:
         json.dump(cells, sys.stdout, indent=2)
         sys.stdout.write("\n")
-    else:
-        _print_matrix(cells)
     return 0
 
 

@@ -57,6 +57,32 @@ def final_text(raw: str) -> str:
     return result if result is not None else raw
 
 
+def result_error(raw: str) -> str | None:
+    """Return an error string if this transcript is not a real measured run.
+
+    A `claude -p` invocation can terminate with `is_error` (auth failure such as
+    "Not logged in", an API error, or a timeout) yet still emit a `result` event.
+    Treated naively that becomes a phantom cell — null token metrics and a 0%
+    correctness score that looks like data but is just a failed launch. This lets
+    the runner detect and surface those instead of recording them. A transcript
+    with no terminal `result` event at all is also an error.
+    """
+    saw_result = False
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if obj.get("type") == "result":
+            saw_result = True
+            if obj.get("is_error"):
+                return str(obj.get("result") or obj.get("subtype") or "is_error")
+    return None if saw_result else "no result event (agent produced no usable output)"
+
+
 def clip(transcript: str, head: int = 12000, tail: int = 8000) -> str:
     """Fit a transcript into the judge's budget without dropping the answer.
 
