@@ -1,0 +1,14 @@
+{
+  "id": "model-orchestration-tiered-delegation",
+  "skill": "model-orchestration",
+  "hypothesis": "With the model-orchestration skill, the agent matches model tier to task weight — it reserves the strong tier for the design decision and the plan, delegates the bulk, well-specified mechanical work to a cheaper tier or subagents, and escalates only on failure — yielding an equally correct plan that is more token/cost-efficient than doing everything on one expensive model or over-orchestrating a trivial step.",
+  "prompt": "I have a task with two parts: (1) decide whether our API errors should use a discriminated-union type or status codes (a real design call with trade-offs), and (2) once that's decided, rename the field `err` to `error` across ~30 files and update every reference — purely mechanical, no judgement left. Lay out how you'd drive this end to end efficiently: which model tier handles which part and why, how you'd hand off the mechanical part, and how you'd verify.",
+  "ablate": ["model-orchestration"],
+  "rubric": [
+    "routes by task weight: reserves a strong tier for the design decision (1) and the planning/decomposition, and assigns the mechanical rename (2) to a cheaper tier or delegated subagents",
+    "gives the cheap/delegated executor a well-specified hand-off (the exact change plus a verifiable check) rather than an under-specified one, and includes verification with an escalate-on-failure path",
+    "does not over-orchestrate the trivial part or spend the most expensive model on the bulk mechanical edits; the overall plan is more token/cost-efficient while staying correct"
+  ],
+  "pass_condition": "treatment_preferred",
+  "n": 3
+}

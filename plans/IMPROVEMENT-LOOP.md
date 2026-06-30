@@ -274,6 +274,18 @@ arise.
   `agentic-cfg status` — it resolved the repo root and worked.
 - **Validated.** `bin/ci-check.sh` green. README updated.
 
+### loop 18 — value A/B eval for model-orchestration · 2026-06-30
+- **Idea / office-hours.** The repo's PLAYBOOK wants every skill to have a conformance *and* a
+  value case; `model-orchestration` had only conformance (lint enforces only conformance
+  coverage). A value case ties the orchestration work to the repo's evidence-driven philosophy.
+- **Change.** `evals/value/cases/model-orchestration-tiered-delegation.json` — a two-part task
+  (one design decision + a ~30-file mechanical rename) with a rubric that scores tier routing,
+  a well-specified cheap-executor hand-off, and *not* over-orchestrating; ablates the
+  `model-orchestration` skill; `pass_condition: treatment_preferred`.
+- **Bench.** `evals/lint.py` validates the value-case schema + that the ablate target is a real
+  skill (now 21 cases); value track parses; `bin/ci-check.sh` green. (The A/B itself runs under
+  the value track with an LLM judge, not in token-free CI.)
+
 ## ✅ Backlog complete — 23/23
 All of `plans/03-gaps-and-bugs.md` is resolved: both Criticals, all six Highs, every Medium and
 Low (BUG-09 as a justified won't-fix). Delivered across loops 01–13, each test-backed and
