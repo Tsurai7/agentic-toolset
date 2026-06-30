@@ -121,7 +121,7 @@ but most of its *quality* story is prose the data shows weak models ignore.
 **What's mechanical (keep):**
 - **`shell-guard` PreToolUse hook** — wraps shell with `rtk`, denies code-targeted `grep` and
   points at `ast-grep`, delegates to `lean-ctx`. A real, enforced behaviour, not a nudge.
-- **`edit-lint` PostToolUse hook** — parse-checks `.py`/`.go`/`.js` after Edit/Write (fail-open)
+- **`edit-lint` PostToolUse hook** — parse-checks `.py`/`.go`/`.js`/`.sh` after Edit/Write (fail-open)
   and injects a fix-it note. Mechanizes "don't ship code that doesn't parse."
 
 **Measured case — mechanizing a discovery gate beat softening its prose (live, loop 29).** The

@@ -170,12 +170,16 @@ first). The blocks are:
 4. YAML validity — `yaml.safe_load` on every `*.yaml`/`*.yml`; WARN/skip if PyYAML is absent.
 5. SKILL.md frontmatter — each `core/skills/*/SKILL.md` must start with `---` and contain `name:` and `description:`.
 6. Skill reference links — every `references/NAME.md` mentioned in a SKILL.md must exist on disk.
-7. Evals lint — `python3 evals/lint.py`.
-8. Evals self-test — `python3 evals/selftest.py`.
-9. Evals parse dry-run — `python3 evals/run.py --track all` (no `--confirm`, so zero tokens; a parse/load smoke test of the conformance + value cases only).
-10. Memory hygiene — `python3 core/memory/lint.py` on version-controlled seeds only (the `--live` path must never run in CI).
-11. Always-on prefix budget — `bash bin/prefix-budget.sh`: sums the source files rendered into the always-on Claude prefix (stub + AGENTS.md + principles + user-rules, excluding the Cursor-only `cursor-rules-pointer.md`) and fails if they exceed the committed `PREFIX_BUDGET_BYTES`, so the per-turn prefix cannot silently grow.
-12. Go block — only if `go` is present (else WARN): `gofmt -l cmd internal` must be empty, then `go vet ./...`, `go test ./...`, `go build -o bin/agentic ./cmd/agentic`.
+7. Markdown links (relative) — `python3 bin/check-links.py`; fails on a broken relative link.
+8. Evals lint — `python3 evals/lint.py`.
+9. Evals self-test — `python3 evals/selftest.py`.
+10. Merge helpers self-test — `python3 providers/shared/selftest.py` (atomic-write merge logic).
+11. Edit-lint hook self-test — `bash providers/claude/hooks/edit-lint.test.sh`; asserts the PostToolUse hook flags a broken `.py`/`.go`/`.sh` edit and stays silent otherwise.
+12. SWE benchmark self-test — `python3 evals/swe_bench.py --selftest`, only if `go` is present (else WARN).
+13. Evals parse dry-run — `python3 evals/run.py --track all` (no `--confirm`, so zero tokens; a parse/load smoke test of the conformance + value cases only).
+14. Memory hygiene — `python3 core/memory/lint.py` on version-controlled seeds only (the `--live` path must never run in CI).
+15. Always-on prefix budget — `bash bin/prefix-budget.sh`: sums the source files rendered into the always-on Claude prefix (stub + AGENTS.md + principles + user-rules, excluding the Cursor-only `cursor-rules-pointer.md`) and fails if they exceed the committed `PREFIX_BUDGET_BYTES`, so the per-turn prefix cannot silently grow.
+16. Go block — only if `go` is present (else WARN): `gofmt -l cmd internal` must be empty, then `go vet ./...`, `go test ./...`, `go build -o bin/agentic ./cmd/agentic`.
 
 The Go binary `bin/agentic` is gitignored and built fresh from the checkout; it is never
 vendored. The install integration test exercises the Go binary path only if a built,
@@ -583,7 +587,7 @@ What is measured today on `master`:
 - The toolset-overhead instrument — `evals/overhead.py` (the A/B runner) plus `agent.overhead_ratios` / `judge.judge_overhead` (the ≤1.5x verdict) and the 2026-06-26 baseline data — present. The ratio/verdict logic runs zero-token in CI via `selftest.py`; the live A/B is manual (`--confirm`).
 - The always-on prefix budget — `bin/prefix-budget.sh`, gated in `bin/ci-check.sh` — present (W2): the per-turn prefix cannot silently grow past `PREFIX_BUDGET_BYTES`.
 - The weak-tier install profile (W5) — `AGENTIC_TIER=weak bin/install.sh` drops the lean-ctx redirect hook + lean-ctx MCP, a measured driver of weak-model over-tooling. Covered by `TestClaudeInstallWeakTierDropsRedirect` + `TestCollectFragmentsExclude`. Measurement note (n=3 medians, `evals/overhead.py --reps 3`, `plans/data/overhead-n3-2026-06-26.json`): the over-tooling is weak-model + trivial-task specific (Opus 4.8 ≤1.34× everywhere; only Haiku's easy task fails). The weak profile *reduces* Haiku's easy overhead (3.15× → 2.27×) and is harmless to hard tasks and to Opus, but does **not** reliably reach ≤1.5× — an earlier n=1 "0.59× PASS" was a fluke. ≤1.5× for Haiku trivial tasks remains open (needs a more aggressive minimal profile).
-- The two token-cheap uplift levers (W4) — the opt-in `answer-shapes` skill (covered by `answer-shapes-structured-bugfix`, prefix-neutral except its one-line listing entry) and the `edit-lint` PostToolUse hook (`providers/claude/hooks/edit-lint.sh`, prefix-neutral) — present. The hook is bulletproof fail-open (silent on non-edit tools, unknown extensions, absent checkers/files, or a passing check); its shell is covered in CI by the `bash -n` (and, when present, `shellcheck`) blocks of `bin/ci-check.sh`, and its runtime behavior was validated during development by piping synthetic PostToolUse payloads (a Python and a Go syntax error injected context; valid / non-code / non-edit / missing-file inputs stayed silent). The token-heavy uplift levers (self-critique, plan-first) remain deferred to the model-tier render fork.
+- The two token-cheap uplift levers (W4) — the opt-in `answer-shapes` skill (covered by `answer-shapes-structured-bugfix`, prefix-neutral except its one-line listing entry) and the `edit-lint` PostToolUse hook (`providers/claude/hooks/edit-lint.sh`, prefix-neutral) — present. The hook is bulletproof fail-open (silent on non-edit tools, unknown extensions, absent checkers/files, or a passing check); its shell is covered in CI by the `bash -n` (and, when present, `shellcheck`) blocks of `bin/ci-check.sh`, and its runtime behavior is covered by a committed selftest (`providers/claude/hooks/edit-lint.test.sh`, run from `bin/ci-check.sh`) that pipes synthetic PostToolUse payloads — Python, Go, **and shell** syntax errors each inject a note; valid / non-edit / missing-file inputs stay silent. (Shell was a gap until loop 31: the hook checked `.py/.go/.js` but silently ignored `.sh`, in a repo that is mostly shell.) The token-heavy uplift levers (self-critique, plan-first) remain deferred to the model-tier render fork.
 
 What is on a different branch or only proposed:
 

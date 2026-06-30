@@ -89,6 +89,10 @@ echo "== merge helpers self-test (atomic write) =="
 if python3 providers/shared/selftest.py; then ok "merge helpers"; else err "providers/shared/selftest.py failed"; fi
 echo ""
 
+echo "== edit-lint hook self-test (flags broken edits) =="
+if bash providers/claude/hooks/edit-lint.test.sh >/dev/null 2>&1; then ok "edit-lint flags broken py/go/js/sh edits"; else err "providers/claude/hooks/edit-lint.test.sh failed"; fi
+echo ""
+
 echo "== swe benchmark self-test (task checks; needs Go) =="
 if command -v go >/dev/null 2>&1; then
   if python3 evals/swe_bench.py --selftest >/dev/null 2>&1; then ok "swe_bench tasks discriminate"; else err "evals/swe_bench.py --selftest failed"; fi
