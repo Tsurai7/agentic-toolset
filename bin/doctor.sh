@@ -55,9 +55,9 @@ echo ""
 echo "Claude memory"
 if [[ -f "${HOME}/.claude/CLAUDE.md" ]]; then
   if grep -q "agentic" "${HOME}/.claude/CLAUDE.md"; then
-    ok "~/.claude/CLAUDE.md references agentic"
+    ok "CLAUDE.md (~/.claude) references agentic"
   else
-    warn "~/.claude/CLAUDE.md exists but may be stale"
+    warn "CLAUDE.md (~/.claude) exists but may be stale"
   fi
 else
   fail "missing ~/.claude/CLAUDE.md"

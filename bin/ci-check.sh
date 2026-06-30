@@ -3,7 +3,7 @@
 set -uo pipefail
 
 AGENTIC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$AGENTIC_ROOT"
+cd "$AGENTIC_ROOT" || exit 1
 FAIL=0
 
 ok()   { printf '  OK   %s\n' "$*"; }
