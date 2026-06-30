@@ -60,16 +60,17 @@ func (b Bucket) totalInput() int { return b.Input + b.CacheRead + b.CacheWrite }
 
 // Session is the aggregated usage of one transcript file.
 type Session struct {
-	ID             string         `json:"session_id"`
-	Project        string         `json:"project"`
-	Branch         string         `json:"git_branch"`
-	Models         map[string]int `json:"models"`
-	AssistantTurns int            `json:"assistant_turns"`
-	Main           Bucket         `json:"main"`
-	Sub            Bucket         `json:"sub"`
-	Cost           float64        `json:"est_cost_usd"` // actual, incl. output
-	InputCostGross float64        `json:"-"`            // counterfactual: total input billed at fresh rate
-	InputCostReal  float64        `json:"-"`            // actual input-side cost (input+cache)
+	ID             string             `json:"session_id"`
+	Project        string             `json:"project"`
+	Branch         string             `json:"git_branch"`
+	Models         map[string]int     `json:"models"`
+	AssistantTurns int                `json:"assistant_turns"`
+	Main           Bucket             `json:"main"`
+	Sub            Bucket             `json:"sub"`
+	PerModel       map[string]*Bucket `json:"-"`            // tokens per concrete model id
+	Cost           float64            `json:"est_cost_usd"` // actual, incl. output
+	InputCostGross float64            `json:"-"`            // counterfactual: total input billed at fresh rate
+	InputCostReal  float64            `json:"-"`            // actual input-side cost (input+cache)
 }
 
 // TotalInput is fresh + cache-read + cache-write across both buckets. This is the
@@ -125,7 +126,7 @@ type tUsage struct {
 // message-level usage on every content-block record, so usage is counted once
 // per message.id to avoid inflating tokens and cost.
 func ParseLines(r io.Reader) (*Session, error) {
-	s := &Session{Models: map[string]int{}}
+	s := &Session{Models: map[string]int{}, PerModel: map[string]*Bucket{}}
 	seen := map[string]bool{}
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 1024*1024), 64*1024*1024) // transcript lines can be large
@@ -188,6 +189,20 @@ func (s *Session) addUsage(rec tRecord) {
 	b.Output += u.OutputTokens
 	b.CacheRead += u.CacheReadInputTokens
 	b.CacheWrite += u.CacheCreationInputTokens
+
+	model := rec.Message.Model
+	if model == "" {
+		model = "unknown"
+	}
+	pm := s.PerModel[model]
+	if pm == nil {
+		pm = &Bucket{}
+		s.PerModel[model] = pm
+	}
+	pm.Input += u.InputTokens
+	pm.Output += u.OutputTokens
+	pm.CacheRead += u.CacheReadInputTokens
+	pm.CacheWrite += u.CacheCreationInputTokens
 
 	r := ratesFor(rec.Message.Model)
 	inCost := float64(u.InputTokens)*r.in + float64(u.CacheReadInputTokens)*r.cacheRead +
@@ -263,24 +278,37 @@ func Collect(root, project string, last int) ([]*Session, error) {
 
 // Report is the aggregate gain readout across a set of sessions.
 type Report struct {
-	Sessions       int     `json:"sessions"`
-	Input          int     `json:"input_fresh"`
-	CacheRead      int     `json:"cache_read"`
-	CacheWrite     int     `json:"cache_write"`
-	Output         int     `json:"output"`
-	TotalInput     int     `json:"total_input"`
-	SubInput       int     `json:"subagent_input"`
-	CacheHitRate   float64 `json:"cache_hit_rate"`
-	SubagentShare  float64 `json:"subagent_share"`
-	InputCostSaved float64 `json:"input_cost_saved_usd"`
-	InputSavedPct  float64 `json:"input_cost_saved_pct"`
-	EstCostUSD     float64 `json:"est_cost_usd"`
+	Sessions       int         `json:"sessions"`
+	Input          int         `json:"input_fresh"`
+	CacheRead      int         `json:"cache_read"`
+	CacheWrite     int         `json:"cache_write"`
+	Output         int         `json:"output"`
+	TotalInput     int         `json:"total_input"`
+	SubInput       int         `json:"subagent_input"`
+	CacheHitRate   float64     `json:"cache_hit_rate"`
+	SubagentShare  float64     `json:"subagent_share"`
+	InputCostSaved float64     `json:"input_cost_saved_usd"`
+	InputSavedPct  float64     `json:"input_cost_saved_pct"`
+	EstCostUSD     float64     `json:"est_cost_usd"`
+	ByModel        []ModelStat `json:"by_model"`
+}
+
+// ModelStat is per-model token usage, for seeing whether cheap tiers carry the
+// bulk of the work (the orchestration payoff).
+type ModelStat struct {
+	Model        string  `json:"model"`
+	TotalInput   int     `json:"total_input"`
+	CacheRead    int     `json:"cache_read"`
+	Output       int     `json:"output"`
+	CacheHitRate float64 `json:"cache_hit_rate"`
+	InputShare   float64 `json:"input_share"` // share of all total input
 }
 
 // Aggregate folds sessions into the token-weighted Report.
 func Aggregate(sessions []*Session) Report {
 	var r Report
 	var gross, real float64
+	perModel := map[string]*Bucket{}
 	for _, s := range sessions {
 		r.Input += s.Main.Input + s.Sub.Input
 		r.CacheRead += s.CacheRead()
@@ -291,12 +319,38 @@ func Aggregate(sessions []*Session) Report {
 		r.EstCostUSD += s.Cost
 		gross += s.InputCostGross
 		real += s.InputCostReal
+		for m, b := range s.PerModel {
+			acc := perModel[m]
+			if acc == nil {
+				acc = &Bucket{}
+				perModel[m] = acc
+			}
+			acc.Input += b.Input
+			acc.Output += b.Output
+			acc.CacheRead += b.CacheRead
+			acc.CacheWrite += b.CacheWrite
+		}
 	}
 	r.Sessions = len(sessions)
 	if r.TotalInput > 0 {
 		r.CacheHitRate = float64(r.CacheRead) / float64(r.TotalInput)
 		r.SubagentShare = float64(r.SubInput) / float64(r.TotalInput)
 	}
+	for m, b := range perModel {
+		ti := b.totalInput()
+		if ti == 0 {
+			continue // models that produced no input tokens (e.g. <synthetic>) add only noise
+		}
+		ms := ModelStat{Model: m, TotalInput: ti, CacheRead: b.CacheRead, Output: b.Output}
+		if ti > 0 {
+			ms.CacheHitRate = float64(b.CacheRead) / float64(ti)
+		}
+		if r.TotalInput > 0 {
+			ms.InputShare = float64(ti) / float64(r.TotalInput)
+		}
+		r.ByModel = append(r.ByModel, ms)
+	}
+	sort.Slice(r.ByModel, func(i, j int) bool { return r.ByModel[i].TotalInput > r.ByModel[j].TotalInput })
 	r.InputCostSaved = gross - real
 	if gross > 0 {
 		r.InputSavedPct = (gross - real) / gross
@@ -332,8 +386,10 @@ func fmtK(n int) string {
 	}
 }
 
-// Render writes the human-readable readout (or JSON) for a report.
-func Render(w io.Writer, r Report, asJSON bool) {
+// Render writes the human-readable readout (or JSON) for a report. With byModel,
+// it appends a per-model token table — the orchestration signal (is the cheap
+// tier carrying the bulk of the input?).
+func Render(w io.Writer, r Report, asJSON, byModel bool) {
 	if asJSON {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
@@ -357,6 +413,14 @@ func Render(w io.Writer, r Report, asJSON bool) {
 	fmt.Fprintf(w, "  subagent share   : %.1f%%   (context isolated off the main thread)\n", r.SubagentShare*100)
 	fmt.Fprintf(w, "  input cost saved : $%.2f  (%.0f%% of the would-be input bill, avoided by caching)\n", r.InputCostSaved, r.InputSavedPct*100)
 	fmt.Fprintf(w, "  est. cost        : $%.2f  (approximate — verify rates vs current pricing)\n", r.EstCostUSD)
+
+	if byModel && len(r.ByModel) > 0 {
+		fmt.Fprintf(w, "\nby model (total input share — is the cheap tier carrying the bulk?):\n")
+		for _, m := range r.ByModel {
+			fmt.Fprintf(w, "  %-26s %6.1f%%   in %8s   hit %4.0f%%\n",
+				m.Model, m.InputShare*100, fmtK(m.TotalInput), m.CacheHitRate*100)
+		}
+	}
 }
 
 // Main is the `agentic gain` entry point.
@@ -366,11 +430,12 @@ func Main(args []string) int {
 	last := fs.Int("last", 20, "number of most-recent sessions to include (0 = all)")
 	project := fs.String("project", "", "filter by project/dir substring")
 	asJSON := fs.Bool("json", false, "emit JSON instead of a table")
+	byModel := fs.Bool("by-model", false, "append a per-model token breakdown")
 	gate := fs.Bool("gate", false, "regression gate: exit 1 if the cache hit rate is below --min-hit-rate")
 	minRate := fs.Float64("min-hit-rate", 0.80, "cache-hit-rate floor for --gate")
 	minTokens := fs.Int("min-tokens", 50000, "skip the gate (exit 0) below this many total input tokens")
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "usage: agentic gain [--root DIR] [--last N] [--project SUBSTR] [--json]\n"+
+		fmt.Fprint(os.Stderr, "usage: agentic gain [--root DIR] [--last N] [--project SUBSTR] [--by-model] [--json]\n"+
 			"       agentic gain --gate [--min-hit-rate 0.80] [--min-tokens 50000]\n\n"+
 			"Built-in performance readout from Claude Code transcripts: token volume,\n"+
 			"prompt-cache hit rate, input cost avoided by caching, and subagent share.\n"+
@@ -394,7 +459,7 @@ func Main(args []string) int {
 		fmt.Println(verdict)
 		return code
 	}
-	Render(os.Stdout, report, *asJSON)
+	Render(os.Stdout, report, *asJSON, *byModel)
 	return 0
 }
 

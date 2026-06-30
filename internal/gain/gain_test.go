@@ -107,6 +107,27 @@ func TestGate(t *testing.T) {
 	}
 }
 
+func TestPerModelBreakdown(t *testing.T) {
+	s, _ := ParseLines(strings.NewReader(sample))
+	r := Aggregate([]*Session{s})
+	if len(r.ByModel) != 2 {
+		t.Fatalf("ByModel len = %d, want 2 (%+v)", len(r.ByModel), r.ByModel)
+	}
+	// Sorted by total input desc: opus main (2400) then haiku sidechain (510).
+	if r.ByModel[0].Model != "claude-opus-4-8" || r.ByModel[0].TotalInput != 2400 {
+		t.Errorf("ByModel[0] = %+v, want opus/2400", r.ByModel[0])
+	}
+	if r.ByModel[1].Model != "claude-haiku-4-5" || r.ByModel[1].TotalInput != 510 {
+		t.Errorf("ByModel[1] = %+v, want haiku/510", r.ByModel[1])
+	}
+	if !approx(r.ByModel[0].InputShare, 2400.0/2910.0, 1e-9) {
+		t.Errorf("opus input share = %v", r.ByModel[0].InputShare)
+	}
+	if !approx(r.ByModel[1].CacheHitRate, 500.0/510.0, 1e-9) {
+		t.Errorf("haiku hit rate = %v", r.ByModel[1].CacheHitRate)
+	}
+}
+
 func TestNoUsableTurns(t *testing.T) {
 	for _, in := range []string{"", "{bad\n{\"type\":\"user\"}\n", `{"type":"assistant","message":{"id":"x"}}`} {
 		s, err := ParseLines(strings.NewReader(in))

@@ -310,6 +310,17 @@ arise.
   installed shellcheck locally so future runs catch this class, and confirmed the **CI run is
   green** (`conclusion=success`). The gate paid for itself on its first run.
 
+### loop 21 — `agentic gain --by-model` (orchestration payoff signal) · 2026-06-30
+- **Idea.** The whole orchestration push aims to shift bulk work to cheaper tiers — but nothing
+  let you *see* whether it's happening. A per-model token breakdown answers "is the cheap tier
+  carrying the bulk of the input?"
+- **Change.** `gain` now tracks tokens per concrete model id (`Session.PerModel`), aggregates
+  into `Report.ByModel` (total-input share + cache hit rate, sorted desc, zero-token models
+  skipped), and `--by-model` appends a table. Surfaced in `--json` too.
+- **Bench.** `internal/gain/gain_test.go::TestPerModelBreakdown` (opus 2400 / haiku 510 split,
+  shares, hit rates). Validated on real data — it shows opus at 98.2% of input here, a concrete
+  "more to delegate" signal. `bin/ci-check.sh` green; docs updated.
+
 ## ✅ Backlog complete — 23/23
 All of `plans/03-gaps-and-bugs.md` is resolved: both Criticals, all six Highs, every Medium and
 Low (BUG-09 as a justified won't-fix). Delivered across loops 01–13, each test-backed and
