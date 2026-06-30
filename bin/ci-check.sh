@@ -73,6 +73,10 @@ while IFS= read -r f; do
 done < <(find core/skills -name 'SKILL.md')
 echo ""
 
+echo "== markdown links (relative) =="
+if python3 "$(dirname "$0")/check-links.py"; then ok "markdown links resolve"; else err "broken markdown links (run bin/check-links.py)"; fi
+echo ""
+
 echo "== evals lint (schema, ids, coverage) =="
 if python3 evals/lint.py; then ok "eval cases lint"; else err "evals/lint.py failed"; fi
 echo ""
