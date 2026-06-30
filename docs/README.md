@@ -12,6 +12,7 @@ agents that go looking).
 | [`research/current-design-critique.md`](research/current-design-critique.md) | Adversarial keep/fix/drop audit of the current methods, grounded in the repo's own n=3 over-tooling data. |
 | [`research/improvement-roadmap.md`](research/improvement-roadmap.md) | Prioritized roadmap (instrument-first); each item names the benchmark cell that decides it. |
 | [`research/swe-benchmark-design.md`](research/swe-benchmark-design.md) | Methodology for [`evals/swe_bench.py`](../evals/swe_bench.py) — difficulty ladder × model tiers, metrics, gameproofing, small-n verdicts. |
+| [`research/benchmark-results.md`](research/benchmark-results.md) | **Live measured run** (Opus/Sonnet/Haiku × 5 tiers). Reproduces the two-regime split, surfaces that Sonnet over-tools too, and shows the "3×" input is ~95% free cache (billed overhead ~1.1–1.2×). |
 | [`guides/ai-for-software-engineering.md`](guides/ai-for-software-engineering.md) | Practitioner playbook: spec → context → plan → small diff → verify → review, with model tiering and the known failure modes. |
 | [`guides/ai-in-daily-life.md`](guides/ai-in-daily-life.md) | Practical everyday-use guide: pick the right tool/tier, research, writing, learning, decisions, plus literacy & safety habits. |
 

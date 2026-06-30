@@ -390,7 +390,26 @@ accepts the known solution.
   `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY`).
 - **Bench.** `--selftest` gains a zero-token guard that `result_error` discriminates
   auth/timeout/empty from a clean run; `bin/ci-check.sh` green.
-- **Honest status.** The live opus/sonnet/haiku matrix **was not run from this session** — it
-  cannot be, by the auth constraint above. The instrument is built, hardened, and
-  selftest-validated; producing the real numbers requires running it from a normally
-  authenticated shell. The repo's existing measured data remains `plans/06` (n=3).
+- **Honest status (updated by loop 25).** At the time of writing, the nested `claude` could not
+  authenticate, so the matrix had not run. The credential later refreshed mid-session, the nested
+  smoke call succeeded, and the full live matrix **was then run** — see loop 25.
+
+### loop 25 — the live matrix actually ran (Opus/Sonnet/Haiku × 5 tiers) + adversarial verify · 2026-06-30
+- **Idea.** Once nested auth started working, run the real benchmark the operator asked for and
+  write it up — honestly, with the small-n caveats the instrument is built to enforce.
+- **Change / data.** Ran the full 15-cell matrix at reps=1
+  ([`data/swe-bench-2026-06-30.jsonl`](data/swe-bench-2026-06-30.jsonl)) plus a reps=5 confirmation
+  on the `easy` tier ([`data/…-easy-n5-…jsonl`](data/swe-bench-easy-n5-2026-06-30.jsonl)); wrote
+  [`docs/research/benchmark-results.md`](../docs/research/benchmark-results.md).
+- **Findings.** (1) Two-regime *direction* reproduced: Opus flat-to-helpful (≤1.0× on 4/5 tiers),
+  Haiku over-tools light tasks (easy 1.67× at n=5) and breaks even/wins on hard. (2) The n=1 matrix
+  manufactured a false "Sonnet over-tools more than Haiku" surprise (sonnet easy 2.62×) that reps=5
+  **deflated to 1.31×**, restoring the weakness ordering haiku>sonnet>opus — a live demonstration of
+  why the repo insists on medians. (3) The "3×" total-input numbers are ~95 % free cache_read;
+  billed overhead is ~1.0–1.2×, the real cost is output/turns. (4) **Correctness never diverged**
+  (30/30 arms correct) — toolset value is efficiency, not rescue; roadmap item 0 (a task where
+  weak-bare fails) is still unmet.
+- **Verification.** A 3-lens adversarial Workflow re-derived every number from the JSONL (all
+  matched), caught an asymmetric n=1 walk-back (Opus/Haiku hard "wins" stated as settled while
+  Sonnet's were demoted) and two roadmap cell-citation mismatches; all 8 issues (0 blocker) fixed
+  in the doc. `bin/check-links.py` + `--selftest` green.
