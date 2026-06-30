@@ -89,6 +89,14 @@ echo "== merge helpers self-test (atomic write) =="
 if python3 providers/shared/selftest.py; then ok "merge helpers"; else err "providers/shared/selftest.py failed"; fi
 echo ""
 
+echo "== swe benchmark self-test (task checks; needs Go) =="
+if command -v go >/dev/null 2>&1; then
+  if python3 evals/swe_bench.py --selftest >/dev/null 2>&1; then ok "swe_bench tasks discriminate"; else err "evals/swe_bench.py --selftest failed"; fi
+else
+  warn "go not installed — skipping swe_bench selftest"
+fi
+echo ""
+
 echo "== evals parse (dry run) =="
 if python3 evals/run.py --track all >/dev/null 2>&1; then ok "eval cases parse"; else err "evals/run.py dry run failed"; fi
 echo ""
