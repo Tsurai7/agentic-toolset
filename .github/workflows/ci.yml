@@ -30,3 +30,8 @@ jobs:
 
       - name: Static checks (shell, JSON, YAML, frontmatter, links, evals, prefix budget, Go)
         run: bash bin/ci-check.sh
+
+      - name: golangci-lint (strict gate, .golangci.yml)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11.3

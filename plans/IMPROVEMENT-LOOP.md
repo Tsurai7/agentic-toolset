@@ -321,6 +321,18 @@ arise.
   shares, hit rates). Validated on real data — it shows opus at 98.2% of input here, a concrete
   "more to delegate" signal. `bin/ci-check.sh` green; docs updated.
 
+### loop 22 — fix + enforce the strict golangci-lint gate in CI · 2026-06-30
+- **Idea.** The repo configured a strict `golangci-lint` v2 gate (`.golangci.yml`, `make lint`)
+  but CI never ran it — so the loop's new Go code (gain/lifecycle/link/status) was never held to
+  it. Run it, fix every finding, then wire it into CI.
+- **Change.** Fixed all 14 findings in the added code: pointer-pass heavy structs
+  (`addUsage`/`Gate`/`Render`), renamed the builtin-shadowing `real`→`actual`/`realFile`,
+  `strconv.Itoa` over `Sprintf`, `errors.New` over `Errorf(const)`, named results, `range 2`,
+  `t.Helper()`, and `//nolint` with rationale for the two intentional nil-returns. Added a
+  `golangci-lint-action@v8` (v2.11.3) step to `.github/workflows/ci.yml`.
+- **Bench.** `golangci-lint run ./...` → **0 issues**; `go test ./...` green; `bin/ci-check.sh`
+  green (validates the workflow YAML).
+
 ## ✅ Backlog complete — 23/23
 All of `plans/03-gaps-and-bugs.md` is resolved: both Criticals, all six Highs, every Medium and
 Low (BUG-09 as a justified won't-fix). Delivered across loops 01–13, each test-backed and

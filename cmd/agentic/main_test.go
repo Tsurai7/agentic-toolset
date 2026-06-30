@@ -88,15 +88,15 @@ func TestLinkInto(t *testing.T) {
 	}
 
 	// A real (non-symlink) file is skipped, never clobbered.
-	real := filepath.Join(dir, "realfile")
-	if err := os.WriteFile(real, []byte("keep"), 0o644); err != nil {
+	realFile := filepath.Join(dir, "realfile")
+	if err := os.WriteFile(realFile, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, skip, _ := linkInto(exe, dir, []string{"realfile"})
 	if len(skip) != 1 {
 		t.Errorf("a real file should be skipped, got skipped=%v", skip)
 	}
-	if b, _ := os.ReadFile(real); string(b) != "keep" {
+	if b, _ := os.ReadFile(realFile); string(b) != "keep" {
 		t.Error("linkInto clobbered a real file")
 	}
 }

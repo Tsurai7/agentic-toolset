@@ -96,7 +96,7 @@ func TestGate(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			verdict, code := Gate(c.r, c.minRate, c.minToks)
+			verdict, code := Gate(&c.r, c.minRate, c.minToks)
 			if code != c.wantCode {
 				t.Errorf("code = %d, want %d (%q)", code, c.wantCode, verdict)
 			}

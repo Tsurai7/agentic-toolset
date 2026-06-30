@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -157,18 +158,18 @@ func ParseLines(r io.Reader) (*Session, error) {
 			}
 			seen[id] = true
 		}
-		s.addUsage(rec)
+		s.addUsage(&rec)
 	}
 	if err := sc.Err(); err != nil {
 		return nil, err
 	}
 	if s.AssistantTurns == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil // (nil, nil) is the documented "no usable session" signal
 	}
 	return s, nil
 }
 
-func (s *Session) addUsage(rec tRecord) {
+func (s *Session) addUsage(rec *tRecord) {
 	u := rec.Message.Usage
 	s.AssistantTurns++
 	if rec.Message.Model != "" {
@@ -241,7 +242,7 @@ func Collect(root, project string, last int) ([]*Session, error) {
 	var files []string
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil // skip unreadable subtrees rather than abort
+			return nil //nolint:nilerr // intentionally skip unreadable subtrees rather than abort the walk
 		}
 		if !d.IsDir() && strings.HasSuffix(p, ".jsonl") {
 			files = append(files, p)
@@ -307,7 +308,7 @@ type ModelStat struct {
 // Aggregate folds sessions into the token-weighted Report.
 func Aggregate(sessions []*Session) Report {
 	var r Report
-	var gross, real float64
+	var gross, actual float64
 	perModel := map[string]*Bucket{}
 	for _, s := range sessions {
 		r.Input += s.Main.Input + s.Sub.Input
@@ -318,7 +319,7 @@ func Aggregate(sessions []*Session) Report {
 		r.SubInput += s.SubInput()
 		r.EstCostUSD += s.Cost
 		gross += s.InputCostGross
-		real += s.InputCostReal
+		actual += s.InputCostReal
 		for m, b := range s.PerModel {
 			acc := perModel[m]
 			if acc == nil {
@@ -351,9 +352,9 @@ func Aggregate(sessions []*Session) Report {
 		r.ByModel = append(r.ByModel, ms)
 	}
 	sort.Slice(r.ByModel, func(i, j int) bool { return r.ByModel[i].TotalInput > r.ByModel[j].TotalInput })
-	r.InputCostSaved = gross - real
+	r.InputCostSaved = gross - actual
 	if gross > 0 {
-		r.InputSavedPct = (gross - real) / gross
+		r.InputSavedPct = (gross - actual) / gross
 	}
 	return r
 }
@@ -362,7 +363,7 @@ func Aggregate(sessions []*Session) Report {
 // verdict line and a process exit code: 0 = pass OR insufficient data (skip), 1 =
 // regression. Mirrors telemetry/gate.py — token-weighted, and skips rather than
 // fails when the sample is too small to judge, so cold-start noise can't trip it.
-func Gate(r Report, minRate float64, minTokens int) (string, int) {
+func Gate(r *Report, minRate float64, minTokens int) (verdict string, code int) {
 	if r.TotalInput < minTokens {
 		return fmt.Sprintf("SKIP: only %s input tokens (< %s) — too small to judge",
 			fmtK(r.TotalInput), fmtK(minTokens)), 0
@@ -382,14 +383,14 @@ func fmtK(n int) string {
 	case n >= 1_000:
 		return fmt.Sprintf("%.1fk", float64(n)/1e3)
 	default:
-		return fmt.Sprintf("%d", n)
+		return strconv.Itoa(n)
 	}
 }
 
 // Render writes the human-readable readout (or JSON) for a report. With byModel,
 // it appends a per-model token table — the orchestration signal (is the cheap
 // tier carrying the bulk of the input?).
-func Render(w io.Writer, r Report, asJSON, byModel bool) {
+func Render(w io.Writer, r *Report, asJSON, byModel bool) {
 	if asJSON {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
@@ -455,11 +456,11 @@ func Main(args []string) int {
 	}
 	report := Aggregate(sessions)
 	if *gate {
-		verdict, code := Gate(report, *minRate, *minTokens)
+		verdict, code := Gate(&report, *minRate, *minTokens)
 		fmt.Println(verdict)
 		return code
 	}
-	Render(os.Stdout, report, *asJSON, *byModel)
+	Render(os.Stdout, &report, *asJSON, *byModel)
 	return 0
 }
 

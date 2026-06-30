@@ -22,6 +22,7 @@ func repoRoot(t *testing.T) string {
 }
 
 func opts(t *testing.T, home string) Options {
+	t.Helper()
 	return Options{Root: repoRoot(t), Home: home, SkipMCP: true, Log: io.Discard}
 }
 
@@ -142,7 +143,7 @@ func TestInjectThenEjectRoundTrip(t *testing.T) {
 func TestInjectIdempotent(t *testing.T) {
 	home := t.TempDir()
 	o := opts(t, home)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if err := Inject(o); err != nil {
 			t.Fatalf("Inject #%d: %v", i, err)
 		}

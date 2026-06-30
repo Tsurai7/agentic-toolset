@@ -221,7 +221,7 @@ func linkCmd(args []string) int {
 // left in place (idempotent); a stale symlink is replaced; a real file is skipped
 // (never clobbered).
 func linkInto(exe, dir string, names []string) (created, skipped []string, err error) {
-	if err = os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, nil, err
 	}
 	for _, name := range names {

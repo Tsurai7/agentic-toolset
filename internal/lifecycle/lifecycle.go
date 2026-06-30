@@ -12,6 +12,7 @@
 package lifecycle
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -331,7 +332,7 @@ func ejectSkills(o *Options, cd string) {
 
 // resolvedFragment writes the settings fragment with __AGENTIC_ROOT__ resolved to a
 // temp file and returns its path plus a cleanup func.
-func resolvedFragment(root string) (string, func(), error) {
+func resolvedFragment(root string) (fragPath string, cleanup func(), err error) {
 	raw, err := os.ReadFile(filepath.Join(root, "providers", "claude", "settings.hooks.json"))
 	if err != nil {
 		return "", func() {}, err
@@ -352,7 +353,7 @@ func resolvedFragment(root string) (string, func(), error) {
 
 func validateRoot(root string) error {
 	if root == "" {
-		return fmt.Errorf("inject/eject: empty root (pass --root or run from the repo)")
+		return errors.New("inject/eject: empty root (pass --root or run from the repo)")
 	}
 	if _, err := os.Stat(filepath.Join(root, "core", "skills")); err != nil {
 		return fmt.Errorf("inject/eject: %s does not look like an agentic-cfg repo (no core/skills)", root)
