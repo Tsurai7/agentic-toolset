@@ -134,7 +134,7 @@ After any change: `bin/ci-check.sh`, then `bin/install.sh --dry-run` to preview.
   commands on machines where it runs.
 - Machine-local Claude `env` (e.g. `ANTHROPIC_BASE_URL`) is intentionally not in
   the repo; `merge-settings.py` preserves it.
-- `.github/workflows/ci.yml` exists locally but is untracked until a gh token has
-  the `workflow` scope.
+- `.github/workflows/ci.yml` runs `bin/ci-check.sh` on every push to `master` and on
+  pull requests (installs Go from `go.mod`, Python, shellcheck + PyYAML).
 - Pushing uses repo-local git identity (`Tsurai7`) and a credential-helper /
   `insteadOf` workaround — see the project memory if `git push` misbehaves.

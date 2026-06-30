@@ -297,6 +297,14 @@ arise.
 - **Bench.** `bin/check-links.py` confirms the new research-doc cross-link resolves (129 links);
   conformance/value eval coverage for the skill unchanged; `bin/ci-check.sh` green.
 
+### loop 20 — enforce ci-check in GitHub Actions · 2026-06-30
+- **Idea.** All the loop's work is test-backed, but nothing *enforced* `bin/ci-check.sh` on
+  push/PR — ARCHITECTURE even noted the workflow was untracked (needed the `workflow` token
+  scope). The scope is now present, so wire it up: every future change gets gated.
+- **Change.** `.github/workflows/ci.yml` runs `bin/ci-check.sh` on push to `master` + PRs
+  (Go from `go.mod`, Python 3.12, shellcheck + PyYAML). Corrected the ARCHITECTURE gotcha.
+- **Bench.** `bin/ci-check.sh` validates the workflow YAML itself (passes) and stays green.
+
 ## ✅ Backlog complete — 23/23
 All of `plans/03-gaps-and-bugs.md` is resolved: both Criticals, all six Highs, every Medium and
 Low (BUG-09 as a justified won't-fix). Delivered across loops 01–13, each test-backed and
