@@ -6,7 +6,17 @@
 
 1. Ensure `npx` is available (see `secrets/.env.example`).
 2. Run `bin/install.sh` to merge into Cursor / Claude MCP configs.
-3. Index a repo: `npx -y gitnexus@1.6.8 analyze` from the repository root.
+3. Index a repo: `npx -y gitnexus@1.6.8 analyze --skip-agents-md --skip-skills`
+   from the repository root. Plain `analyze` (no flags) additionally writes a
+   `<!-- gitnexus:start -->` section into root `AGENTS.md`/`CLAUDE.md` and
+   generates six skill files under `.claude/skills/gitnexus/`; the skip flags
+   suppress both, since this repo's `gitnexus-navigation` skill is the single
+   source of truth and the auto-injected section costs ~700 tokens/session with
+   MUST-directives that conflict with the tool-precedence gate. `.gitnexusrc`
+   (as of 1.6.8) cannot persist these flags — pass them on every `analyze`. If a
+   repo was already analyzed without the flags, delete the generated artifacts
+   (identifiable by the `<!-- gitnexus:start -->` markers and the
+   `.claude/skills/gitnexus/` directory).
 
 ## MCP definition
 

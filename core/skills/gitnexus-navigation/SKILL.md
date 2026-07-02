@@ -2,7 +2,8 @@
 name: gitnexus-navigation
 description: >-
   Use GitNexus graph-RAG for structural code navigation and impact analysis in Go
-  and .NET codebases. Use for refactors, interface changes, and dependency tracing
+  and .NET codebases. Use for refactors, interface changes, dependency tracing,
+  and "is it safe to change X / what will break / what depends on this" questions
   instead of grep or full-file reads when GitNexus is available.
 ---
 
@@ -26,19 +27,32 @@ You are connected to **GitNexus** via MCP in Go / .NET codebases.
 ## If repo not indexed
 
 ```bash
-npx -y gitnexus@1.6.8 analyze
+npx -y gitnexus@1.6.8 analyze --skip-agents-md --skip-skills
 ```
 
-Run from the repository root (or use MCP analyze tool if available).
-`npx -y gitnexus@1.6.8 status` shows whether the current repo is indexed —
-queries against a never-indexed repo return nothing useful, so check or index
-first.
+Run from the repository root (or use MCP analyze tool if available). The skip
+flags suppress upstream's per-repo AGENTS.md/CLAUDE.md section and generated
+`.claude/skills/gitnexus/` — this skill is the single source of truth (see MCP
+section below). `npx -y gitnexus@1.6.8 status` shows whether the current repo
+is indexed — queries against a never-indexed repo return nothing useful, so
+check or index first.
 
 ## Workflow
 
 1. **Reference / impact** — Before editing an interface or shared type
 2. **Query polymorphism** — Interface implementations, inheritance
 3. **Fetch node** — Single function/class with immediate out-edges only
+
+## High-value graph tools
+
+Judgment calls per the right-size gate — not "always run before any edit":
+
+- `impact` — blast radius with risk level; `direction: "upstream"` finds who
+  depends on this. Run before signature changes on shared interfaces.
+- `detect_changes` — maps uncommitted git diff to affected symbols/flows;
+  useful before large or risky commits.
+- `rename` — graph-coordinated multi-file rename with confidence-tagged edits.
+- `cypher` — raw graph queries when the canned tools above don't fit.
 
 ## When not GitNexus
 

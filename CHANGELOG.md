@@ -2,6 +2,18 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.15.1] — 2026-07-02
+
+### Changed
+- Distilled the six upstream GitNexus-generated skill files (`impact`,
+  `detect_changes`, `rename`, `cypher` guidance) into `gitnexus-navigation`, so
+  this repo's skill stays the single source of truth instead of a second copy
+  regenerated on every `analyze`.
+- Canonical `gitnexus analyze` invocation now carries `--skip-agents-md
+  --skip-skills`, suppressing upstream's per-repo `AGENTS.md`/`CLAUDE.md`
+  section and generated `.claude/skills/gitnexus/` (~700 tokens/session whose
+  MUST-directives conflicted with the tool-precedence gate).
+
 ## [0.15.0] — 2026-07-02
 
 ### Added
