@@ -29,9 +29,10 @@ Everything below is hand-maintained **from data files**, and follows two rules:
 **every number cites its source**, and **an unmeasured cell says "unmeasured" instead
 of guessing**. Measured 2026-07-02 unless stated; source for all matrix numbers:
 [`plans/data/impact-matrix-2026-07-02.jsonl`](../plans/data/impact-matrix-2026-07-02.jsonl)
-(81 agent runs, summed API cost **$8.08**; medians of n=3 with per-rep min..max; reps
-that errored — 6 total, auth-expiry + two 403s — were excluded from medians and their
-cells re-run to full n=3).
+(81 recorded attempts, summed API cost **$8.08**; medians of n=3 with per-rep
+min..max. 14 attempts errored — twelve OAuth-expiry failures wiping four ablation
+cells plus two transient 403s; those cells were fully re-run, and every reported
+median rests on the last-wins clean records: 63 runs, 0 errors).
 
 ## Headline: full agentic-cfg vs bare, per model
 
@@ -76,7 +77,7 @@ dominated by the always-on prefix + MCP tool schemas (cache-creation is billed),
 extra actions. Where the toolset could *pay* is explicitly **not measured here**:
 tasks hard enough that bare models fail (the correctness suite is still roadmap item
 #0 — every cell above saturates at 100%), long sessions where the prefix amortizes
-through cache reads (real-session cache hit is 96–98%, see Adoption below), and the
+through cache reads (real-session cache hit 96.4% overall, 93.9–97.3% per model — see Adoption below), and the
 failure modes hooks prevent (a benchmark that never greps a 10 MB file pays the guard's
 cost and collects none of its benefit).
 
@@ -92,7 +93,7 @@ saving**.
 
 | Model | Δ duration | Δ tool calls | Δ total input | Δ cost | Reading |
 |---|---|---|---|---|---|
-| haiku | +11% (38.4→42.8s) | 5→8 | +33% | +14% | removing it HURTS — lean-ctx saves haiku turns/reads |
+| haiku | +11.6% (38.4→42.8s) | 5→8 | +33% | +14% | removing it HURTS — lean-ctx saves haiku turns/reads |
 | sonnet | +37% (32.1→44.1s) | 5→6 | +39% | +27% | same direction, larger — saves sonnet |
 | opus | **−20%** (24.1→19.2s) | 3→3 | −5% | −11% (billed −14%) | removing it HELPS — lean-ctx costs opus (schema/prefix weight, unused at 3 tools) |
 
@@ -118,7 +119,7 @@ benchmark-scale cost or benefit."
 | Model | Δ duration | Δ tool calls | Δ billed input | Δ cost |
 |---|---|---|---|---|
 | haiku | −20% (49.1→39.2s) | 11→9 | +5% | −20% |
-| sonnet | **−28%** (41.4→29.9s) | 11→7 | −7% | −17% |
+| sonnet | **−28%** (41.4→29.9s) | 11→7 | −7% | −17.5% |
 | opus | −3% | 7→7 | −3% | ≈0 |
 
 On a *small* structural task, gitnexus presence costs sonnet materially (it engages
@@ -173,8 +174,8 @@ from those runs.
   mtime before/after all 81 runs).
 - **Fidelity note**: the isolated full arm differs from a live machine in exactly one
   way — MCP comes from `--mcp-config` instead of `~/.claude.json` user scope.
-- n=3 medians with per-rep [min..max]; errored reps excluded from medians (6/87
-  attempts: one OAuth-expiry batch and two transient 403s); affected cells were
+- n=3 medians with per-rep [min..max]; errored reps excluded from medians (14 of 81
+  recorded attempts: twelve OAuth-expiry failures across four cells and two transient 403s); affected cells were
   re-run as separate per-model invocations, each snapshotting fresh credentials (a
   single long invocation snapshots once up front, and arms mode now fail-fasts on a
   systemic auth failure).
