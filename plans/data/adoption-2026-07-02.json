@@ -1,0 +1,71 @@
+{
+  "sessions": 50,
+  "input_fresh": 462599,
+  "cache_read": 242891217,
+  "cache_write": 8695533,
+  "output": 1147971,
+  "total_input": 252049349,
+  "subagent_input": 89598542,
+  "cache_hit_rate": 0.9636653217461791,
+  "subagent_share": 0.35548015638794606,
+  "input_cost_real_usd": 306.8204031500001,
+  "input_cost_saved_usd": 1604.3346788499991,
+  "input_cost_saved_pct": 0.8394581339631965,
+  "est_cost_usd": 354.48540815,
+  "by_model": [
+    {
+      "model": "claude-fable-5",
+      "total_input": 157788681,
+      "cache_read": 152121511,
+      "output": 782650,
+      "cache_hit_rate": 0.964083798887957,
+      "input_share": 0.6260229658438832,
+      "known_pricing": true
+    },
+    {
+      "model": "claude-sonnet-5",
+      "total_input": 63930510,
+      "cache_read": 62222498,
+      "output": 54118,
+      "cache_hit_rate": 0.9732833040124348,
+      "input_share": 0.253642829285784,
+      "known_pricing": true
+    },
+    {
+      "model": "claude-opus-4-8",
+      "total_input": 27786646,
+      "cache_read": 26100463,
+      "output": 308236,
+      "cache_hit_rate": 0.9393167854803347,
+      "input_share": 0.1102428794608789,
+      "known_pricing": true
+    },
+    {
+      "model": "claude-haiku-4-5-20251001",
+      "total_input": 2543512,
+      "cache_read": 2446745,
+      "output": 2967,
+      "cache_hit_rate": 0.961955359361387,
+      "input_share": 0.010091325409453844,
+      "known_pricing": true
+    }
+  ],
+  "adoption": {
+    "bash_total": 1450,
+    "by_decision": {
+      "already-wrapped": 44,
+      "deny-grep-on-code": 62,
+      "failopen-assign": 7,
+      "failopen-complex": 460,
+      "failopen-equals": 32,
+      "wrap": 845
+    },
+    "denies_observed": 148,
+    "sg_calls": 96,
+    "grep_calls": 239,
+    "ctx_calls": 84,
+    "gitnexus_calls": 0,
+    "native_reads": 512,
+    "native_greps": 0
+  }
+}
