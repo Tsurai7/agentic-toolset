@@ -87,7 +87,15 @@ Each tool measured in the regime where it plausibly acts (per
 [`plans/benchmarks-impact/00-INDEX.md`](../plans/benchmarks-impact/00-INDEX.md));
 the other regime is **unmeasured**. Δ is "remove the tool" vs `full` — so a
 **negative Δ means the tool was costing** that much, a **positive Δ means it was
-saving**.
+saving**. Ablation arms remove only the tool's **server/hook wiring**
+(`render_full_variant`'s `exclude` prunes the MCP server, the settings hook, and the
+allow-list entry); the **prompt surface still advertises it** — the assembled CLAUDE.md
+keeps AGENTS.md's tool-precedence table and the skills tree still exposes e.g.
+`gitnexus-navigation`. So these deltas measure the **dead-server regime** (a tool named
+in the prompt but unreachable at runtime — exactly the config this repo ran
+06-24→07-02 while gitnexus was silently down), **not** a never-installed one; a model
+may burn turns reaching for an advertised-but-absent tool, which inflates the removal
+delta (see Method for the prompt-scrubbed variant this would need).
 
 ### lean-ctx (MCP + Read/Grep redirect) — easy tier; hard tier unmeasured
 
@@ -174,6 +182,13 @@ from those runs.
   mtime before/after all 81 runs).
 - **Fidelity note**: the isolated full arm differs from a live machine in exactly one
   way — MCP comes from `--mcp-config` instead of `~/.claude.json` user scope.
+- **Ablation scope**: `exclude` prunes only the tool's server/hook/allow-list, not the
+  prompt (AGENTS.md precedence table and skills tree are always assembled in full) — so
+  ablation cells are the dead-server regime, not never-installed (see Per-tool intro). A
+  prompt-scrubbed variant (per-arm AGENTS.md rewrite plus per-skill materialization so
+  the excluded tool is neither wired nor advertised) is future harness work; it would
+  likely show **smaller** removal deltas, since models here can waste turns on an
+  advertised-but-absent tool.
 - n=3 medians with per-rep [min..max]; errored reps excluded from medians (14 of 81
   recorded attempts: twelve OAuth-expiry failures across four cells and two transient 403s); affected cells were
   re-run as separate per-model invocations, each snapshotting fresh credentials (a
