@@ -17,9 +17,16 @@ fail() { printf '  FAIL %s\n' "$*"; FAIL=1; }
 check_link() {
   local path="$1" expected="$2"
   if [[ -L "$path" ]]; then
-    local dest
+    local dest resolved
     dest="$(readlink "$path")"
-    if [[ "$dest" == "$expected" ]] || [[ "$(cd "$(dirname "$path")" && pwd)/$(readlink "$path")" == "$expected" ]]; then
+    # readlink's target may be absolute (e.g. `ln -sfn /abs/path ...`) or
+    # relative to $path's directory; concatenating a dir with an absolute
+    # target produces a malformed doubled path, so branch on it explicitly.
+    case "$dest" in
+      /*) resolved="$dest" ;;
+      *) resolved="$(cd "$(dirname "$path")" && pwd)/$dest" ;;
+    esac
+    if [[ "$resolved" == "$expected" ]]; then
       ok "symlink $path -> $dest"
     else
       warn "symlink $path -> $dest (expected $expected)"
@@ -47,7 +54,9 @@ echo "MCP configs"
 # so that is the file to check for the Claude side.
 for f in "${HOME}/.cursor/mcp.json" "${HOME}/.claude.json"; do
   if [[ -f "$f" ]]; then
-  if grep -q '"gitnexus"' "$f" 2>/dev/null; then
+  # Scoped to the mcpServers key specifically — a whole-file grep can match
+  # "gitnexus" appearing anywhere else in the file (a false OK).
+  if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if "gitnexus" in d.get("mcpServers", {}) else 1)' "$f" 2>/dev/null; then
       ok "$f contains gitnexus"
     else
       fail "$f missing gitnexus server"
@@ -71,8 +80,10 @@ fi
 echo ""
 
 echo "Binaries"
-NPX="${NPX:-/opt/homebrew/bin/npx}"
-if [[ -x "$NPX" ]] || command -v npx >/dev/null 2>&1; then
+# NPX (if set) is a full path merge-mcp resolves itself; only a hardcoded
+# fallback here (that path may not exist on this machine) is dropped —
+# `command -v npx` on PATH is the actual signal.
+if [[ -x "${NPX:-}" ]] || command -v npx >/dev/null 2>&1; then
   ok "npx available"
 else
   fail "npx not found — set NPX in secrets/.env"

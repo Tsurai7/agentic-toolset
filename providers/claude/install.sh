@@ -5,9 +5,11 @@ set -euo pipefail
 AGENTIC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DRY_RUN="${DRY_RUN:-0}"
 # Tier selects how much of the orientation layer to install. "strong" (default) is the
-# full toolset. "weak" omits the lean-ctx Read/Grep redirect hook and the lean-ctx MCP
-# server — measured to cut a weak model's per-task overhead from ~5x to <=1x by stopping
-# the orientation dance on trivial tasks (plans/impl-overhead/05-minimal-tier-profile.md).
+# full toolset. "weak" removes the lean-ctx Read/Grep redirect hook, the lean-ctx MCP
+# server (including a previously-registered one), and its `mcp__lean-ctx__*` allow
+# entries — measured to cut a weak model's per-task overhead from ~5x to <=1x by
+# stopping the orientation dance on trivial tasks
+# (plans/impl-overhead/05-minimal-tier-profile.md).
 AGENTIC_TIER="${AGENTIC_TIER:-strong}"
 
 log() { printf '[claude] %s\n' "$*"; }
@@ -28,6 +30,13 @@ run_tool() {
   else
     python3 "${AGENTIC_ROOT}/providers/shared/${sub}.py" "$@"
   fi
+}
+
+resolve_root() {
+  # Replace __AGENTIC_ROOT__ with the literal repo path, safe for paths containing
+  # sed-special characters (#, &, \) that a `sed s#...#...#g` substitution would
+  # otherwise mangle. python3's str.replace does a literal, non-regex substitution.
+  python3 -c 'import sys; sys.stdout.write(open(sys.argv[1]).read().replace("__AGENTIC_ROOT__", sys.argv[2]))' "$1" "$AGENTIC_ROOT"
 }
 
 backup_once() {
@@ -57,6 +66,22 @@ link_skills() {
   log "skills: $target -> $source"
 }
 
+link_agents() {
+  local target="${HOME}/.claude/agents"
+  local source="${AGENTIC_ROOT}/core/agents"
+  run mkdir -p "${HOME}/.claude"
+  if [[ -L "$target" ]]; then
+    run rm "$target"
+  elif [[ -d "$target" ]]; then
+    log "backup existing $target"
+    if [[ "$DRY_RUN" != "1" ]]; then
+      mv "$target" "${target}.bak.$(date +%s)"
+    fi
+  fi
+  run ln -sfn "$source" "$target"
+  log "agents: $target -> $source"
+}
+
 install_claude_md() {
   local out="${HOME}/.claude/CLAUDE.md"
   local generated="${HOME}/.claude/agentic-cfg.generated.md"
@@ -69,9 +94,13 @@ install_claude_md() {
   run mkdir -p "${HOME}/.claude"
   # The full instruction block lives in a repo-owned generated file we overwrite
   # freely; CLAUDE.md only carries a small managed @import block (PORT-01) so any
-  # hand-written user content in CLAUDE.md survives installs.
+  # hand-written user content in CLAUDE.md survives installs. Write to a temp file
+  # in the same directory and rename over the target (atomic on the same
+  # filesystem), so an interrupt mid-write never leaves a truncated generated.md —
+  # the one file every session imports — silently degrading future sessions.
+  local generated_tmp="${generated}.tmp.$$"
   {
-    sed "s#__AGENTIC_ROOT__#${AGENTIC_ROOT}#g" "$stub"
+    resolve_root "$stub"
     cat "$agents"
     echo ""
     echo "## Principles (always-on)"
@@ -92,7 +121,8 @@ install_claude_md() {
       echo "### $(basename "$f" .md)"
       cat "$f"
     done
-  } >"$generated"
+  } >"$generated_tmp"
+  mv -f "$generated_tmp" "$generated"
   backup_once "$out"
   run_tool merge-claude-md "$generated" "$out"
   log "wrote $generated; ensured @import in $out (root: ${AGENTIC_ROOT})"
@@ -108,8 +138,18 @@ install_mcp() {
   if [[ "$DRY_RUN" != "1" ]]; then backup_once "${HOME}/.claude.json"; fi
   # Weak tier: don't register the lean-ctx MCP server (its ctx_* tools + "always use
   # lean-ctx" instructions drive the orientation dance that over-tools weak models).
+  # Excluding it from the merge only skips *adding* it — a server registered by a
+  # prior strong-tier install would otherwise survive untouched, so also remove it
+  # outright when present.
   local exclude=""
-  [[ "$AGENTIC_TIER" == "weak" ]] && exclude="lean-ctx"
+  if [[ "$AGENTIC_TIER" == "weak" ]]; then
+    exclude="lean-ctx"
+    if [[ "$DRY_RUN" == "1" ]]; then
+      log "[dry-run] claude mcp remove lean-ctx --scope user (weak tier)"
+    elif command -v claude >/dev/null 2>&1; then
+      claude mcp remove lean-ctx --scope user >/dev/null 2>&1 || true
+    fi
+  fi
   DRY_RUN="$DRY_RUN" AGENTIC_MCP_EXCLUDE="$exclude" run_tool merge-mcp "$AGENTIC_ROOT" --register-claude-user
 }
 
@@ -124,9 +164,12 @@ install_settings() {
   # commands point at the repo-owned scripts regardless of install location.
   local resolved
   resolved="$(mktemp)"
-  sed "s#__AGENTIC_ROOT__#${AGENTIC_ROOT}#g" "$fragment" >"$resolved"
+  resolve_root "$fragment" >"$resolved"
   # Weak tier: drop the lean-ctx Read/Grep redirect hook (the turn-multiplier on
-  # trivial tasks). shell-guard, edit-lint, and the observe hooks stay.
+  # trivial tasks) and the mcp__lean-ctx__* allow entries. shell-guard, edit-lint,
+  # and the observe hooks stay. Dropping the allow entries from the fragment lets
+  # the managed-allow-set merge below remove any already-installed entries too,
+  # instead of merely not adding new ones.
   if [[ "$AGENTIC_TIER" == "weak" ]]; then
     python3 - "$resolved" <<'PY'
 import json, sys
@@ -137,6 +180,8 @@ s["hooks"]["PreToolUse"] = [
     g for g in pre
     if not any("lean-ctx hook redirect" in h.get("command", "") for h in g.get("hooks", []))
 ]
+allow = s.get("permissions", {}).get("allow", [])
+s["permissions"]["allow"] = [a for a in allow if not a.startswith("mcp__lean-ctx__")]
 json.dump(s, open(p, "w"), indent=2)
 PY
   fi
@@ -145,6 +190,7 @@ PY
 }
 
 link_skills
+link_agents
 install_claude_md
 install_mcp
 install_settings

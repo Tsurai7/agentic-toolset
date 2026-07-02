@@ -2,6 +2,82 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.14.0] — 2026-07-02
+
+### Added
+- `core/agents/`: four subagent role definitions (`implementer`, `doc-writer`, `verifier`,
+  `researcher`), each pinned to a model tier; rendered to `~/.claude/agents/` by the Claude
+  installer and covered by `agentic inject`/`eject`/`status`.
+- `model-orchestration` skill: "Delegation protocol" section pointing plan-then-delegate
+  hand-offs at the shipped agent roles.
+- `bin/ci-check.sh`: agents section.
+- `plans/orchestration-agents/`: office-hours session #2 design doc (adversarially
+  spec-reviewed, two iterations) + the two implementation plans behind this entry.
+
+### Changed
+- `docs/research/ai-native-agentic-engineering.md`: July 2026 re-verification and
+  extension pass — at least six load-bearing claims re-checked against current vendor
+  docs, one moved link fixed, new "What changed since the June snapshot" section
+  (Fable 5 / effort `xhigh`, Claude Code Agent Teams, GPT-5.4/5.5 + Codex Remote,
+  Gemini CLI → Antigravity CLI cutover, Cursor Composer 2.5).
+- `docs/guides/ai-for-software-engineering.md`, `docs/guides/ai-in-daily-life.md`:
+  named-practitioner advice woven in with fetched sources (Karpathy, Willison, Mollick,
+  Hashimoto, Ronacher, Anthropic/OpenAI/Google guidance) + "What the professionals
+  converge on" sections; one stale quote figure corrected against its source.
+
+## [0.13.0] — 2026-07-02
+
+### Added
+- Edit-lint hook syntax-checks shell-script edits (#11).
+- `agentic` Go CLI with `inject`, `eject`, `status`, `link` subcommands for reversible 
+  Claude config management, plus `gain` and `cache` for token-economy metrics.
+- CI workflow (`.github/workflows/ci.yml`) running `bin/ci-check.sh` and `golangci-lint` 
+  on every push and pull request.
+- `bin/prefix-budget.sh` gate enforcing byte budget on always-on prompt prefix.
+- `model-orchestration` and `no-mistakes` skills.
+- Eval harness hardening: metric track in `--track all`, persistent transcripts under 
+  `results/<model>/transcripts/`, `--rejudge` support, fail-closed judge.
+- `AGENTIC_TIER=weak` truly removes lean-ctx server and its allow entries.
+- Cursor install now merges `hooks.json` (never clobbers) and manages stale entries via 
+  `~/.cursor/.agentic-managed.json` sidecar; added `--eject` support.
+
+### Changed
+- Hook matchers anchored (`^Bash$`, `^(Read|Grep|Glob)$`, `^(Edit|Write|MultiEdit)$`) so
+  substring tool names (`WebSearch`, `preview_click`, `read_clipboard`) no longer match;
+  the redirect hook's force-allow is thereby confined to read-only tools.
+- Settings merge recognizes managed hook groups by command basename, making merge/eject
+  idempotent against path-qualified variants (`/opt/homebrew/bin/lean-ctx hook …`);
+  Go/Python parity tests added.
+- Edit-lint's Python check uses `ast.parse` (no `__pycache__` litter in user repos).
+- Always-on prefix diet: source trimmed 11,232 → 8,754 bytes (~600–800 tokens per
+  session, plus retired skill descriptions); terminal-rtk skill folded into AGENTS.md
+  Global default 2 (hook-enforced); dead links, phantom `ctx_semantic_search` /
+  `ctx_compose` references, and `.mdc` contradictions removed; `no-mistakes` /
+  `model-orchestration` trigger descriptions narrowed.
+- MCP registration restores the prior server on add failure and continues past
+  per-server errors (exit nonzero at the end); merge-mcp stripped of the Cursor
+  overlay concept.
+- Eval control/OFF arms run under a genuinely bare `CLAUDE_CONFIG_DIR` (no hooks, no
+  CLAUDE.md import, no MCP); rows recorded under the old leaky control carry a
+  caveat in BENCHMARKS.md.
+- Docs: all hardcoded counts replaced with "run the command" phrasing; `~/.claude.json` 
+  (user-scope MCP) documented; canonical-path claim removed (path-independent now).
+- Non-atomic `agentic-cfg.generated.md` writes now atomic; `doctor` no longer false-OKs.
+
+### Fixed
+- Shell-guard fallback corruption on multi-line commands; grep-token regex false-positives.
+- `bin/agentic` build gap (Go now available, build happens at install).
+- Merge-settings null crash; JSON key order preservation via `internal/jsonorder`.
+- CI output discarding; `--track all` now includes metric track.
+- `report.py` now refuses to shrink BENCHMARKS.md without `--force`.
+
+### Note
+- Review wave (`plans/review-fixes/`): plans 01–08 (shell-guard, evals control-arm,
+  hook-matchers, settings-merge, evals-harness, cursor-parity, always-on-diet,
+  install-hardening) and 09 (docs sweep) shipped 2026-07-01..02; plan 10
+  (machine apply + external-hook cleanup) applied on this machine only.
+- Prefix budget now 9054 bytes (source: 8754 bytes currently).
+
 ## [0.12.1] — 2026-06-25
 
 ### Fixed

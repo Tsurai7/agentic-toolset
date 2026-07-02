@@ -10,17 +10,9 @@ Use marketplace plugins for full workflow libraries. This repo only documents **
 | **cursor-team-kit** | Fixing CI, PR review, compiler errors, smoke tests, merge conflicts |
 | **ponytail** | Cutting generated-code bloat — a do-less decision ladder before implementing (token economy); `/ponytail-review`, `/ponytail-audit` |
 
-## Personal skills (this repo — `core/skills/`)
+## Personal skills
 
-| Skill | Use when |
-|-------|----------|
-| `git-safety` | User asks to commit; always before `git commit` |
-| `create-pr` | User asks to open or update a pull request |
-| `verification-before-completion` | About to claim work is complete or tests pass |
-| `gitnexus-navigation` | Structural code changes, refactors, impact analysis |
-| `ast-grep` | Searching/rewriting code by syntax pattern (instead of regex grep) |
-| `terminal-rtk` | Running shell commands on macOS |
-| `model-orchestration` | Planning a multi-step / token-expensive task: pick the model tier per sub-task; plan strong, execute cheap, escalate |
+See [`core/skills/`](../skills/) — each `SKILL.md` description is its trigger.
 
 ## Decision flow
 

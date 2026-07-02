@@ -53,3 +53,44 @@ func TestWriteFileAtomicIndented(t *testing.T) {
 		t.Errorf("indented output mismatch:\n got %q\nwant %q", b, want)
 	}
 }
+
+// TestWriteFilePreservesExistingMode guards against WriteFile silently chmoding
+// a live config to the temp file's restrictive 0600 default on every merge.
+func TestWriteFilePreservesExistingMode(t *testing.T) {
+	d := t.TempDir()
+	p := filepath.Join(d, "settings.json")
+	if err := os.WriteFile(p, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := New()
+	m.SetRaw("a", json.RawMessage("1"))
+	if err := WriteFile(p, m); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o644 {
+		t.Errorf("pre-existing 0644 file became %#o after WriteFile", got)
+	}
+}
+
+// TestWriteFileNewFileDefaultsTo0644 guards the default mode for a file that
+// did not exist before WriteFile (no prior mode to preserve).
+func TestWriteFileNewFileDefaultsTo0644(t *testing.T) {
+	d := t.TempDir()
+	p := filepath.Join(d, "new.json")
+	m := New()
+	m.SetRaw("a", json.RawMessage("1"))
+	if err := WriteFile(p, m); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o644 {
+		t.Errorf("new file mode = %#o, want 0644", got)
+	}
+}

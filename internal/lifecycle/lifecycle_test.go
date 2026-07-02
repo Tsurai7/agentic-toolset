@@ -71,6 +71,11 @@ func TestInjectThenEjectRoundTrip(t *testing.T) {
 	if err != nil || link != filepath.Join(repoRoot(t), "core", "skills") {
 		t.Errorf("skills symlink = %q, %v", link, err)
 	}
+	// agents symlink points at our source
+	agentsLink, err := os.Readlink(filepath.Join(cd, "agents"))
+	if err != nil || agentsLink != filepath.Join(repoRoot(t), "core", "agents") {
+		t.Errorf("agents symlink = %q, %v", agentsLink, err)
+	}
 	// generated md exists with resolved content
 	gen := readFile(t, filepath.Join(cd, generatedName))
 	if strings.Contains(gen, "__AGENTIC_ROOT__") {
@@ -110,6 +115,9 @@ func TestInjectThenEjectRoundTrip(t *testing.T) {
 
 	if _, err := os.Lstat(filepath.Join(cd, "skills")); !os.IsNotExist(err) {
 		t.Error("eject left the skills symlink behind")
+	}
+	if _, err := os.Lstat(filepath.Join(cd, "agents")); !os.IsNotExist(err) {
+		t.Error("eject left the agents symlink behind")
 	}
 	if _, err := os.Stat(filepath.Join(cd, generatedName)); !os.IsNotExist(err) {
 		t.Error("eject left the generated md behind")
@@ -152,6 +160,14 @@ func TestInjectIdempotent(t *testing.T) {
 	claudeMd := readFile(t, filepath.Join(cd, "CLAUDE.md"))
 	if n := strings.Count(claudeMd, "BEGIN agentic-cfg (managed)"); n != 1 {
 		t.Errorf("expected exactly one managed block after double inject, got %d", n)
+	}
+	// agents symlink stable across double inject, no .bak accretion
+	agentsLink, err := os.Readlink(filepath.Join(cd, "agents"))
+	if err != nil || agentsLink != filepath.Join(repoRoot(t), "core", "agents") {
+		t.Errorf("agents symlink after double inject = %q, %v", agentsLink, err)
+	}
+	if _, err := os.Lstat(filepath.Join(cd, agentsBackup)); !os.IsNotExist(err) {
+		t.Error("double inject created an agents backup with no real prior dir")
 	}
 	// allow entries must not duplicate
 	s := parseJSON(t, filepath.Join(cd, "settings.json"))
@@ -203,6 +219,64 @@ func TestInjectPreservesRealSkillsDir(t *testing.T) {
 	}
 }
 
+func TestInjectPreservesRealAgentsDir(t *testing.T) {
+	home := t.TempDir()
+	cd := filepath.Join(home, ".claude")
+	userAgent := filepath.Join(cd, "agents")
+	if err := os.MkdirAll(userAgent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userAgent, "mine.md"), []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Inject(opts(t, home)); err != nil {
+		t.Fatalf("Inject: %v", err)
+	}
+	// agents is now our symlink; the user's real dir was backed up, not destroyed.
+	if fi, err := os.Lstat(filepath.Join(cd, "agents")); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("agents should be a symlink after inject: %v", err)
+	}
+	if got := readFile(t, filepath.Join(cd, agentsBackup, "mine.md")); got != "mine" {
+		t.Errorf("user agent not backed up intact, got %q", got)
+	}
+
+	// eject restores the user's real dir
+	if err := Eject(opts(t, home)); err != nil {
+		t.Fatalf("Eject: %v", err)
+	}
+	if got := readFile(t, filepath.Join(cd, "agents", "mine.md")); got != "mine" {
+		t.Errorf("user agent not restored after eject, got %q", got)
+	}
+}
+
+func TestAgentsStatus(t *testing.T) {
+	home := t.TempDir()
+	o := opts(t, home)
+
+	if got := Status(o).Agents; got != "absent" {
+		t.Errorf("agents status before inject = %q, want %q", got, "absent")
+	}
+
+	if err := Inject(o); err != nil {
+		t.Fatalf("Inject: %v", err)
+	}
+	if got := Status(o).Agents; got != "linked" {
+		t.Errorf("agents status after inject = %q, want %q", got, "linked")
+	}
+
+	cd := filepath.Join(home, ".claude")
+	if err := os.Remove(filepath.Join(cd, "agents")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(cd, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := Status(o).Agents; got != "foreign" {
+		t.Errorf("agents status with a real dir = %q, want %q", got, "foreign")
+	}
+}
+
 func TestDryRunChangesNothing(t *testing.T) {
 	home := t.TempDir()
 	o := opts(t, home)
@@ -227,6 +301,36 @@ func TestGeneratedMD(t *testing.T) {
 	}
 	if strings.Contains(md, "__AGENTIC_ROOT__") {
 		t.Error("generated md left an unresolved placeholder")
+	}
+}
+
+// TestInjectWritesGeneratedMDAtomically guards BUG-12 parity: Inject must write
+// agentic-cfg.generated.md via a temp-file-then-rename (claudemd.AtomicWrite), not
+// a plain os.WriteFile that truncates the target in place. A successful run must
+// leave no stray temp file behind and the target must be the complete content,
+// never a partial prefix.
+func TestInjectWritesGeneratedMDAtomically(t *testing.T) {
+	home := t.TempDir()
+	if err := Inject(opts(t, home)); err != nil {
+		t.Fatalf("Inject: %v", err)
+	}
+	cd := filepath.Join(home, ".claude")
+	want, err := GeneratedMD(repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := readFile(t, filepath.Join(cd, generatedName))
+	if got != want {
+		t.Error("generated md on disk does not match the full expected content (truncated write?)")
+	}
+	entries, err := os.ReadDir(cd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".claudemd-") {
+			t.Errorf("leftover atomic-write temp file: %s", e.Name())
+		}
 	}
 }
 

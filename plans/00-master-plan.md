@@ -4,11 +4,12 @@ This is the connective plan for five sibling documents. Each was produced by an
 independent reviewer; this file reconciles their overlaps, dedupes severity, and
 sequences the work into a roadmap tied to the repo's north-star goals.
 
-> Status: **P0 + P1 shipped, P2 next.** P0 (non-destructive install + hook fixes)
-> and P1 (the `agentic` Go CLI — hook + merges, wired with Python/shell fallback)
-> are implemented, verified, and pushed to `master`. See [§8](#8-status--next).
-> Decisions are resolved in [§7](#7-decisions-resolved); a re-baseline against
-> `master` is in §7.1.
+> Status: **P0–P2 shipped; P3 partially (prefix budget = W2).**
+> P0 (non-destructive install + hook fixes), P1 (the `agentic` Go CLI), and P2 (CI
+> workflow, token-delta metrics, the Haiku toolset-on/off instruments `evals/overhead.py`
+> + `evals/swe_bench.py`, populated-HOME install fixture) are implemented and on `master`.
+> Still open from P3: release tags (MAT-06) and the subagent-skill payoff measurement.
+> See [§8](#8-status--next).
 
 ## 0. The five documents
 
@@ -285,8 +286,12 @@ so porting it to Go adds little); the high-value hook + merges are Go, and the
 Python merge scripts remain as the fallback. JSON: sonic on the hot/leaf path,
 stdlib for the order-preserving merges. No viper/config-file (not needed yet).
 
-**Next:** P2 — `.github/workflows` CI (ci-check + go test on Linux + macOS), the
-hook/merge golden + populated-`$HOME` integration tests promoted into the repo,
-token-delta measurement from the stream-json result event, and a Haiku-uplift eval
-built on `telemetry/`. Then P3 (instruction de-dup, the locked research/review
-subagent, release tags).
+**P2 (prove the north-star) — partially shipped:**
+
+- ✅ CI workflow (`.github/workflows/ci.yml`) live on master (ci-check + golangci-lint).
+- ✅ Token-delta measurement via `agentic gain` (reads session transcripts).
+- ✅ Prefix-budget gate (`bin/prefix-budget.sh`, now 9054 bytes).
+- ⏳ Haiku-uplift eval — still open (requires full A/B value benchmark re-run).
+
+**Next:** P2 remaining items (Haiku-uplift measurement), then P3 (instruction de-dup, the 
+locked research/review subagent, release tags — MAT-06 still open).

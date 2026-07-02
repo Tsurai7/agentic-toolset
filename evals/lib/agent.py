@@ -20,6 +20,13 @@ def run_capture(cmd: str, prompt: str, *, model: str | None = None,
 
     `model` and `env` let the value track run the same prompt under different
     models and isolated config directories (see lib/render_config.py).
+
+    A hung subprocess raises `subprocess.TimeoutExpired` in the stdlib; left
+    uncaught here, one slow case would abort the entire suite (run.py has no
+    other chance to intervene). Instead this returns a synthetic transcript
+    with `is_error`/`subtype: "timeout"`, so `result_error()` classifies it as a
+    per-case ERROR the same way an auth failure or crash is — mirrors the
+    timeout handling already in overhead.py/swe_bench.py's own `_run_arm`.
     """
     argv = shlex.split(cmd)
     if argv and argv[0] == "claude":
@@ -30,10 +37,29 @@ def run_capture(cmd: str, prompt: str, *, model: str | None = None,
         if model and "--model" not in argv:
             argv += ["--model", model]
     proc_env = {**os.environ, **env} if env else None
-    proc = subprocess.run(
-        [*argv, prompt], capture_output=True, text=True, timeout=timeout, env=proc_env
-    )
-    return proc.stdout or proc.stderr
+    try:
+        proc = subprocess.run(
+            [*argv, prompt], capture_output=True, text=True, timeout=timeout, env=proc_env
+        )
+        return proc.stdout or proc.stderr
+    except subprocess.TimeoutExpired:
+        return json.dumps({
+            "type": "result", "is_error": True, "subtype": "timeout",
+            "result": f"<TIMEOUT after {timeout}s>", "usage": {},
+        })
+
+
+def cmd_model(cmd: str) -> str | None:
+    """Best-effort `--model` extraction from a CLI command string (e.g. `JUDGE_CMD`),
+    so a result JSON can record which model actually judged/ran it. Returns None
+    when the command string doesn't name one explicitly (the CLI's own default
+    applies and isn't knowable without invoking it)."""
+    argv = shlex.split(cmd)
+    if "--model" in argv:
+        i = argv.index("--model")
+        if i + 1 < len(argv):
+            return argv[i + 1]
+    return None
 
 
 def final_text(raw: str) -> str:

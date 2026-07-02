@@ -14,7 +14,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUDGET="${PREFIX_BUDGET_BYTES:-11300}"
+BUDGET="${PREFIX_BUDGET_BYTES:-9054}"
 
 total=0
 add() { [[ -f "$1" ]] && total=$((total + $(wc -c < "$1"))); }

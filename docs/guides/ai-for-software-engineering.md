@@ -45,6 +45,7 @@ matters more than prompt wording.
 
 - **Use a rules/instructions file.** `AGENTS.md` / `CLAUDE.md` / `.cursor/rules` carry your
   conventions so you don't restate them every turn. This is exactly what this repo renders.
+  Keep it short — a bloated file gets *ignored*, not obeyed (Anthropic, see below).
 - **Retrieve, don't stuff.** Pull the *relevant* code with structural/search tools
   (GitNexus, `ast-grep`) instead of pasting whole files. Less context = cheaper, faster,
   and *more accurate* (irrelevant context degrades output).
@@ -66,7 +67,8 @@ send architecture decisions to the cheap tier.
 
 The high-leverage pattern: **plan with a strong model, delegate well-specified sub-tasks to
 a cheaper one (or subagents), verify, escalate only on failure.** Full policy in the
-[`model-orchestration`](../../core/skills/model-orchestration/SKILL.md) skill.
+[`model-orchestration`](../../core/skills/model-orchestration/SKILL.md) skill — Google's own
+guidance converges on the same shape (see below).
 
 ## 4. Small, verifiable diffs — with a test loop
 
@@ -74,22 +76,31 @@ Big AI diffs are where bugs hide and review dies. Keep changes small enough to a
 read, and give the agent an automatic way to know it's right.
 
 - Prefer **test-first**: "write a failing test that reproduces this, then make it pass."
-  A strong success criterion lets the agent loop itself to green instead of pinging you.
+  A strong success criterion lets the agent loop itself to green instead of pinging you
+  (OpenAI's Codex guidance frames test-check-review as one loop; see below).
 - One concern per diff. Land it, then move on — don't let the agent "improve" adjacent code
   (`karpathy-guidelines` §3, surgical changes).
 - Run the build/tests/linters in the loop, not at the end.
+- **Make state legible to the agent, not just to you.** Log generously so the agent can
+  self-diagnose, and keep permission checks where the model can actually see them, rather
+  than buried in middleware it never reads (Armin Ronacher; see below).
 
 ## 5. Review AI output like a junior's PR — because it is one
 
-This is the trust boundary. The model's confidence is uncorrelated with its correctness.
+This is the trust boundary. The model's confidence is uncorrelated with its correctness —
+Karpathy's framing of the moment: "right now the agents are like interns. You still have to
+be in charge of aesthetics, judgment, taste, and oversight" (see below).
 
 - **Read every line you ship.** "It ran" ≠ "it's correct." Unreviewed AI code is technical
-  debt you haven't met yet.
+  debt you haven't met yet. Anthropic names this failure mode directly as the
+  "trust-then-verify gap," fixed with one rule: "if you can't verify it, don't ship it."
 - Look hardest at the things models get wrong: **hallucinated APIs/params**, off-by-one and
   boundary conditions, error handling, auth/permission checks, and **silent scope creep**.
 - Make the agent **show its evidence** — the command it ran and the actual output — before
   it claims done (`verification-before-completion`). "Tests pass" with no transcript is a
   claim, not a fact.
+- **Set a review-capacity budget, not just a diff-size one.** Velocity without review
+  capacity is how a codebase outgrows anyone's understanding of it (Simon Willison; see below).
 
 ## 6. Guard against the known failure modes
 
@@ -98,7 +109,9 @@ This is the trust boundary. The model's confidence is uncorrelated with its corr
   names).
 - **Prompt injection.** Treat any content the agent reads — issues, web pages, code
   comments, tool output — as untrusted. It can carry instructions. Never let an agent act
-  on fetched content with credentials without a human gate.
+  on fetched content with credentials without a human gate. Simon Willison's **lethal
+  trifecta** names exactly when this turns dangerous: private-data access + untrusted
+  content + external communication, together (see below).
 - **Confident wrongness.** Ask "how would you verify that?" rather than accepting the first
   answer. Make it cite the file/line.
 - **Scope creep.** Diff against intent: every changed line should trace to the request.
@@ -120,6 +133,25 @@ This is the trust boundary. The model's confidence is uncorrelated with its corr
 5. Write less code — the cheapest tokens are the ones never generated. Enforce a do-less
    ladder (the `ponytail` plugin in [`catalog/plugins.yaml`](../../catalog/plugins.yaml)).
 
+## What the professionals converge on
+
+Independent practitioners keep landing on the same handful of rules. In their own words:
+
+- **You're still the engineer.** "The agents are like interns. You still have to be in
+  charge of aesthetics, judgment, taste, and oversight." — Karpathy, [*AI Ascent 2026*](https://karpathy.bearblog.dev/sequoia-ascent-2026/).
+- **Plan before you let it run.** "Spending extra time to build and revise an execution
+  plan generally gives you better code output on complex tasks." — Google Cloud, [*Five best practices*](https://cloud.google.com/blog/topics/developers-practitioners/five-best-practices-for-using-ai-coding-assistants).
+- **Give it a check it can run, or you become the check.** "It's the difference between a
+  session you watch and one you walk away from." — Anthropic, [*Best practices*](https://code.claude.com/docs/en/best-practices).
+- **Test-and-review is one loop, not two steps.** "Codex... can help test it, check it, and
+  review it." — OpenAI, [*Codex best practices*](https://developers.openai.com/codex/learn/best-practices).
+- **Bound velocity to review capacity.** "Set yourself limits on how much code you let the
+  [agent] generate per day, in line with your ability to actually review." — Willison, [*slowing down*](https://simonwillison.net/2026/Mar/25/thoughts-on-slowing-the-fuck-down/).
+- **Make your own mistakes un-repeatable.** Hashimoto's "harness engineering" — fix the
+  docs/tools an agent's mistake exposed, not just the output. [*AI Adoption Journey*](https://mitchellh.com/writing/my-ai-adoption-journey).
+- **Never combine the three dangerous capabilities.** Private-data access + untrusted
+  content + external communication is the "lethal trifecta." — Willison, [*trifecta*](https://simonw.substack.com/p/the-lethal-trifecta-for-ai-agents).
+
 ## Sources & further reading
 
 - Anthropic — [*Building effective agents*](https://www.anthropic.com/engineering/building-effective-agents)
@@ -128,10 +160,16 @@ This is the trust boundary. The model's confidence is uncorrelated with its corr
   instruction files short).
 - Andrej Karpathy — [the original "vibe coding" note](https://x.com/karpathy/status/1886192184808149383):
   "fully give in to the vibes … forget that the code even exists" — explicitly scoped to
-  throwaway projects, **not** production.
+  throwaway projects, **not** production. Scaled up to real engineering practice in his
+  [AI Ascent 2026 talk](https://karpathy.bearblog.dev/sequoia-ascent-2026/), which also seeds
+  this repo's [`karpathy-guidelines`](../../core/principles/karpathy-guidelines.md) principle.
 - Simon Willison — [*Not all AI-assisted programming is vibe coding*](https://simonwillison.net/2025/Mar/19/vibe-coding/):
-  the golden rule — never commit AI code you couldn't explain, never assume it works until
-  it's been run.
+  never commit AI code you couldn't explain. Plus [*slowing the fuck down*](https://simonwillison.net/2026/Mar/25/thoughts-on-slowing-the-fuck-down/)
+  and [*the lethal trifecta*](https://simonw.substack.com/p/the-lethal-trifecta-for-ai-agents) (quoted above).
+- Armin Ronacher — [*Agentic Coding Recommendations*](https://lucumr.pocoo.org/2025/6/12/agentic-coding/)
+  and Mitchell Hashimoto — [*My AI Adoption Journey*](https://mitchellh.com/writing/my-ai-adoption-journey) — quoted above.
+- OpenAI — [*Codex best practices*](https://developers.openai.com/codex/learn/best-practices)
+  and Google Cloud — [*Five best practices for AI coding assistants*](https://cloud.google.com/blog/topics/developers-practitioners/five-best-practices-for-using-ai-coding-assistants) — quoted above.
 - Google / DORA — [2025 DORA report](https://dora.dev/dora-report-2025/): AI is an
   *amplifier* of existing engineering strengths and weaknesses, not an automatic win.
 - Company-specific orchestration/token practices, cited and dated:

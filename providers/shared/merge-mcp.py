@@ -119,12 +119,47 @@ def _claude_server_config(config: object) -> dict:
     return {k: v for k, v in config.items() if k in CLAUDE_SERVER_KEYS}
 
 
+def _claude_config_path() -> Path:
+    """Resolve the file the `claude` CLI reads/writes user-scope MCP servers to,
+    honoring CLAUDE_CONFIG_DIR the same way the CLI itself does."""
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+    if config_dir:
+        return Path(config_dir) / ".claude.json"
+    return Path.home() / ".claude.json"
+
+
+def _registered_server_json(name: str) -> str | None:
+    """Return the currently-registered config for `name` at user scope, as a
+    JSON string suitable for `claude mcp add-json`, or None if not registered.
+    Read directly from the CLI's own config file: `claude mcp get` prints a
+    human status summary, not the server's JSON config, so it cannot be used to
+    restore a server on a failed re-add."""
+    path = _claude_config_path()
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    servers = data.get("mcpServers", {})
+    if name not in servers:
+        return None
+    return json.dumps(servers[name])
+
+
 def register_claude_user(agentic_root: Path) -> int:
     """Register repo-managed MCP servers at Claude Code *user* scope via the
     `claude` CLI, which writes ~/.claude.json — the file Claude Code actually
     reads for user-scope servers. Replaces the dead ~/.claude/.mcp.json write so
     servers like gitnexus actually load (PORT-03). Idempotent: each server is
     removed then re-added; user-added servers and other keys are left untouched.
+
+    Transactional-ish per server: the server's current registration is captured
+    before it is removed, so a failed re-add can be restored instead of leaving
+    the server permanently unregistered. A failure is recorded and the loop
+    CONTINUES with the remaining servers (a single flaky server must not abort
+    registration of every server after it); the function exits nonzero and
+    lists every failed server if any remain unregistered at the end.
     """
     claude = shutil.which("claude")
     if not claude:
@@ -140,12 +175,14 @@ def register_claude_user(agentic_root: Path) -> int:
     managed = substitute(fragments, env).get("mcpServers", {})
     dry = os.environ.get("DRY_RUN") == "1"
     done = []
+    failed = []
     for name, config in managed.items():
         payload = json.dumps(_claude_server_config(config))
         if dry:
             print(f"[dry-run] claude mcp add-json {name} <json> --scope user")
             done.append(name)
             continue
+        previous = _registered_server_json(name)
         subprocess.run(
             [claude, "mcp", "remove", name, "--scope", "user"],
             capture_output=True, text=True,
@@ -156,13 +193,37 @@ def register_claude_user(agentic_root: Path) -> int:
         )
         if added.returncode != 0:
             detail = (added.stderr or added.stdout).strip()
-            print(f"merge-mcp: failed to register {name}: {detail}", file=sys.stderr)
-            return 1
+            failed.append(name)
+            if previous is not None:
+                restored = subprocess.run(
+                    [claude, "mcp", "add-json", name, previous, "--scope", "user"],
+                    capture_output=True, text=True,
+                )
+                if restored.returncode == 0:
+                    print(
+                        f"merge-mcp: failed to register {name}: {detail} (restored prior registration)",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"merge-mcp: failed to register {name}: {detail} "
+                        "(restore also failed — server is now UNREGISTERED)",
+                        file=sys.stderr,
+                    )
+            else:
+                print(f"merge-mcp: failed to register {name}: {detail}", file=sys.stderr)
+            continue
         done.append(name)
     print(
         f"Registered {len(done)} Claude user-scope MCP server(s): "
         f"{', '.join(sorted(done)) or 'none'}"
     )
+    if failed:
+        print(
+            f"merge-mcp: {len(failed)} server(s) failed to register: {', '.join(sorted(failed))}",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -178,6 +239,27 @@ def warn_if_npx_missing(env: dict) -> None:
         )
 
 
+SIDECAR_NAME = ".agentic-managed.json"
+SIDECAR_VERSION = 1
+
+
+def _sidecar_path(output: Path) -> Path:
+    return output.parent / SIDECAR_NAME
+
+
+def _load_sidecar(path: Path) -> list[str] | None:
+    """Return the previously-managed server names, or None if no sidecar exists
+    yet (first run: bootstrap only, never retro-claim existing entries)."""
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    names = data.get("servers")
+    return names if isinstance(names, list) else None
+
+
 def main() -> int:
     if len(sys.argv) < 3:
         print(
@@ -191,13 +273,9 @@ def main() -> int:
     output = Path(sys.argv[2]).resolve()
     env = load_env(agentic_root)
     warn_if_npx_missing(env)
-    overlay_path = agentic_root / "providers" / "cursor" / "mcp.overlay.json"
-    base: dict = {"mcpServers": {}}
-    if overlay_path.is_file():
-        base = load_json(overlay_path)
     fragments = collect_fragments(agentic_root / "integrations")
-    base.setdefault("mcpServers", {}).update(fragments.get("mcpServers", {}))
-    managed = substitute(base, env)
+    managed = substitute(fragments, env)
+    managed_names = sorted(managed.get("mcpServers", {}))
 
     # Merge into the existing config so servers we do not manage (e.g. work-only
     # servers added by hand) are preserved. Repo-managed servers take precedence.
@@ -205,16 +283,34 @@ def main() -> int:
     result.setdefault("mcpServers", {})
     result["mcpServers"].update(managed.get("mcpServers", {}))
 
+    # Remove servers this repo used to manage but no longer does (fragment deleted
+    # from the repo). A server never seen in the sidecar (hand-added by the user)
+    # is never touched. First run without a sidecar only bootstraps it — it does
+    # not retro-claim/remove any pre-existing entry.
+    sidecar_path = _sidecar_path(output)
+    previously_managed = _load_sidecar(sidecar_path)
+    removed_names: list[str] = []
+    if previously_managed is not None:
+        removed_names = sorted(set(previously_managed) - set(managed_names))
+        for name in removed_names:
+            result["mcpServers"].pop(name, None)
+
     rendered = json.dumps(result, indent=2) + "\n"
+    sidecar_rendered = (
+        json.dumps({"version": SIDECAR_VERSION, "servers": managed_names}, indent=2) + "\n"
+    )
     if os.environ.get("DRY_RUN") == "1":
         print(f"[dry-run] would write {output}:\n{rendered}", end="")
+        print(f"[dry-run] would write {sidecar_path}:\n{sidecar_rendered}", end="")
         return 0
     atomic_write_text(output, rendered)
-    managed_names = ", ".join(sorted(managed.get("mcpServers", {}))) or "none"
+    atomic_write_text(sidecar_path, sidecar_rendered)
     print(
         f"Wrote {output} ({len(result['mcpServers'])} server(s) total; "
-        f"managed: {managed_names})"
+        f"managed: {', '.join(managed_names) or 'none'})"
     )
+    if removed_names:
+        print(f"Removed stale managed server(s): {', '.join(removed_names)}")
     return 0
 
 

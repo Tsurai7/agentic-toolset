@@ -1,7 +1,7 @@
 # Setup — using this config on a new machine
 
 How to install this agentic config on a fresh laptop for **Cursor** and/or
-**Claude** (Desktop + Code), and how to keep it updated.
+**Claude Code**, and how to keep it updated.
 
 ## 1. Authenticate (the repo is private)
 
@@ -39,7 +39,7 @@ That's the whole setup. GitNexus needs no install (it runs via `npx`).
 <summary>Manual path (if you don't want bootstrap to install deps)</summary>
 
 ```bash
-brew install python3 node gh rtk
+brew install python3 node gh rtk ast-grep go
 brew install yvgude/lean-ctx/lean-ctx     # optional
 cp secrets/.env.example secrets/.env       # only to override auto-detected paths
 bin/install.sh --provider all
@@ -72,7 +72,7 @@ into Cursor → Settings → Rules.
 ## 5. Keep it updated
 
 ```bash
-cd ~/Documents/GitHub/personal/agentic-cfg
+cd <your clone>
 git pull
 bin/install.sh --provider all      # idempotent; backs up what it replaces
 ```
@@ -148,7 +148,7 @@ agentic eject
 3. **`ANTHROPIC_BASE_URL`** and other machine-local `env` are intentionally not
    vendored — set them per machine in `~/.claude/settings.json`.
 4. **GitNexus** must be indexed per project (`npx gitnexus analyze`).
-5. **CI workflow** (`.github/workflows/ci.yml`) is not pushed yet — it needs a
-   gh token with the `workflow` scope (`gh auth refresh -h github.com -s workflow`).
+5. **CI workflow** (`.github/workflows/ci.yml`) is live on master, running
+   `bin/ci-check.sh` and `golangci-lint` on every push and pull request.
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how the repo is wired internally.

@@ -185,7 +185,9 @@ func Marshal(m *Map) ([]byte, error) {
 }
 
 // WriteFile writes m as indented JSON (2 spaces, no HTML escaping, trailing
-// newline) atomically via a temp file + rename.
+// newline) atomically via a temp file + fsync + rename, preserving the target's
+// prior file mode (or 0644 for a newly-created file) so a merge never silently
+// chmods the user's live config to the temp file's restrictive 0600 default.
 func WriteFile(path string, m *Map) error {
 	data, err := Marshal(m)
 	if err != nil {
@@ -194,6 +196,10 @@ func WriteFile(path string, m *Map) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
+	}
+	perm := os.FileMode(0o644)
+	if fi, err := os.Stat(path); err == nil {
+		perm = fi.Mode().Perm()
 	}
 	tmp, err := os.CreateTemp(dir, ".agentic-*.tmp")
 	if err != nil {
@@ -205,7 +211,14 @@ func WriteFile(path string, m *Map) error {
 		tmp.Close()
 		return err
 	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
 		return err
 	}
 	return os.Rename(tmpName, path)

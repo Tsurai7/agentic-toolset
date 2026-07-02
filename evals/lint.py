@@ -67,7 +67,10 @@ def main() -> int:
         for e in errors:
             print(f"  - {e}")
         return 1
-    print(f"lint OK — {len(seen_ids)} cases, {len(skills)} skills covered.")
+    # Count only skills this lint actually requires coverage for — the exempt
+    # skill was never checked, so it must not inflate the "covered" tally.
+    countable = skills - COVERAGE_EXEMPT
+    print(f"lint OK — {len(seen_ids)} cases, {len(countable)} skills covered.")
     return 0
 
 

@@ -58,6 +58,30 @@ while IFS= read -r f; do
 done < <(find core/skills -name 'SKILL.md')
 echo ""
 
+echo "== agent definitions =="
+# NB: agent descriptions must be plain single-line unquoted YAML — the sed
+# extraction below (and Claude Code's own loader) assumes that shape.
+while IFS= read -r f; do
+  base="$(basename "$f" .md)"
+  name_val="$(grep -m1 '^name:' "$f" | sed 's/^name:[[:space:]]*//')"
+  desc_val="$(grep -m1 '^description:' "$f" | sed 's/^description:[[:space:]]*//')"
+  model_val="$(grep -m1 '^model:' "$f" | sed 's/^model:[[:space:]]*//')"
+  if head -1 "$f" | grep -q '^---$' && [[ -n "$name_val" && -n "$desc_val" ]]; then
+    ok "$f frontmatter"
+  else
+    err "$f missing frontmatter name/description"
+  fi
+  if [[ "$name_val" == "$base" ]]; then ok "$f name matches filename"; else err "$f name '$name_val' != filename '$base'"; fi
+  words=$(printf '%s\n' "$desc_val" | wc -w | tr -d ' ')
+  if [[ "$words" -le 25 ]]; then ok "$f description ${words}w (cap 25)"; else err "$f description ${words}w exceeds 25-word cap"; fi
+  case "$model_val" in
+    haiku|sonnet|opus|fable|inherit) ok "$f model '$model_val'" ;;
+    *) err "$f model '$model_val' not in {haiku,sonnet,opus,fable,inherit}" ;;
+  esac
+  if grep -q '^tools:' "$f"; then ok "$f tools allowlist present"; else err "$f tools allowlist missing"; fi
+done < <(find core/agents -name '*.md' 2>/dev/null)
+echo ""
+
 echo "== skill reference links =="
 while IFS= read -r f; do
   dir="$(dirname "$f")"
@@ -93,9 +117,50 @@ echo "== edit-lint hook self-test (flags broken edits) =="
 if bash providers/claude/hooks/edit-lint.test.sh >/dev/null 2>&1; then ok "edit-lint flags broken py/go/js/sh edits"; else err "providers/claude/hooks/edit-lint.test.sh failed"; fi
 echo ""
 
+echo "== shell-guard fallback self-test (SHELL_GUARD_NO_GO=1) =="
+# Deterministic across environments: stub rtk (the rewrite needs one on PATH — the
+# hook exits envelope-less without it, by design) and lean-ctx (so the delegate
+# branch never rewrites), pinning these checks to the fallback path under test.
+sg_stub="$(mktemp -d)"
+printf '#!/bin/sh\nexit 0\n' >"${sg_stub}/rtk"
+printf '#!/bin/sh\nexit 0\n' >"${sg_stub}/lean-ctx"
+chmod +x "${sg_stub}/rtk" "${sg_stub}/lean-ctx"
+sg_out() { SHELL_GUARD_NO_GO=1 PATH="${sg_stub}:${PATH}" bash providers/claude/hooks/shell-guard.sh <<<"$1"; }
+if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"echo hi"}}') \
+   && [[ "$out" == *'"command":"rtk echo hi"'* ]]; then
+  ok "single-line command rewritten with rtk"
+else
+  err "shell-guard fallback: single-line command not rewritten as expected"
+fi
+if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"echo a\necho b"}}') \
+   && [[ "$out" != *updatedInput* ]]; then
+  ok "multi-line command fails open (no updatedInput)"
+else
+  err "shell-guard fallback: multi-line command was rewritten instead of failing open"
+fi
+if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"git grep TODO main.py"}}') \
+   && [[ "$out" != *'"permissionDecision":"deny"'* ]]; then
+  ok "git grep TODO main.py not denied (grep-token anchored to command position)"
+else
+  err "shell-guard fallback: git grep TODO main.py was denied"
+fi
+if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"grep -r foo src/main.go"}}') \
+   && [[ "$out" == *'"permissionDecision":"deny"'* ]]; then
+  ok "grep targeting a code file is denied"
+else
+  err "shell-guard fallback: grep -r foo src/main.go was not denied"
+fi
+rm -rf "$sg_stub"
+echo ""
+
 echo "== swe benchmark self-test (task checks; needs Go) =="
 if command -v go >/dev/null 2>&1; then
-  if python3 evals/swe_bench.py --selftest >/dev/null 2>&1; then ok "swe_bench tasks discriminate"; else err "evals/swe_bench.py --selftest failed"; fi
+  if out="$(python3 evals/swe_bench.py --selftest 2>&1)"; then
+    ok "swe_bench tasks discriminate"
+  else
+    err "evals/swe_bench.py --selftest failed"
+    printf '%s\n' "$out"
+  fi
 else
   warn "go not installed — skipping swe_bench selftest"
 fi
@@ -120,7 +185,7 @@ if command -v go >/dev/null 2>&1; then
   unformatted="$(gofmt -l cmd internal 2>/dev/null)"
   if [[ -n "$unformatted" ]]; then err "gofmt needed: ${unformatted//$'\n'/ }"; else ok "gofmt"; fi
   if go vet ./... >/dev/null 2>&1; then ok "go vet"; else err "go vet failed"; fi
-  if go test ./... >/dev/null 2>&1; then ok "go test"; else err "go test failed"; fi
+  if out="$(go test ./... 2>&1)"; then ok "go test"; else err "go test failed"; printf '%s\n' "$out"; fi
   if go build -o bin/agentic ./cmd/agentic >/dev/null 2>&1; then ok "go build"; else err "go build failed"; fi
 else
   warn "go not installed — skipping Go checks"

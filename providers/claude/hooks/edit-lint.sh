@@ -28,7 +28,11 @@ case "$TOOL" in
   *) exit 0 ;;
 esac
 
-FILE=$(extract file_path)
+# Real PostToolUse payloads nest file_path under tool_input; fall back to a
+# top-level file_path for older/test fixtures.
+TOOL_INPUT=$(printf '%s' "$INPUT" | grep -oE '"tool_input"[[:space:]]*:[[:space:]]*\{.*\}' | head -1)
+FILE=$(INPUT="$TOOL_INPUT" extract file_path)
+[ -n "$FILE" ] || FILE=$(extract file_path)
 [ -n "$FILE" ] && [ -f "$FILE" ] || exit 0
 
 # Claude Code passes an absolute file_path, so a leading-dash-as-flag is not a real
@@ -38,7 +42,7 @@ err=""
 case "$FILE" in
   *.py)
     command -v python3 >/dev/null 2>&1 || exit 0
-    err=$(PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile "$FILE" 2>&1) || true
+    err=$(python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])' "$FILE" 2>&1) || true
     ;;
   *.go)
     command -v gofmt >/dev/null 2>&1 || exit 0

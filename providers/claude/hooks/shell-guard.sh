@@ -17,29 +17,52 @@ set -euo pipefail
 
 # Prefer the Go binary when it has been built — it does real JSON parsing and is
 # faster. Fall back to the shell implementation below otherwise. exec preserves
-# stdin (the unread hook JSON) and stdout.
+# stdin (the unread hook JSON) and stdout. SHELL_GUARD_NO_GO=1 forces the shell
+# fallback regardless (used by bin/ci-check.sh's fallback self-test).
 __SG_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd)"
-if [ -n "${__SG_ROOT:-}" ] && [ -x "${__SG_ROOT}/bin/agentic" ]; then
+if [ -z "${SHELL_GUARD_NO_GO:-}" ] && [ -n "${__SG_ROOT:-}" ] && [ -x "${__SG_ROOT}/bin/agentic" ]; then
   exec "${__SG_ROOT}/bin/agentic" hook shell-guard
 fi
 
 INPUT=$(cat)
 
+extract_raw() {
+  # $1 = JSON key. Pulls the first "key": "value" string, still JSON-escaped
+  # (no unescaping). A missing key yields an empty string rather than failing
+  # the pipeline (which set -e would abort).
+  printf '%s' "$INPUT" \
+    | grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]|\\\\.)*\"" \
+    | head -1 \
+    | sed "s/^\"$1\"[[:space:]]*:[[:space:]]*\"//;s/\"$//" \
+    || true
+}
+
 extract() {
   # $1 = JSON key. Pulls the first "key": "value" string, tolerating optional
   # whitespace around the colon, and unescaping \" and \\. A missing key yields
   # an empty string rather than failing the pipeline (which set -e would abort).
-  printf '%s' "$INPUT" \
-    | grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]|\\\\.)*\"" \
-    | head -1 \
-    | sed "s/^\"$1\"[[:space:]]*:[[:space:]]*\"//;s/\"$//;s/\\\\\"/\"/g;s/\\\\\\\\/\\\\/g" \
-    || true
+  extract_raw "$1" | sed 's/\\"/"/g;s/\\\\/\\/g'
 }
 
 TOOL=$(extract tool_name)
 case "$TOOL" in
-  Bash|bash|PowerShell|powershell) ;;
+  Bash|bash) ;;
   *) exit 0 ;;
+esac
+
+RAW_CMD=$(extract_raw command)
+[ -z "$RAW_CMD" ] && exit 0
+
+# A JSON \n, \t, or \r in the raw escaped value would decode to a real
+# newline/tab/CR — a multi-line or otherwise complex command that must fail
+# open (run untouched), never get rewritten (BUG-01: the naive sed unescape
+# below leaves these as two literal characters, so the downstream multi-line
+# check never sees a real newline and silently mangles the command). Whether
+# \\n is a real escape or an escaped backslash followed by a literal n is
+# ambiguous to disentangle correctly in POSIX sed, so bail conservatively on
+# either — correct-but-conservative beats clever.
+case "$RAW_CMD" in
+  *'\n'* | *'\t'* | *'\r'*) exit 0 ;;
 esac
 
 CMD=$(extract command)
@@ -66,7 +89,7 @@ CODE_EXT='go|cs|py|js|jsx|ts|tsx|java|kt|rb|rs|c|h|cc|cpp|hpp|php|swift|scala|sq
 # the search pattern (e.g. grep "foo.py" data.csv) is not mistaken for a code-file
 # target (BUG-03); only an unquoted .ext argument triggers the deny.
 UNQUOTED=$(printf '%s' "$CMD" | sed -e "s/'[^']*'//g" -e 's/"[^"]*"//g')
-if printf '%s' "$CMD" | grep -qE '(^|[|&;]| )(grep|egrep|fgrep|rg)( |$)' \
+if printf '%s' "$CMD" | grep -qE '(^|[|;`]|&&|\|\||\$\()[[:space:]]*(grep|egrep|fgrep|rg)([[:space:]]|$)' \
    && printf '%s' "$UNQUOTED" | grep -qE "\.($CODE_EXT)(\b|['\"]|$)"; then
   REASON="Use ast-grep for structural code search: sg -p '<pattern>' -l <lang>. Plain grep is only for non-code text/logs (see the ast-grep + tool-precedence rules)."
   JSON_REASON=$(printf '%s' "$REASON" | sed 's/\\/\\\\/g;s/"/\\"/g')

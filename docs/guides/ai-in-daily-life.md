@@ -18,7 +18,10 @@ final check.
 | To actually *do* a task (book, file, fetch) | An agent / tool-connected assistant | Chat can only talk; agents can act |
 
 Same tiering logic as engineering: **match the model to the difficulty.** Use the fast
-model for the 80% of easy asks; save the deep model for genuinely hard reasoning.
+model for the 80% of easy asks; save the deep model for genuinely hard reasoning. Most apps
+default to the fast tier to save compute — Ethan Mollick's rule of thumb: "for anything high
+stakes... usually switch to the powerful model" via the model selector
+([*Using AI Right Now*](https://www.oneusefulthing.org/p/using-ai-right-now-a-quick-guide)).
 
 ## Research & summarization
 
@@ -50,7 +53,9 @@ model for the 80% of easy asks; save the deep model for genuinely hard reasoning
 ## Decision support
 
 - Have it lay out **options, trade-offs, and what you might be missing** — then *you* decide.
-  Its job is to widen your view, not to choose.
+  Its job is to widen your view, not to choose. Push past the obvious: Mollick's advice is to
+  "ask for 50 ideas instead of 10... then push the AI to expand on the things you like"
+  (*Using AI Right Now*, above) — breadth first, then depth on what's actually good.
 - **Red-team your plan**: "argue the other side," "what breaks this," "what would make me
   regret this in a year."
 - Beware **sycophancy**: assistants tend to agree with you. Explicitly ask for disagreement.
@@ -71,9 +76,14 @@ model for the 80% of easy asks; save the deep model for genuinely hard reasoning
 - **Mind privacy.** Don't paste secrets, other people's personal data, or anything you
   wouldn't want retained. Assume inputs may be logged; use privacy controls where offered.
 - **Don't over-trust or over-delegate.** Keep the skills you'd be helpless without. AI
-  should *augment* your judgement, not replace it.
+  should *augment* your judgement, not replace it. Ethan Mollick calls this "making a
+  conscious choice about AI use, rather than reflexive dependence or reflexive avoidance"
+  ([*Choosing to Stay Human*](https://www.oneusefulthing.org/p/choosing-to-stay-human)).
 - **Watch for prompt injection in the wild.** If an assistant browses or reads your files,
   malicious content can try to hijack it — be cautious granting it the ability to *act*.
+  Simon Willison's **lethal trifecta**: private-data access + untrusted content + the
+  ability to send data out, combined, is the dangerous pattern — any two alone are fine
+  ([*The lethal trifecta for AI agents*](https://simonw.substack.com/p/the-lethal-trifecta-for-ai-agents)).
 - **Confident ≠ correct.** When it matters, ask "how sure are you, and how would I check?"
 
 ## A simple weekly routine
@@ -83,13 +93,35 @@ model for the 80% of easy asks; save the deep model for genuinely hard reasoning
 3. **Learn one thing** — 20 minutes of tutored active recall on something you want to know.
 4. **Review** — Friday: "here's what I did; what did I miss, and what should I drop?"
 
+This is what Ethan Mollick means by "an era of managing AIs, rather than working with them":
+the routine isn't a single chat, it's you directing several delegated threads and checking
+their output ([*The Shape of the Thing*](https://www.oneusefulthing.org/p/the-shape-of-the-thing)).
+
+## What the professionals converge on
+
+- **Switch tiers deliberately.** "For anything high stakes... usually switch to the powerful
+  model." — Ethan Mollick, [*Using AI Right Now*](https://www.oneusefulthing.org/p/using-ai-right-now-a-quick-guide).
+- **Ask for more, then curate.** "Ask for 50 ideas instead of 10... then push the AI to
+  expand on the things you like." — Mollick, *Using AI Right Now* (above).
+- **Make AI use a choice, not a reflex.** "A conscious choice about AI use, rather than
+  reflexive dependence or reflexive avoidance." — Mollick, [*Choosing to Stay Human*](https://www.oneusefulthing.org/p/choosing-to-stay-human).
+- **You're managing AIs now, not just chatting with one.** "An era of managing AIs, rather
+  than working with them." — Mollick, [*The Shape of the Thing*](https://www.oneusefulthing.org/p/the-shape-of-the-thing).
+- **Never let one tool combine the three risky powers.** Private-data access + untrusted
+  content + external communication is the "lethal trifecta" — avoid the combination, don't
+  just trust guardrails. — Simon Willison, [*The lethal trifecta*](https://simonw.substack.com/p/the-lethal-trifecta-for-ai-agents).
+- **Sources over assertions.** Verify that cited sources actually exist and support the
+  claim before you rely on them — institutional guidance converges here too (below).
+
 ## Sources & further reading
 
 - Ethan Mollick — [*Using AI Right Now: A Quick Guide*](https://www.oneusefulthing.org/p/using-ai-right-now-a-quick-guide)
   and *Co-Intelligence*: pick one frontier model, pay for it, switch to its most powerful
-  reasoning tier for anything high-stakes, and "ask for 50 ideas instead of 5."
+  reasoning tier for anything high-stakes. Plus [*Choosing to Stay Human*](https://www.oneusefulthing.org/p/choosing-to-stay-human)
+  and [*The Shape of the Thing*](https://www.oneusefulthing.org/p/the-shape-of-the-thing) — quoted above.
 - Simon Willison ([simonwillison.net](https://simonwillison.net/)) — grounded, skeptical
-  commentary on what these tools can and can't do.
+  commentary on what these tools can and can't do, including [*the lethal trifecta*](https://simonw.substack.com/p/the-lethal-trifecta-for-ai-agents)
+  (quoted above).
 - University/institutional IT guidance (e.g. [UC Santa Cruz](https://its.ucsc.edu/get-support/it-guides/guide-use-artificial-intelligence-ai-safely/)) —
   never paste sensitive/confidential data into unlicensed public tools; verify that cited
   sources actually exist and support the claim.

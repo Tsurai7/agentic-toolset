@@ -15,9 +15,8 @@ backlog item fixed → log here.** No PRs — commits land directly on `master`.
    (`telemetry/gate.py`, `evals/overhead.py`, `bin/prefix-budget.sh` are the guards).
 
 ## Backlog source
-`plans/03-gaps-and-bugs.md` (23 reproduced/inferred defects, prioritized) is the standing
-SWE-bench. Items are marked **FIXED** there as they land. New ideas are logged below as they
-arise.
+`archive/03-gaps-and-bugs.md` (23 defects, all marked FIXED) is the historical SWE-bench.
+New ideas and findings are logged below as they arise.
 
 ## Conventions
 - Every behavioral change ships with a test in the existing harness (`evals/selftest.py`,
