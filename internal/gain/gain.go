@@ -642,15 +642,15 @@ func renderAdoption(w io.Writer, sessions int, a *AdoptionStats) {
 	}
 	wrapped := a.ByDecision[string(hook.DecisionWrap)]
 	alreadyWrapped := a.ByDecision[string(hook.DecisionAlreadyWrapped)]
-	complex := a.ByDecision[string(hook.DecisionFailOpenComplex)]
+	complexFO := a.ByDecision[string(hook.DecisionFailOpenComplex)]
 	assign := a.ByDecision[string(hook.DecisionFailOpenAssign)]
 	equals := a.ByDecision[string(hook.DecisionFailOpenEquals)]
-	failOpen := complex + assign + equals
+	failOpen := complexFO + assign + equals
 	deny := a.ByDecision[string(hook.DecisionDenyGrepCode)]
 	fmt.Fprintf(w, "  bash calls           : %d\n", total)
 	fmt.Fprintf(w, "  wrapped (rtk/lean-ctx): %.1f%%   already-wrapped: %.1f%%\n", pct(wrapped), pct(alreadyWrapped))
 	fmt.Fprintf(w, "  fail-open            : %.1f%%   (complex %.1f%% / assign %.1f%% / equals %.1f%%)\n",
-		pct(failOpen), pct(complex), pct(assign), pct(equals))
+		pct(failOpen), pct(complexFO), pct(assign), pct(equals))
 	fmt.Fprintf(w, "  deny (grep-on-code)  : %.1f%%   observed denies in results: %d\n", pct(deny), a.DeniesObserved)
 	fmt.Fprintf(w, "  ast-grep (sg) calls  : %d     grep/rg calls: %d\n", a.SgCalls, a.GrepCalls)
 	fmt.Fprintf(w, "  lean-ctx ctx_* calls : %d     gitnexus calls: %d\n", a.CtxCalls, a.GitnexusCalls)
