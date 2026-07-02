@@ -17,6 +17,7 @@ agents that go looking).
 | [`research/command-honesty-audit.md`](research/command-honesty-audit.md) | Honesty + correctness audit of the `agentic` CLI and install/hook surfaces. Verifies `gain`'s math (correct) but fixes its framing (hid the actual bill, over-attributed the platform cache); catalogs the doctor/shell-guard/merge/install findings — fixed vs deferred. |
 | [`guides/ai-for-software-engineering.md`](guides/ai-for-software-engineering.md) | Practitioner playbook: spec → context → plan → small diff → verify → review, with model tiering and the known failure modes. |
 | [`guides/ai-in-daily-life.md`](guides/ai-in-daily-life.md) | Practical everyday-use guide: pick the right tool/tier, research, writing, learning, decisions, plus literacy & safety habits. |
+| [`../plans/orchestration-agents/DESIGN.md`](../plans/orchestration-agents/DESIGN.md) | office-hours session #2: mechanized orchestration (agent roles as repo artifacts). |
 
 These feed the [`model-orchestration`](../core/skills/model-orchestration/SKILL.md) skill and
 the [`catalog/plugins.yaml`](../catalog/plugins.yaml) `ponytail` entry.

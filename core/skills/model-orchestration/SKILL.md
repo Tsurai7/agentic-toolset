@@ -1,6 +1,6 @@
 ---
 name: model-orchestration
-description: Route each sub-task to the cheapest model tier that can do it well, and delegate execution to subagents. Apply when planning a multi-step or token-expensive task, choosing between strong/mid/cheap models (Opus/Sonnet/Haiku), deciding whether to spawn subagents, or when the user mentions cost, tokens, latency, or orchestration. Plan and decide with a strong model; execute well-specified sub-tasks with a cheap one; escalate on failure. Skip for a single trivial step — orchestration has overhead.
+description: Route each sub-task to the cheapest model tier that can do it well, and delegate execution to subagents. Apply when planning a multi-step or token-expensive task, choosing between strong/mid/cheap models (Opus/Sonnet/Haiku), or deciding whether to spawn subagents. Plan and decide with a strong model; execute well-specified sub-tasks with a cheap one; escalate on failure. Skip for a single trivial step - orchestration has overhead. Prompt/cache token costs of an LLM system belong to prompt-caching-playbook.
 ---
 
 # Model orchestration
@@ -64,10 +64,43 @@ per turn (a learned policy emits a role *and* a model each step). Reserve the st
 2. **Execute with the cheapest capable tier.** Delegate each well-specified sub-task to a
    subagent (the `Agent`/Task tool, or a cheaper `/model`). Subagents also **isolate
    context** — the executor's intermediate reads never enter the planner's window, which is
-   itself a large token saving on long tasks.
+   itself a large token saving on long tasks. With this repo's roles installed, delegate to
+   `implementer`/`doc-writer`/`verifier`/`researcher` instead of hand-authoring the boilerplate.
 3. **Verify, then escalate only on failure.** Check the result (`verification-before-completion`).
    If a cheap tier fails the check twice, escalate that sub-task one tier up — do not loop a
    weak model on a problem above its weight. Escalation is the exception, not the plan.
+
+## Delegation protocol (when the roles are installed)
+
+This repo ships four subagent roles (`core/agents/`, rendered to `~/.claude/agents/`),
+each with a pinned tier and a body that already carries the scope guard, AC discipline,
+status protocol, and environment notes — so a delegation prompt only needs the task:
+
+| Role | Tier | Hand it |
+|------|------|---------|
+| `implementer` | mid | a plan file with hard AC (code changes) |
+| `doc-writer` | cheap | an explicit item list (mechanical docs) |
+| `verifier` | mid | an AC list + gate commands (read-only check) |
+| `researcher` | mid + web | a question or doc to refresh, citations required |
+
+The wave mechanics that two live waves (June–July 2026) proved out:
+
+1. **Plan files, not chat specs.** Each delegation gets a written plan with hard
+   acceptance criteria and an explicit file scope; plans in the same wave never share
+   files, so agents can run in parallel without conflicts.
+2. **AC is the definition of done.** An agent that cannot meet an AC stops and reports
+   the blocker; it does not improvise around it.
+3. **Verify per wave.** The orchestrator (or the `verifier` role) runs the repo gates
+   after each wave, before the next starts.
+4. **Expect deaths.** Agents die mid-run (API errors); relaunch with a precise
+   done/remaining map derived from the working tree, not from memory.
+5. **Diff-check cheap-tier claims.** Reports from the cheap tier get compared against
+   the actual diff before acceptance — measured failure mode: overstated docs claims.
+6. **Statuses are structured.** `DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT`,
+   with per-AC evidence, so the orchestrator parses instead of re-reading transcripts.
+
+Claims discipline: the roles mechanize delegation; any token-savings number is a
+hypothesis until the side-by-side measurement lands (see the design doc's follow-up).
 
 ## When NOT to orchestrate
 

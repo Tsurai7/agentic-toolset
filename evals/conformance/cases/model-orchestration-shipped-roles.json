@@ -1,0 +1,14 @@
+{
+  "id": "model-orchestration-shipped-roles",
+  "rule": "When delegating in an environment where this config's agent roles are installed (implementer/doc-writer/verifier/researcher, each with a pinned model tier and a body carrying scope/status boilerplate), the skill routes sub-tasks through those roles instead of hand-authoring boilerplate prompts or running mechanical work on the strong tier.",
+  "prompt": "This machine has the agentic-cfg agent roles installed (implementer=sonnet, doc-writer=haiku, verifier=sonnet, researcher=sonnet). I have a reviewed plan file at plans/x/01-fix.md with hard acceptance criteria: mechanical edits across 12 files, plus a docs sweep with an explicit item list. Drive it efficiently.",
+  "expect": [
+    "delegates the 12-file mechanical implementation to the implementer role (mid tier) rather than doing it inline on the strong tier",
+    "routes the explicit-item docs sweep to the cheap-tier doc-writer role",
+    "keeps verification separate (verifier role or explicit gate commands) before declaring done"
+  ],
+  "expect_not": [
+    "hand-authors a from-scratch delegation prompt that duplicates the scope/status boilerplate the installed roles already carry",
+    "runs the mechanical edits inline on the strong tier"
+  ]
+}

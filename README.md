@@ -1,6 +1,6 @@
 # agentic
 
-Portable AI agent configuration: skills, instructions, MCP integrations, and sync scripts for **Cursor** and **Claude** (Desktop + Code).
+Portable AI agent configuration: skills, instructions, MCP integrations, and sync scripts for **Cursor** and **Claude** Code.
 
 This repo is the **source of truth**. Provider-specific paths are populated by `bin/install.sh`.
 
@@ -49,6 +49,7 @@ Design rationale: [`archive/inject-eject-office-hours.md`](archive/inject-eject-
 | Path | Purpose |
 |------|---------|
 | `core/skills/` | Personal `SKILL.md` files (symlinked to `~/.cursor/skills` and `~/.claude/skills`) |
+| `core/agents/` | Subagent role definitions with pinned model tiers (rendered to `~/.claude/agents/`, Claude-only) |
 | `core/instructions/` | `AGENTS.md` + exported user rules |
 | `core/principles/` | Always-on behavioral principles (concatenated into `CLAUDE.md`; rendered to Cursor `alwaysApply` rules) |
 | `core/rules/` | Cursor `.mdc` rules (symlinked to `~/.cursor/rules`) |
@@ -64,7 +65,7 @@ Design rationale: [`archive/inject-eject-office-hours.md`](archive/inject-eject-
 | Provider | Skills | Memory | MCP |
 |----------|--------|--------|-----|
 | Cursor | `~/.cursor/skills` → `core/skills` | User rules UI + optional `core/rules/` | `~/.cursor/mcp.json` |
-| Claude Code / Desktop | `~/.claude/skills` → `core/skills` | `~/.claude/CLAUDE.md` | `~/.claude/.mcp.json` |
+| Claude Code / Desktop | `~/.claude/skills` → `core/skills` | `~/.claude/CLAUDE.md` | `~/.claude.json` |
 
 ## Marketplace plugins
 
@@ -72,14 +73,14 @@ Third-party plugins (MongoDB, Atlassian, Superpowers, etc.) are **catalogued onl
 
 ## Environment
 
-Copy [`secrets/.env.example`](secrets/.env.example) to `secrets/.env` (gitignored). Set `NPX` for your machine (Homebrew default on macOS: `/opt/homebrew/bin/npx`).
+Copy [`secrets/.env.example`](secrets/.env.example) to `secrets/.env` (gitignored). `NPX` is auto-detected; override in `secrets/.env` only if needed.
 
 ## Checks
 
 ```bash
 bin/doctor.sh            # verify symlinks, MCP, memory, binaries
 bin/doctor.sh --deep     # also validate generated MCP JSON + GitNexus pin
-bin/ci-check.sh          # static checks (shell, JSON, YAML, frontmatter, eval lint + self-test)
+bin/ci-check.sh          # static checks (links, hooks self-tests, merge helpers, swe-bench selftest, memory seeds, prefix budget, Go fmt/vet/test/build)
 python3 evals/run.py --track all   # behavioral evals (dry by default; see evals/README.md)
 ```
 

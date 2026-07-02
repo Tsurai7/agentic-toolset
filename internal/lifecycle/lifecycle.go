@@ -28,6 +28,7 @@ import (
 const (
 	generatedName = "agentic-cfg.generated.md"
 	skillsBackup  = "skills.pre-agentic"
+	agentsBackup  = "agents.pre-agentic"
 )
 
 // Options configures an inject/eject run.
@@ -50,6 +51,10 @@ func (o *Options) logf(format string, a ...any) {
 func (o *Options) claudeDir() string { return filepath.Join(o.Home, ".claude") }
 func (o *Options) skillsSource() string {
 	return filepath.Join(o.Root, "core", "skills")
+}
+
+func (o *Options) agentsSource() string {
+	return filepath.Join(o.Root, "core", "agents")
 }
 
 // GeneratedMD builds the repo-owned generated CLAUDE.md content (stub with
@@ -112,6 +117,9 @@ func Inject(o Options) error {
 	if err := injectSkills(&o, cd); err != nil {
 		return err
 	}
+	if err := injectAgents(&o, cd); err != nil {
+		return err
+	}
 
 	gen := filepath.Join(cd, generatedName)
 	md, err := GeneratedMD(o.Root)
@@ -121,7 +129,11 @@ func Inject(o Options) error {
 	if o.DryRun {
 		o.logf("[dry-run] write %s; ensure @import block in %s", gen, filepath.Join(cd, "CLAUDE.md"))
 	} else {
-		if err := os.WriteFile(gen, []byte(md), 0o644); err != nil { //nolint:gosec // non-secret user config
+		// Atomic write: the generated file is imported by every session, so an
+		// interrupt mid-write must never leave a truncated prefix silently
+		// degrading future sessions (BUG-12 parity, same helper claudemd.Ensure
+		// itself uses below).
+		if err := claudemd.AtomicWrite(gen, []byte(md), 0o644); err != nil {
 			return err
 		}
 		if err := claudemd.Ensure(gen, filepath.Join(cd, "CLAUDE.md")); err != nil {
@@ -164,6 +176,7 @@ func Eject(o Options) error {
 	cd := o.claudeDir()
 
 	ejectSkills(&o, cd)
+	ejectAgents(&o, cd)
 
 	if !o.DryRun {
 		if removed, err := claudemd.Remove(filepath.Join(cd, "CLAUDE.md")); err != nil {
@@ -207,6 +220,7 @@ func Eject(o Options) error {
 type StatusReport struct {
 	Injected     bool   `json:"injected"` // all core pieces present
 	Skills       string `json:"skills"`   // "linked" | "foreign" | "absent"
+	Agents       string `json:"agents"`   // "linked" | "foreign" | "absent"
 	ClaudeMDLink bool   `json:"claude_md_block"`
 	GeneratedMD  bool   `json:"generated_md"`
 	ManagedHooks bool   `json:"managed_hooks"`
@@ -231,6 +245,19 @@ func Status(o Options) StatusReport {
 		r.Skills = "foreign"
 	}
 
+	switch fi, err := os.Lstat(filepath.Join(cd, "agents")); {
+	case err != nil:
+		r.Agents = "absent"
+	case fi.Mode()&os.ModeSymlink != 0:
+		if dest, _ := os.Readlink(filepath.Join(cd, "agents")); dest == o.agentsSource() {
+			r.Agents = "linked"
+		} else {
+			r.Agents = "foreign"
+		}
+	default:
+		r.Agents = "foreign"
+	}
+
 	if b, err := os.ReadFile(filepath.Join(cd, "CLAUDE.md")); err == nil {
 		r.ClaudeMDLink = claudemd.BlockPresent(string(b))
 	}
@@ -241,7 +268,7 @@ func Status(o Options) StatusReport {
 		r.ManagedHooks = strings.Contains(string(b), "/providers/claude/hooks/")
 	}
 
-	r.Injected = r.Skills == "linked" && r.ClaudeMDLink && r.GeneratedMD && r.ManagedHooks
+	r.Injected = r.Skills == "linked" && r.Agents == "linked" && r.ClaudeMDLink && r.GeneratedMD && r.ManagedHooks
 	return r
 }
 
@@ -256,27 +283,28 @@ func (r StatusReport) Render(w io.Writer, home string) {
 	state := "NOT injected"
 	if r.Injected {
 		state = "injected"
-	} else if r.Skills != "absent" || r.ClaudeMDLink || r.GeneratedMD || r.ManagedHooks {
+	} else if r.Skills != "absent" || r.Agents != "absent" || r.ClaudeMDLink || r.GeneratedMD || r.ManagedHooks {
 		state = "PARTIAL"
 	}
 	fmt.Fprintf(w, "agentic-cfg status (%s/.claude)\n", home)
 	fmt.Fprintf(w, "  skills          : %s\n", r.Skills)
+	fmt.Fprintf(w, "  agents          : %s\n", r.Agents)
 	fmt.Fprintf(w, "  CLAUDE.md block : %s\n", yn(r.ClaudeMDLink))
 	fmt.Fprintf(w, "  generated md    : %s\n", yn(r.GeneratedMD))
 	fmt.Fprintf(w, "  managed hooks   : %s\n", yn(r.ManagedHooks))
 	fmt.Fprintf(w, "  => %s\n", state)
 }
 
-// injectSkills symlinks Home/.claude/skills -> Root/core/skills. An existing symlink
-// is refreshed; a real directory (user content) is backed up rather than clobbered.
-func injectSkills(o *Options, cd string) error {
-	target := filepath.Join(cd, "skills")
-	source := o.skillsSource()
+// injectLinked symlinks Home/.claude/<name> -> source. An existing symlink is
+// refreshed; a real directory (user content) is backed up to Home/.claude/<backup>
+// rather than clobbered. label prefixes log lines (e.g. "skills", "agents").
+func injectLinked(o *Options, cd, name, source, backup, label string) error {
+	target := filepath.Join(cd, name)
 	fi, err := os.Lstat(target)
 	switch {
 	case err == nil && fi.Mode()&os.ModeSymlink != 0:
 		if dest, _ := os.Readlink(target); dest == source {
-			o.logf("skills: already linked -> %s", source)
+			o.logf("%s: already linked -> %s", label, source)
 			return nil
 		}
 		if !o.DryRun {
@@ -285,8 +313,8 @@ func injectSkills(o *Options, cd string) error {
 			}
 		}
 	case err == nil: // a real file/dir — preserve it
-		bak := filepath.Join(cd, skillsBackup)
-		o.logf("skills: backing up existing %s -> %s", target, bak)
+		bak := filepath.Join(cd, backup)
+		o.logf("%s: backing up existing %s -> %s", label, target, bak)
 		if !o.DryRun {
 			if _, e := os.Lstat(bak); e == nil {
 				return fmt.Errorf("inject: %s already exists; refusing to overwrite a prior backup", bak)
@@ -303,31 +331,55 @@ func injectSkills(o *Options, cd string) error {
 	if err := os.Symlink(source, target); err != nil {
 		return err
 	}
-	o.logf("skills: %s -> %s", target, source)
+	o.logf("%s: %s -> %s", label, target, source)
 	return nil
 }
 
-// ejectSkills removes the skills symlink only if it points at our source, then
-// restores a backup if one exists. A user's own real skills dir is never touched.
-func ejectSkills(o *Options, cd string) {
-	target := filepath.Join(cd, "skills")
-	source := o.skillsSource()
+// ejectLinked removes the Home/.claude/<name> symlink only if it points at source,
+// then restores a backup from Home/.claude/<backup> if one exists. A user's own
+// real dir at <name> is never touched.
+func ejectLinked(o *Options, cd, name, source, backup, label string) {
+	target := filepath.Join(cd, name)
 	if fi, err := os.Lstat(target); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		if dest, _ := os.Readlink(target); dest == source {
 			if !o.DryRun {
 				_ = os.Remove(target)
 			}
-			o.logf("skills: removed symlink")
+			o.logf("%s: removed symlink", label)
 		}
 	}
-	bak := filepath.Join(cd, skillsBackup)
+	bak := filepath.Join(cd, backup)
 	if _, err := os.Lstat(bak); err == nil && !o.DryRun {
 		if _, err := os.Lstat(target); os.IsNotExist(err) {
 			if os.Rename(bak, target) == nil {
-				o.logf("skills: restored backup %s", bak)
+				o.logf("%s: restored backup %s", label, bak)
 			}
 		}
 	}
+}
+
+// injectSkills symlinks Home/.claude/skills -> Root/core/skills. An existing symlink
+// is refreshed; a real directory (user content) is backed up rather than clobbered.
+func injectSkills(o *Options, cd string) error {
+	return injectLinked(o, cd, "skills", o.skillsSource(), skillsBackup, "skills")
+}
+
+// ejectSkills removes the skills symlink only if it points at our source, then
+// restores a backup if one exists. A user's own real skills dir is never touched.
+func ejectSkills(o *Options, cd string) {
+	ejectLinked(o, cd, "skills", o.skillsSource(), skillsBackup, "skills")
+}
+
+// injectAgents symlinks Home/.claude/agents -> Root/core/agents. An existing symlink
+// is refreshed; a real directory (user content) is backed up rather than clobbered.
+func injectAgents(o *Options, cd string) error {
+	return injectLinked(o, cd, "agents", o.agentsSource(), agentsBackup, "agents")
+}
+
+// ejectAgents removes the agents symlink only if it points at our source, then
+// restores a backup if one exists. A user's own real agents dir is never touched.
+func ejectAgents(o *Options, cd string) {
+	ejectLinked(o, cd, "agents", o.agentsSource(), agentsBackup, "agents")
 }
 
 // resolvedFragment writes the settings fragment with __AGENTIC_ROOT__ resolved to a
