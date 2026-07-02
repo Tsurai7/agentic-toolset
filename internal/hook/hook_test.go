@@ -60,6 +60,22 @@ func TestShellGuard(t *testing.T) {
 		{"heredoc fail-open", "cat <<EOF\nhi\nEOF", "PASS", ""},
 		{"command-substitution fail-open", "echo $(date)", "PASS", ""},
 		{"cd chain fail-open", "cd /tmp && ls", "PASS", ""},
+		// Order fix (issues/shell-guard-astgrep-order-bypass.md): the ast-grep
+		// deny must fire even when the command is already rtk/lean-ctx-wrapped
+		// or carries a leading assignment.
+		{"rtk-wrapped grep on code denied", "rtk grep -n foo internal/hook/hook.go", "DENY", ""},
+		{"lean-ctx-wrapped grep on code denied", "lean-ctx grep -rn foo src/main.go", "DENY", ""},
+		{"assignment + rtk-wrapped grep on code denied", "FOO=1 rtk grep TODO cmd/agentic/main.go", "DENY", ""},
+		{"rtk-wrapped quoted-pattern grep not denied", `rtk grep "foo.py" data.csv`, "PASS", ""},
+		{"rtk ls stays already-wrapped", "rtk ls -la", "PASS", ""},
+		// Equals-token pass-through (issues/rtk-wrap-breaks-equals-words.md):
+		// a bare `=`-leading token would trigger zsh equals-expansion inside
+		// rtk's eval, so pass such commands through untouched.
+		{"bare equals token passes through", "echo ===", "PASS", ""},
+		{"equals token as separate arg passes through", "echo = separator", "PASS", ""},
+		{"equals mid-word still wrapped", "echo a=b", "REWRITE", "rtk echo a=b"},
+		{"baseline simple command still wrapped", "echo hi", "REWRITE", "rtk echo hi"},
+		{"leading assignment still passes through", "FOO=1 echo hi", "PASS", ""},
 		// BUG-02: a bit-shift contains `<<` but must not be mangled — fail open
 		// (run untouched) rather than the old glob's silent wrapping-skip.
 		{"bit-shift fail-open (BUG-02)", "python3 -c 'print(1 << 3)'", "PASS", ""},
@@ -75,6 +91,26 @@ func TestShellGuard(t *testing.T) {
 		}
 		if c.rewrite != "" && gotCmd != c.rewrite {
 			t.Errorf("%s: command %q -> rewrite %q, want %q", c.name, c.cmd, gotCmd, c.rewrite)
+		}
+	}
+}
+
+func TestClassify(t *testing.T) {
+	cases := []struct {
+		cmd  string
+		want Decision
+	}{
+		{"", DecisionEmpty},
+		{"grep TODO main.go", DecisionDenyGrepCode},
+		{"rtk npm test", DecisionAlreadyWrapped},
+		{"cat <<EOF\nhi\nEOF", DecisionFailOpenComplex},
+		{"FOO=1 echo hi", DecisionFailOpenAssign},
+		{"echo ===", DecisionFailOpenEquals},
+		{"echo hi", DecisionWrap},
+	}
+	for _, c := range cases {
+		if got := Classify(c.cmd); got != c.want {
+			t.Errorf("Classify(%q) = %q, want %q", c.cmd, got, c.want)
 		}
 	}
 }

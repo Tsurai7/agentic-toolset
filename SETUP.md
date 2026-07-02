@@ -121,6 +121,7 @@ Verify, and read the session token economy:
 bin/doctor.sh                # health check — "Passed with N warning(s)" is honest; read the WARN lines
 agentic status               # is agentic-cfg injected? exit 0 = yes, 1 = no (--json for scripts)
 agentic gain                 # session token economy: cache hit rate + the ACTUAL input bill + cache-avoided
+agentic gain --adoption      # enforcement coverage: shell-guard wrap/deny/fail-open shares
 agentic cache                # cache-focused view (alias for `agentic gain --cache`)
 ```
 

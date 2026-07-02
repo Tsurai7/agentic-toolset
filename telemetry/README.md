@@ -17,6 +17,7 @@ agentic gain                       # last 20 sessions
 agentic gain --last 50 --project agentic-cfg
 agentic gain --json                # machine-readable
 agentic gain --by-model            # per-model token share — is the cheap tier carrying the bulk?
+agentic gain --adoption            # enforcement coverage: shell-guard wrap/deny/fail-open shares
 agentic gain --gate                # regression gate: exit 1 if hit rate < 80% (CI-friendly)
 ```
 
@@ -36,6 +37,12 @@ cache is avoiding — a write-heavy session that never reuses its cache correctl
 shows a *negative* saving. Use `report.py` below for the richer per-session table,
 tool breakdown, and cost detail. Implementation: `internal/gain/` (Go,
 unit-tested), wired in `cmd/agentic/main.go`.
+
+`--adoption` complements — it does not replace — the cache metrics above: it
+measures whether the *enforcement layer* is actually covering the traffic
+(shell-guard wrap/deny/fail-open shares, deny events observed in transcripts,
+and ast-grep/lean-ctx/GitNexus/native-tool call counts), rather than the token
+economy of the traffic that does get wrapped.
 
 ## Usage (`report.py`)
 

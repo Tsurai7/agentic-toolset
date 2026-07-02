@@ -31,21 +31,29 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/Tsurai7/agentic-cfg/internal/hook"
 )
 
 // rate is USD per 1M tokens. Mirrors telemetry/report.py PRICING — keep the two
-// in sync. cache_read ~= 0.1x input, cache_5m ~= 1.25x, cache_1h ~= 2x, per
-// Anthropic's published multipliers. Cost is for relative comparison, not a bill.
+// in sync. cache_read = 0.1x input, cache_5m = 1.25x input, cache_1h = 2x input,
+// per Anthropic's published multipliers. Rates cached from platform docs
+// 2026-06-24 via the claude-api reference. Sonnet has introductory pricing
+// ($2/$10) through 2026-08-31; the sticker $3/$15 is used here — these are
+// estimates, not billing truth; verify before quoting dollars.
 type rate struct{ in, cacheRead, cache5m, cache1h, out float64 }
 
 var pricing = []struct {
 	key string
 	r   rate
 }{
-	{"opus", rate{15.0, 1.5, 18.75, 30.0, 75.0}},
+	{"fable", rate{10.0, 1.0, 12.5, 20.0, 50.0}},
+	{"mythos", rate{10.0, 1.0, 12.5, 20.0, 50.0}},
+	{"opus", rate{5.0, 0.5, 6.25, 10.0, 25.0}},
 	{"sonnet", rate{3.0, 0.3, 3.75, 6.0, 15.0}},
 	{"haiku", rate{1.0, 0.1, 1.25, 2.0, 5.0}},
 }
@@ -57,7 +65,29 @@ func ratesFor(model string) rate {
 			return p.r
 		}
 	}
-	return pricing[0].r // default: opus
+	return defaultRate() // default: opus
+}
+
+// knownModel reports whether model matches one of the pricing table's keys
+// (same substring scan as ratesFor), so callers can flag estimates billed at
+// the opus fallback rather than a rate actually keyed to the model.
+func knownModel(model string) bool {
+	m := strings.ToLower(model)
+	for _, p := range pricing {
+		if strings.Contains(m, p.key) {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultRate() rate {
+	for _, p := range pricing {
+		if p.key == "opus" {
+			return p.r
+		}
+	}
+	return rate{}
 }
 
 // Bucket is a token tally for one context (main thread or subagent sidechain).
@@ -79,11 +109,45 @@ type Session struct {
 	AssistantTurns int                `json:"assistant_turns"`
 	Main           Bucket             `json:"main"`
 	Sub            Bucket             `json:"sub"`
-	PerModel       map[string]*Bucket `json:"-"`            // tokens per concrete model id
-	Cost           float64            `json:"est_cost_usd"` // actual, incl. output
-	InputCostGross float64            `json:"-"`            // counterfactual: total input billed at fresh rate
-	InputCostReal  float64            `json:"-"`            // actual input-side cost (input+cache)
+	PerModel       map[string]*Bucket `json:"-"`                  // tokens per concrete model id
+	Cost           float64            `json:"est_cost_usd"`       // actual, incl. output
+	InputCostGross float64            `json:"-"`                  // counterfactual: total input billed at fresh rate
+	InputCostReal  float64            `json:"-"`                  // actual input-side cost (input+cache)
+	Adoption       *AdoptionStats     `json:"adoption,omitempty"` // nil unless ParseOpts.Adoption is set
 }
+
+// AdoptionStats is the enforcement-coverage readout: how much Bash traffic the
+// shell-guard actually wraps/denies, and how much the model reaches for
+// ast-grep, lean-ctx, and GitNexus instead of native/raw tools. Collected only
+// when ParseOpts.Adoption is set, so the default gain path stays cheap.
+type AdoptionStats struct {
+	BashTotal      int            `json:"bash_total"`
+	ByDecision     map[string]int `json:"by_decision"`
+	DeniesObserved int            `json:"denies_observed"`
+	SgCalls        int            `json:"sg_calls"`
+	GrepCalls      int            `json:"grep_calls"`
+	CtxCalls       int            `json:"ctx_calls"`
+	GitnexusCalls  int            `json:"gitnexus_calls"`
+	NativeReads    int            `json:"native_reads"`
+	NativeGreps    int            `json:"native_greps"`
+}
+
+func (a *AdoptionStats) add(o *AdoptionStats) {
+	a.BashTotal += o.BashTotal
+	for k, v := range o.ByDecision {
+		a.ByDecision[k] += v
+	}
+	a.DeniesObserved += o.DeniesObserved
+	a.SgCalls += o.SgCalls
+	a.GrepCalls += o.GrepCalls
+	a.CtxCalls += o.CtxCalls
+	a.GitnexusCalls += o.GitnexusCalls
+	a.NativeReads += o.NativeReads
+	a.NativeGreps += o.NativeGreps
+}
+
+// sgCallRe matches an sg/ast-grep invocation as the command word.
+var sgCallRe = regexp.MustCompile(`(^|[\s|;&])(sg|ast-grep)\s`)
 
 // TotalInput is fresh + cache-read + cache-write across both buckets. This is the
 // denominator of the cache hit rate, matching telemetry/report.py.
@@ -116,9 +180,31 @@ type tRecord struct {
 }
 
 type tMessage struct {
-	ID    string  `json:"id"`
-	Model string  `json:"model"`
-	Usage *tUsage `json:"usage"`
+	ID      string          `json:"id"`
+	Model   string          `json:"model"`
+	Usage   *tUsage         `json:"usage"`
+	Content json.RawMessage `json:"content"` // string (plain text) or []tContentBlock; only the array form carries tool_use/tool_result
+}
+
+// tContentBlock is one message.content array entry, parsed loosely (type + the
+// fields each block kind needs) since assistant tool_use and user tool_result
+// blocks share the array but not a schema.
+type tContentBlock struct {
+	Type    string          `json:"type"`
+	Name    string          `json:"name"`    // tool_use
+	Input   json.RawMessage `json:"input"`   // tool_use
+	Content json.RawMessage `json:"content"` // tool_result (string or block array); inspected as raw text
+}
+
+// contentBlocks parses message.content when it is an array, returning nil
+// (not an error) when it is a plain string or absent.
+func (m *tMessage) contentBlocks() []tContentBlock {
+	if len(m.Content) == 0 || m.Content[0] != '[' {
+		return nil
+	}
+	var blocks []tContentBlock
+	_ = json.Unmarshal(m.Content, &blocks)
+	return blocks
 }
 
 type tUsage struct {
@@ -132,13 +218,27 @@ type tUsage struct {
 	} `json:"cache_creation"`
 }
 
+// ParseOpts controls optional, non-default collection during parsing.
+type ParseOpts struct {
+	Adoption bool // collect enforcement-coverage stats (AdoptionStats) — opt-in, extra scan cost
+}
+
 // ParseLines reads a transcript stream and returns the aggregated Session, or
 // nil if the stream carried no usage-bearing assistant turns. Malformed lines
 // are skipped (legible degradation), never fatal. Claude Code repeats the
 // message-level usage on every content-block record, so usage is counted once
 // per message.id to avoid inflating tokens and cost.
 func ParseLines(r io.Reader) (*Session, error) {
+	return ParseLinesOpts(r, ParseOpts{})
+}
+
+// ParseLinesOpts is ParseLines with optional adoption-stats collection.
+func ParseLinesOpts(r io.Reader, opts ParseOpts) (*Session, error) {
 	s := &Session{Models: map[string]int{}, PerModel: map[string]*Bucket{}}
+	var adoption *AdoptionStats
+	if opts.Adoption {
+		adoption = &AdoptionStats{ByDecision: map[string]int{}}
+	}
 	seen := map[string]bool{}
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 1024*1024), 64*1024*1024) // transcript lines can be large
@@ -160,6 +260,9 @@ func ParseLines(r io.Reader) (*Session, error) {
 		if s.Branch == "" {
 			s.Branch = rec.GitBranch
 		}
+		if adoption != nil {
+			scanAdoption(&rec, adoption)
+		}
 		if rec.Type != "assistant" || rec.Message == nil || rec.Message.Usage == nil {
 			continue
 		}
@@ -177,8 +280,66 @@ func ParseLines(r io.Reader) (*Session, error) {
 	if s.AssistantTurns == 0 {
 		return nil, nil //nolint:nilnil // (nil, nil) is the documented "no usable session" signal
 	}
+	s.Adoption = adoption
 	return s, nil
 }
+
+// scanAdoption tallies enforcement-coverage signals from one transcript
+// record: assistant tool_use blocks (Bash classified via hook.Classify, plus
+// sg/ast-grep, grep/rg, ctx_*, gitnexus, Read, Grep counts) and user
+// tool_result blocks carrying the ast-grep deny reason text.
+func scanAdoption(rec *tRecord, a *AdoptionStats) {
+	if rec.Message == nil {
+		return
+	}
+	blocks := rec.Message.contentBlocks()
+	switch rec.Type {
+	case "assistant":
+		for _, b := range blocks {
+			if b.Type != "tool_use" {
+				continue
+			}
+			switch {
+			case b.Name == "Bash":
+				a.BashTotal++
+				var input struct {
+					Command string `json:"command"`
+				}
+				_ = json.Unmarshal(b.Input, &input)
+				dec := string(hook.Classify(input.Command))
+				a.ByDecision[dec]++
+				if hook.GrepTokenRe.MatchString(input.Command) {
+					a.GrepCalls++
+				}
+				if sgCallRe.MatchString(input.Command) {
+					a.SgCalls++
+				}
+			case strings.HasPrefix(b.Name, "mcp__lean-ctx__"):
+				a.CtxCalls++
+			case strings.Contains(strings.ToLower(b.Name), "gitnexus"):
+				a.GitnexusCalls++
+			case b.Name == "Read":
+				a.NativeReads++
+			case b.Name == "Grep":
+				a.NativeGreps++
+			}
+		}
+	case "user":
+		for _, b := range blocks {
+			if b.Type != "tool_result" {
+				continue
+			}
+			if strings.Contains(string(b.Content), astGrepReasonPrefix) {
+				a.DeniesObserved++
+			}
+		}
+	}
+}
+
+// astGrepReasonPrefix identifies an observed ast-grep deny in a tool_result,
+// matching the hook's astGrepReason text (unexported there; kept short and
+// exact enough to avoid false positives).
+const astGrepReasonPrefix = "Use ast-grep for structural code search"
 
 func (s *Session) addUsage(rec *tRecord) {
 	u := rec.Message.Usage
@@ -229,12 +390,17 @@ func (s *Session) addUsage(rec *tRecord) {
 // ParseFile parses one transcript file. Returns (nil, nil) for a file with no
 // usable assistant turns (matching telemetry/report.py).
 func ParseFile(path string) (*Session, error) {
+	return ParseFileOpts(path, ParseOpts{})
+}
+
+// ParseFileOpts is ParseFile with optional adoption-stats collection.
+func ParseFileOpts(path string, opts ParseOpts) (*Session, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	s, err := ParseLines(f)
+	s, err := ParseLinesOpts(f, opts)
 	if err != nil || s == nil {
 		return s, err
 	}
@@ -250,6 +416,11 @@ func ParseFile(path string) (*Session, error) {
 // Collect parses every transcript under root (newest first by mtime), optionally
 // filtered by a project/dir substring, and returns at most `last` sessions.
 func Collect(root, project string, last int) ([]*Session, error) {
+	return CollectOpts(root, project, last, ParseOpts{})
+}
+
+// CollectOpts is Collect with optional adoption-stats collection.
+func CollectOpts(root, project string, last int, opts ParseOpts) ([]*Session, error) {
 	var files []string
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -273,7 +444,7 @@ func Collect(root, project string, last int) ([]*Session, error) {
 	})
 	var out []*Session
 	for _, f := range files {
-		s, err := ParseFile(f)
+		s, err := ParseFileOpts(f, opts)
 		if err != nil || s == nil {
 			continue
 		}
@@ -290,20 +461,21 @@ func Collect(root, project string, last int) ([]*Session, error) {
 
 // Report is the aggregate gain readout across a set of sessions.
 type Report struct {
-	Sessions       int         `json:"sessions"`
-	Input          int         `json:"input_fresh"`
-	CacheRead      int         `json:"cache_read"`
-	CacheWrite     int         `json:"cache_write"`
-	Output         int         `json:"output"`
-	TotalInput     int         `json:"total_input"`
-	SubInput       int         `json:"subagent_input"`
-	CacheHitRate   float64     `json:"cache_hit_rate"`
-	SubagentShare  float64     `json:"subagent_share"`
-	InputCostReal  float64     `json:"input_cost_real_usd"`  // actual input-side bill (input + cache), what you paid
-	InputCostSaved float64     `json:"input_cost_saved_usd"` // counterfactual: cost the cache avoided vs sending uncached
-	InputSavedPct  float64     `json:"input_cost_saved_pct"`
-	EstCostUSD     float64     `json:"est_cost_usd"`
-	ByModel        []ModelStat `json:"by_model"`
+	Sessions       int            `json:"sessions"`
+	Input          int            `json:"input_fresh"`
+	CacheRead      int            `json:"cache_read"`
+	CacheWrite     int            `json:"cache_write"`
+	Output         int            `json:"output"`
+	TotalInput     int            `json:"total_input"`
+	SubInput       int            `json:"subagent_input"`
+	CacheHitRate   float64        `json:"cache_hit_rate"`
+	SubagentShare  float64        `json:"subagent_share"`
+	InputCostReal  float64        `json:"input_cost_real_usd"`  // actual input-side bill (input + cache), what you paid
+	InputCostSaved float64        `json:"input_cost_saved_usd"` // counterfactual: cost the cache avoided vs sending uncached
+	InputSavedPct  float64        `json:"input_cost_saved_pct"`
+	EstCostUSD     float64        `json:"est_cost_usd"`
+	ByModel        []ModelStat    `json:"by_model"`
+	Adoption       *AdoptionStats `json:"adoption,omitempty"` // nil unless --adoption was requested
 }
 
 // ModelStat is per-model token usage, for seeing whether cheap tiers carry the
@@ -314,7 +486,8 @@ type ModelStat struct {
 	CacheRead    int     `json:"cache_read"`
 	Output       int     `json:"output"`
 	CacheHitRate float64 `json:"cache_hit_rate"`
-	InputShare   float64 `json:"input_share"` // share of all total input
+	InputShare   float64 `json:"input_share"`   // share of all total input
+	Known        bool    `json:"known_pricing"` // false when billed at the default (opus) fallback rate
 }
 
 // Aggregate folds sessions into the token-weighted Report.
@@ -332,6 +505,12 @@ func Aggregate(sessions []*Session) Report {
 		r.EstCostUSD += s.Cost
 		gross += s.InputCostGross
 		actual += s.InputCostReal
+		if s.Adoption != nil {
+			if r.Adoption == nil {
+				r.Adoption = &AdoptionStats{ByDecision: map[string]int{}}
+			}
+			r.Adoption.add(s.Adoption)
+		}
 		for m, b := range s.PerModel {
 			acc := perModel[m]
 			if acc == nil {
@@ -354,7 +533,7 @@ func Aggregate(sessions []*Session) Report {
 		if ti == 0 {
 			continue // models that produced no input tokens (e.g. <synthetic>) add only noise
 		}
-		ms := ModelStat{Model: m, TotalInput: ti, CacheRead: b.CacheRead, Output: b.Output}
+		ms := ModelStat{Model: m, TotalInput: ti, CacheRead: b.CacheRead, Output: b.Output, Known: knownModel(m)}
 		if ti > 0 {
 			ms.CacheHitRate = float64(b.CacheRead) / float64(ti)
 		}
@@ -429,11 +608,53 @@ func Render(w io.Writer, r *Report, asJSON, byModel bool) {
 
 	if byModel && len(r.ByModel) > 0 {
 		fmt.Fprintf(w, "\nby model (total input share — is the cheap tier carrying the bulk?):\n")
+		unknown := false
 		for _, m := range r.ByModel {
+			name := m.Model
+			if !m.Known {
+				name += "*"
+				unknown = true
+			}
 			fmt.Fprintf(w, "  %-26s %6.1f%%   in %8s   hit %4.0f%%\n",
-				m.Model, m.InputShare*100, fmtK(m.TotalInput), m.CacheHitRate*100)
+				name, m.InputShare*100, fmtK(m.TotalInput), m.CacheHitRate*100)
+		}
+		if unknown {
+			fmt.Fprintln(w, "  * unknown model — billed at default (opus) rates in these estimates")
 		}
 	}
+
+	if r.Adoption != nil {
+		renderAdoption(w, r.Sessions, r.Adoption)
+	}
+}
+
+// renderAdoption prints the enforcement-coverage block: how much Bash traffic
+// the shell-guard wraps/denies/fails open on, and how much the model reaches
+// for ast-grep/lean-ctx/GitNexus vs raw grep and native tools.
+func renderAdoption(w io.Writer, sessions int, a *AdoptionStats) {
+	fmt.Fprintf(w, "\nadoption — enforcement coverage over %d session(s):\n", sessions)
+	total := a.BashTotal
+	pct := func(n int) float64 {
+		if total == 0 {
+			return 0
+		}
+		return float64(n) / float64(total) * 100
+	}
+	wrapped := a.ByDecision[string(hook.DecisionWrap)]
+	alreadyWrapped := a.ByDecision[string(hook.DecisionAlreadyWrapped)]
+	complexFO := a.ByDecision[string(hook.DecisionFailOpenComplex)]
+	assign := a.ByDecision[string(hook.DecisionFailOpenAssign)]
+	equals := a.ByDecision[string(hook.DecisionFailOpenEquals)]
+	failOpen := complexFO + assign + equals
+	deny := a.ByDecision[string(hook.DecisionDenyGrepCode)]
+	fmt.Fprintf(w, "  bash calls           : %d\n", total)
+	fmt.Fprintf(w, "  wrapped (rtk/lean-ctx): %.1f%%   already-wrapped: %.1f%%\n", pct(wrapped), pct(alreadyWrapped))
+	fmt.Fprintf(w, "  fail-open            : %.1f%%   (complex %.1f%% / assign %.1f%% / equals %.1f%%)\n",
+		pct(failOpen), pct(complexFO), pct(assign), pct(equals))
+	fmt.Fprintf(w, "  deny (grep-on-code)  : %.1f%%   observed denies in results: %d\n", pct(deny), a.DeniesObserved)
+	fmt.Fprintf(w, "  ast-grep (sg) calls  : %d     grep/rg calls: %d\n", a.SgCalls, a.GrepCalls)
+	fmt.Fprintf(w, "  lean-ctx ctx_* calls : %d     gitnexus calls: %d\n", a.CtxCalls, a.GitnexusCalls)
+	fmt.Fprintf(w, "  native Read / Grep   : %d / %d\n", a.NativeReads, a.NativeGreps)
 }
 
 // cacheVerdict labels a cache hit rate against the 80% hygiene floor.
@@ -462,8 +683,17 @@ func RenderCache(w io.Writer, r *Report, byModel bool) {
 	fmt.Fprintf(w, "  cache avoided      : $%.2f  (%.0f%% — vs re-sending uncached; the Claude platform cache, kept warm by cache hygiene)\n", r.InputCostSaved, r.InputSavedPct*100)
 	if byModel && len(r.ByModel) > 0 {
 		fmt.Fprintf(w, "\nby model (cache hit rate per tier):\n")
+		unknown := false
 		for _, m := range r.ByModel {
-			fmt.Fprintf(w, "  %-26s hit %4.0f%%   in %8s\n", m.Model, m.CacheHitRate*100, fmtK(m.TotalInput))
+			name := m.Model
+			if !m.Known {
+				name += "*"
+				unknown = true
+			}
+			fmt.Fprintf(w, "  %-26s hit %4.0f%%   in %8s\n", name, m.CacheHitRate*100, fmtK(m.TotalInput))
+		}
+		if unknown {
+			fmt.Fprintln(w, "  * unknown model — billed at default (opus) rates in these estimates")
 		}
 	}
 }
@@ -477,15 +707,18 @@ func Main(args []string) int {
 	asJSON := fs.Bool("json", false, "emit JSON instead of a table")
 	byModel := fs.Bool("by-model", false, "append a per-model token breakdown")
 	cacheView := fs.Bool("cache", false, "cache-focused readout (hit rate + token split + cost saved)")
+	adoption := fs.Bool("adoption", false, "append an enforcement-coverage block: shell-guard wrap/deny/fail-open shares, ast-grep/lean-ctx/GitNexus adoption")
 	gate := fs.Bool("gate", false, "regression gate: exit 1 if the cache hit rate is below --min-hit-rate")
 	minRate := fs.Float64("min-hit-rate", 0.80, "cache-hit-rate floor for --gate")
 	minTokens := fs.Int("min-tokens", 200000, "skip the gate (exit 0) below this many total input tokens (matches telemetry/gate.py)")
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "usage: agentic gain [--root DIR] [--last N] [--project SUBSTR] [--by-model] [--cache] [--json]\n"+
+		fmt.Fprint(os.Stderr, "usage: agentic gain [--root DIR] [--last N] [--project SUBSTR] [--by-model] [--cache] [--adoption] [--json]\n"+
 			"       agentic gain --gate [--min-hit-rate 0.80] [--min-tokens 200000]\n\n"+
 			"Built-in performance readout from Claude Code transcripts: token volume,\n"+
 			"prompt-cache hit rate, input cost avoided by caching, and subagent share.\n"+
 			"--cache shows a cache-focused view (also reachable as `agentic cache`).\n"+
+			"--adoption appends enforcement coverage: shell-guard wrap/deny/fail-open\n"+
+			"shares and ast-grep/lean-ctx/GitNexus call counts.\n"+
 			"--gate turns the cache hit rate into a pass/fail check for CI.\n")
 	}
 	if err := fs.Parse(args); err != nil {
@@ -495,7 +728,7 @@ func Main(args []string) int {
 		fmt.Fprintf(os.Stderr, "agentic gain: transcript root not found: %s\n", *root)
 		return 2
 	}
-	sessions, err := Collect(*root, *project, *last)
+	sessions, err := CollectOpts(*root, *project, *last, ParseOpts{Adoption: *adoption})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "agentic gain: %v\n", err)
 		return 1

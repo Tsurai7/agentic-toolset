@@ -17,6 +17,84 @@ const sample = `{"type":"user","message":{"role":"user"}}
 
 func approx(a, b, eps float64) bool { return math.Abs(a-b) < eps }
 
+// adoptionSample exercises every AdoptionStats tally: an rtk-wrapped Bash
+// (already-wrapped), a heredoc Bash (fail-open complex), a grep-on-code Bash
+// (deny + a grep/rg call), an `sg run` Bash (wrapped + an ast-grep call), a
+// lean-ctx ctx_read tool_use, a native Read tool_use, and a user tool_result
+// carrying the ast-grep deny reason text (an observed deny).
+const adoptionSample = `{"type":"assistant","isSidechain":false,"sessionId":"sess-adopt","cwd":"/x/agentic-cfg","gitBranch":"master","message":{"id":"a1","model":"claude-sonnet-5","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"content":[{"type":"tool_use","name":"Bash","input":{"command":"rtk npm test"}}]}}
+{"type":"assistant","message":{"id":"a2","model":"claude-sonnet-5","content":[{"type":"tool_use","name":"Bash","input":{"command":"cat <<EOF\nhi\nEOF"}}]}}
+{"type":"assistant","message":{"id":"a3","model":"claude-sonnet-5","content":[{"type":"tool_use","name":"Bash","input":{"command":"grep TODO main.go"}}]}}
+{"type":"assistant","message":{"id":"a4","model":"claude-sonnet-5","content":[{"type":"tool_use","name":"Bash","input":{"command":"sg run -p 'foo' -l go"}}]}}
+{"type":"assistant","message":{"id":"a5","model":"claude-sonnet-5","content":[{"type":"tool_use","name":"mcp__lean-ctx__ctx_read","input":{"path":"x.go"}}]}}
+{"type":"assistant","message":{"id":"a6","model":"claude-sonnet-5","content":[{"type":"tool_use","name":"Read","input":{"file_path":"x.go"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"Use ast-grep for structural code search: sg -p '<pattern>' -l <lang>."}]}}`
+
+func TestAdoptionStatsExactTallies(t *testing.T) {
+	s, err := ParseLinesOpts(strings.NewReader(adoptionSample), ParseOpts{Adoption: true})
+	if err != nil {
+		t.Fatalf("ParseLinesOpts: %v", err)
+	}
+	if s == nil {
+		t.Fatal("expected a session, got nil")
+	}
+	if s.Adoption == nil {
+		t.Fatal("expected Adoption to be collected")
+	}
+	a := s.Adoption
+	if a.BashTotal != 4 {
+		t.Errorf("BashTotal = %d, want 4", a.BashTotal)
+	}
+	wantByDecision := map[string]int{
+		"already-wrapped":   1,
+		"failopen-complex":  1,
+		"deny-grep-on-code": 1,
+		"wrap":              1,
+	}
+	if len(a.ByDecision) != len(wantByDecision) {
+		t.Errorf("ByDecision = %+v, want %+v", a.ByDecision, wantByDecision)
+	}
+	for k, v := range wantByDecision {
+		if a.ByDecision[k] != v {
+			t.Errorf("ByDecision[%q] = %d, want %d", k, a.ByDecision[k], v)
+		}
+	}
+	if a.DeniesObserved != 1 {
+		t.Errorf("DeniesObserved = %d, want 1", a.DeniesObserved)
+	}
+	if a.SgCalls != 1 {
+		t.Errorf("SgCalls = %d, want 1", a.SgCalls)
+	}
+	if a.GrepCalls != 1 {
+		t.Errorf("GrepCalls = %d, want 1", a.GrepCalls)
+	}
+	if a.CtxCalls != 1 {
+		t.Errorf("CtxCalls = %d, want 1", a.CtxCalls)
+	}
+	if a.GitnexusCalls != 0 {
+		t.Errorf("GitnexusCalls = %d, want 0", a.GitnexusCalls)
+	}
+	if a.NativeReads != 1 {
+		t.Errorf("NativeReads = %d, want 1", a.NativeReads)
+	}
+	if a.NativeGreps != 0 {
+		t.Errorf("NativeGreps = %d, want 0", a.NativeGreps)
+	}
+}
+
+func TestAdoptionOffByDefault(t *testing.T) {
+	s, err := ParseLines(strings.NewReader(adoptionSample))
+	if err != nil {
+		t.Fatalf("ParseLines: %v", err)
+	}
+	if s == nil {
+		t.Fatal("expected a session, got nil")
+	}
+	if s.Adoption != nil {
+		t.Errorf("Adoption = %+v, want nil when ParseOpts.Adoption is false", s.Adoption)
+	}
+}
+
 func TestParseLinesDedupAndBuckets(t *testing.T) {
 	s, err := ParseLines(strings.NewReader(sample))
 	if err != nil {
@@ -63,10 +141,10 @@ func TestAggregateGain(t *testing.T) {
 		t.Errorf("SubagentShare = %v", r.SubagentShare)
 	}
 	// Input cost saved: gross (all input billed fresh) minus real (cache-discounted).
-	// opus m1: gross=2400*15=36000µ$, real=100*15+2000*1.5+300*18.75=10125µ$
+	// opus m1: gross=2400*5=12000µ$, real=100*5+2000*0.5+300*6.25=3375µ$
 	// haiku m2: gross=510*1=510µ$, real=10*1+500*0.1=60µ$
-	wantGross := (36000.0 + 510.0) / 1e6
-	wantReal := (10125.0 + 60.0) / 1e6
+	wantGross := (12000.0 + 510.0) / 1e6
+	wantReal := (3375.0 + 60.0) / 1e6
 	if !approx(r.InputCostReal, wantReal, 1e-9) { // the actual input bill must be exposed, not just the counterfactual
 		t.Errorf("InputCostReal = %v, want %v", r.InputCostReal, wantReal)
 	}
@@ -77,7 +155,7 @@ func TestAggregateGain(t *testing.T) {
 		t.Errorf("InputSavedPct = %v", r.InputSavedPct)
 	}
 	// Full estimated cost includes output tokens.
-	wantCost := (10125.0 + 50*75 + 60.0 + 5*5) / 1e6
+	wantCost := (3375.0 + 50*25 + 60.0 + 5*5) / 1e6
 	if !approx(r.EstCostUSD, wantCost, 1e-9) {
 		t.Errorf("EstCostUSD = %v, want %v", r.EstCostUSD, wantCost)
 	}
@@ -183,5 +261,35 @@ func TestNegativeSavingsWhenCacheNeverReused(t *testing.T) {
 	r := Aggregate([]*Session{s})
 	if r.InputCostSaved >= 0 {
 		t.Errorf("InputCostSaved = %v, want negative for write-only/no-reuse", r.InputCostSaved)
+	}
+}
+
+func TestRatesFor(t *testing.T) {
+	cases := []struct {
+		model string
+		want  rate
+	}{
+		{"claude-fable-5", rate{10.0, 1.0, 12.5, 20.0, 50.0}},
+		{"claude-mythos-5", rate{10.0, 1.0, 12.5, 20.0, 50.0}},
+		{"claude-opus-4-8", rate{5.0, 0.5, 6.25, 10.0, 25.0}},
+		{"claude-sonnet-5", rate{3.0, 0.3, 3.75, 6.0, 15.0}},
+		{"claude-haiku-4-5", rate{1.0, 0.1, 1.25, 2.0, 5.0}},
+		{"totally-unknown-model", rate{5.0, 0.5, 6.25, 10.0, 25.0}}, // falls back to opus
+	}
+	for _, c := range cases {
+		if got := ratesFor(c.model); got != c.want {
+			t.Errorf("ratesFor(%q) = %+v, want %+v", c.model, got, c.want)
+		}
+	}
+}
+
+func TestKnownModel(t *testing.T) {
+	for _, m := range []string{"claude-fable-5", "claude-mythos-5", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"} {
+		if !knownModel(m) {
+			t.Errorf("knownModel(%q) = false, want true", m)
+		}
+	}
+	if knownModel("totally-unknown-model") {
+		t.Error("knownModel(\"totally-unknown-model\") = true, want false")
 	}
 }
