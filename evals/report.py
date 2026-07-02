@@ -46,6 +46,8 @@ def _latest_per_case_model() -> dict[tuple[str, str], dict]:
             rec = json.loads(path.read_text("utf-8").strip().splitlines()[-1])
         except (json.JSONDecodeError, IndexError):
             continue
+        if rec.get("track") != "value":
+            continue
         key = (rec.get("id", "?"), rec.get("model", path.parent.name))
         stamp = path.name  # ISO date prefix sorts lexicographically
         if key not in latest or stamp > latest[key][0]:
