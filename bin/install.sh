@@ -83,6 +83,16 @@ case "$PROVIDER" in
     ;;
 esac
 
+# Link agentic + agentic-cfg onto PATH (~/.local/bin) for convenient access.
+echo ""
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "[dry-run] would run: bin/agentic link"
+elif [[ -x "${AGENTIC_ROOT}/bin/agentic" ]]; then
+  "${AGENTIC_ROOT}/bin/agentic" link
+else
+  echo "WARN: bin/agentic missing — skipping PATH link (go build failed?)" >&2
+fi
+
 # Distribute cross-project memory seeds into active projects (merge-by-name,
 # never clobbers local facts). Honors --dry-run.
 echo ""

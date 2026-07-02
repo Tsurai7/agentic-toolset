@@ -91,6 +91,24 @@ once. The version is pinned repo-wide for reproducible installs (see
 `integrations/gitnexus/README.md` for the bump procedure); the pin requires Node ≥22
 (`brew install node`).
 
+## Updating
+
+One-time setup already done above: `bin/install.sh --provider all` now automatically
+links `agentic` and `agentic-cfg` into `~/.local/bin`, so you have a PATH entry point.
+
+From then on, update from anywhere by running:
+
+```bash
+agentic-cfg update    # fast-forward pull, rebuild, re-apply to Claude and Cursor
+agentic-cfg version   # show what version you are on
+```
+
+**Note:** running Claude Code or Cursor sessions keep the prefix they started with.
+Restart the editor or open a new session to pick up the update.
+
+**Note:** `agentic-cfg update` works against the private origin with your existing git
+credentials — no public repo required.
+
 ## The `agentic` CLI — install, apply to Claude, verify, remove
 
 `bin/bootstrap.sh` / `bin/install.sh` above sync the *config* (skills, CLAUDE.md, MCP,
