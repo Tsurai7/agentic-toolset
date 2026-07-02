@@ -7,11 +7,14 @@ import (
 )
 
 // A transcript exercising: a main assistant turn, a DUPLICATE content-block
-// record with the same message.id (must be counted once), a subagent sidechain
-// turn, a non-assistant record, and a malformed line (both skipped).
+// record with the same message.id whose output_tokens GROWS on the repeat
+// (Claude Code writes one record per content block; output_tokens reaches its
+// final value on the last one) — the last value must win, not the first and
+// not their sum — a subagent sidechain turn, a non-assistant record, and a
+// malformed line (both skipped).
 const sample = `{"type":"user","message":{"role":"user"}}
 {"type":"assistant","isSidechain":false,"sessionId":"sess-1","cwd":"/x/agentic-cfg","gitBranch":"master","message":{"id":"m1","model":"claude-opus-4-8","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":2000,"cache_creation_input_tokens":300,"cache_creation":{"ephemeral_5m_input_tokens":300,"ephemeral_1h_input_tokens":0}}}}
-{"type":"assistant","isSidechain":false,"message":{"id":"m1","model":"claude-opus-4-8","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":2000,"cache_creation_input_tokens":300}}}
+{"type":"assistant","isSidechain":false,"message":{"id":"m1","model":"claude-opus-4-8","usage":{"input_tokens":100,"output_tokens":500,"cache_read_input_tokens":2000,"cache_creation_input_tokens":300,"cache_creation":{"ephemeral_5m_input_tokens":300,"ephemeral_1h_input_tokens":0}}}}
 {not valid json
 {"type":"assistant","isSidechain":true,"message":{"id":"m2","model":"claude-haiku-4-5","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":500,"cache_creation_input_tokens":0}}}`
 
@@ -95,6 +98,55 @@ func TestAdoptionOffByDefault(t *testing.T) {
 	}
 }
 
+// denyFalsePositiveSample exercises the B2 fix: one genuine deny tool_result
+// (content starts with the reason literal) and one tool_result that is a
+// line-numbered Read dump of a file merely CONTAINING the reason literal deep
+// inside — a real transcript shape for a Read of hook.go/gain_test.go/docs.
+// Only the genuine deny may count.
+const denyFalsePositiveSample = `{"type":"user","message":{"content":[{"type":"tool_result","content":"Use ast-grep for structural code search: sg -p '<pattern>' -l <lang>. Plain grep is only for non-code text/logs (see the ast-grep + tool-precedence rules)."}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"1\t// astGrepReasonPrefix identifies an observed ast-grep deny in a tool_result:\n2\tconst astGrepReasonPrefix = \"Use ast-grep for structural code search\"\n"}]}}
+{"type":"assistant","message":{"id":"d1","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`
+
+func TestDeniesObservedExcludesReadDumpFalsePositive(t *testing.T) {
+	s, err := ParseLinesOpts(strings.NewReader(denyFalsePositiveSample), ParseOpts{Adoption: true})
+	if err != nil {
+		t.Fatalf("ParseLinesOpts: %v", err)
+	}
+	if s == nil || s.Adoption == nil {
+		t.Fatal("expected a session with Adoption collected")
+	}
+	if s.Adoption.DeniesObserved != 1 {
+		t.Errorf("DeniesObserved = %d, want 1 (genuine deny only, not the Read dump containing the literal)", s.Adoption.DeniesObserved)
+	}
+}
+
+// grepAdoptionSample exercises the B3 fix: a bare grep, a self-wrapped `rtk
+// grep`/`rtk rg`, an unwrapped `sg`, and a self-wrapped `rtk sg` — grep and sg
+// calls must both be counted whether or not they arrive pre-wrapped.
+const grepAdoptionSample = `{"type":"assistant","message":{"id":"g1","model":"claude-sonnet-5","content":[{"type":"tool_use","name":"Bash","input":{"command":"grep TODO main.go"}}]}}
+{"type":"assistant","message":{"id":"g2","model":"claude-sonnet-5","content":[{"type":"tool_use","name":"Bash","input":{"command":"rtk grep TODO main.go"}}]}}
+{"type":"assistant","message":{"id":"g3","model":"claude-sonnet-5","content":[{"type":"tool_use","name":"Bash","input":{"command":"rtk rg TODO main.go"}}]}}
+{"type":"assistant","message":{"id":"g4","model":"claude-sonnet-5","content":[{"type":"tool_use","name":"Bash","input":{"command":"sg run -p 'foo' -l go"}}]}}
+{"type":"assistant","message":{"id":"g5","model":"claude-sonnet-5","content":[{"type":"tool_use","name":"Bash","input":{"command":"rtk sg run -p 'foo' -l go"}}]}}
+{"type":"assistant","message":{"id":"g6","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`
+
+func TestGrepAdoptionCountsSelfWrapped(t *testing.T) {
+	s, err := ParseLinesOpts(strings.NewReader(grepAdoptionSample), ParseOpts{Adoption: true})
+	if err != nil {
+		t.Fatalf("ParseLinesOpts: %v", err)
+	}
+	if s == nil || s.Adoption == nil {
+		t.Fatal("expected a session with Adoption collected")
+	}
+	a := s.Adoption
+	if a.GrepCalls != 3 {
+		t.Errorf("GrepCalls = %d, want 3 (grep, rtk grep, rtk rg)", a.GrepCalls)
+	}
+	if a.SgCalls != 2 {
+		t.Errorf("SgCalls = %d, want 2 (sg, rtk sg)", a.SgCalls)
+	}
+}
+
 func TestParseLinesDedupAndBuckets(t *testing.T) {
 	s, err := ParseLines(strings.NewReader(sample))
 	if err != nil {
@@ -110,7 +162,9 @@ func TestParseLinesDedupAndBuckets(t *testing.T) {
 	if s.ID != "sess-1" || s.Project != "agentic-cfg" || s.Branch != "master" {
 		t.Errorf("meta = %q/%q/%q, want sess-1/agentic-cfg/master", s.ID, s.Project, s.Branch)
 	}
-	if s.Main != (Bucket{Input: 100, Output: 50, CacheRead: 2000, CacheWrite: 300}) {
+	// Output must be the LAST record's value (500), not the first (50) and not
+	// their sum (550) — last-wins via per-field delta reconciliation.
+	if s.Main != (Bucket{Input: 100, Output: 500, CacheRead: 2000, CacheWrite: 300}) {
 		t.Errorf("main bucket = %+v", s.Main)
 	}
 	if s.Sub != (Bucket{Input: 10, Output: 5, CacheRead: 500, CacheWrite: 0}) {
@@ -128,7 +182,9 @@ func TestAggregateGain(t *testing.T) {
 	s, _ := ParseLines(strings.NewReader(sample))
 	r := Aggregate([]*Session{s})
 
-	if r.Sessions != 1 || r.Input != 110 || r.CacheRead != 2500 || r.CacheWrite != 300 || r.Output != 55 {
+	// Output = 505: m1's last-wins output (500) + m2's output (5) — not the
+	// first-wins 50+5=55 and not the summed-duplicate 50+500+5=555.
+	if r.Sessions != 1 || r.Input != 110 || r.CacheRead != 2500 || r.CacheWrite != 300 || r.Output != 505 {
 		t.Errorf("aggregate tallies = %+v", r)
 	}
 	if r.TotalInput != 2910 || r.SubInput != 510 {
@@ -154,8 +210,8 @@ func TestAggregateGain(t *testing.T) {
 	if !approx(r.InputSavedPct, (wantGross-wantReal)/wantGross, 1e-9) {
 		t.Errorf("InputSavedPct = %v", r.InputSavedPct)
 	}
-	// Full estimated cost includes output tokens.
-	wantCost := (3375.0 + 50*25 + 60.0 + 5*5) / 1e6
+	// Full estimated cost includes output tokens (m1's last-wins output: 500).
+	wantCost := (3375.0 + 500*25 + 60.0 + 5*5) / 1e6
 	if !approx(r.EstCostUSD, wantCost, 1e-9) {
 		t.Errorf("EstCostUSD = %v, want %v", r.EstCostUSD, wantCost)
 	}
