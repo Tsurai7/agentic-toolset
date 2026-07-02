@@ -37,7 +37,8 @@ to July 2026; WS-D professional-advice pass over both
   go test 9/9 ok, golangci 0 issues, evals lint+selftest OK, prefix 8,754 B ≤ 9,054
   (unchanged); live `agentic status` transitioned PARTIAL→injected as documented;
   `~/.claude/agents` → `core/agents` (4 roles), generated.md still 8,866 B.
-- [x] Branch + commits + PR to master — see PR link in the session report
+- [x] Branch + commits + PR to master — [PR #12](https://github.com/Tsurai7/agentic-cfg/pull/12)
+  (4 commits: review-fixes wave / orchestration wedge / docs refresh / CI-environment fixes)
 
 ## Global acceptance (checked after wave A and again at the end)
 
