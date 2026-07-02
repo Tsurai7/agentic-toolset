@@ -288,7 +288,11 @@ def rejudge(result_path: Path) -> int:
     once, judge tokens can be spent again as many times as needed.
     """
     evals_dir = Path(__file__).resolve().parent
-    rec = json.loads(result_path.read_text("utf-8").strip().splitlines()[-1])
+    try:
+        rec = json.loads(result_path.read_text("utf-8").strip().splitlines()[-1])
+    except (json.JSONDecodeError, IndexError):
+        print(f"unusable result file (empty or invalid JSON): {result_path}", file=sys.stderr)
+        return 2
     track = rec.get("track")
 
     if track == "conformance":

@@ -53,8 +53,10 @@ Detailed rule docs live in core/principles/ and core/instructions/user-rules/
 earns its keep is evals/PLAYBOOK.md.
 
 When you add or change a skill/rule under `core/`, follow the eval loop: ship a
-conformance case (it fires) and a value case (firing helps). `evals/lint.py` fails
-CI if a skill has no eval.
+conformance case (it fires). Add a value case too where the benefit is
+measurable (an ablation shows firing helps) — skip it for low-signal skills
+where a pairwise comparison wouldn't discriminate (e.g. `git-safety`,
+`create-pr`). `evals/lint.py` fails CI if a skill has no eval case at all.
 
 ## Skills (invoke or auto-discover)
 

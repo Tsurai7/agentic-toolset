@@ -17,6 +17,20 @@ METRIC_DIR = EVALS_DIR / "metric" / "cases"
 PASS_CONDITIONS = {"treatment_preferred", "treatment_not_worse"}
 METRIC_OPS = {">=", "<=", ">", "<"}
 
+# Keys load()/load_reporting() stamp onto every case dict — not part of the
+# on-disk schema, but always present by the time validate() sees a case.
+_LOADER_KEYS = {"_track", "_path"}
+
+# Every top-level key a case file is allowed to use, per track. Audited from
+# evals/{conformance,value,metric}/cases/*.json — keep in sync when a new
+# field is introduced, so a typo (e.g. "expects") is rejected instead of
+# silently ignored.
+ALLOWED_KEYS = {
+    "conformance": {"id", "prompt", "rule", "expect", "expect_not"} | _LOADER_KEYS,
+    "value": {"id", "prompt", "hypothesis", "skill", "ablate", "rubric", "pass_condition", "n"} | _LOADER_KEYS,
+    "metric": {"id", "rule", "metric", "op", "threshold", "min_tokens", "window_sessions"} | _LOADER_KEYS,
+}
+
 
 def _track_dir(track: str) -> Path:
     return {"conformance": CONFORMANCE_DIR, "value": VALUE_DIR, "metric": METRIC_DIR}[track]
@@ -87,6 +101,11 @@ def validate(case: dict, track: str) -> list[str]:
             errors.append(f"key '{key}' must be {typ.__name__}")
 
     require("id", str)
+
+    if track in ALLOWED_KEYS:
+        unknown = set(case) - ALLOWED_KEYS[track]
+        for key in sorted(unknown):
+            errors.append(f"unknown key '{key}'")
 
     if track == "conformance":
         require("prompt", str)
