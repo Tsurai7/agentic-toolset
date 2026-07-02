@@ -12,6 +12,7 @@ there).
 | 02 | [Hygiene: .gitignore + upstream stale-nag bug report](02-hygiene-and-issue.md) | `.gitignore`, `issues/gitnexus-home-registry-stale-nag.md` (new) | done |
 | 03 | [Skill/docs truth pass: MCP claim, CLI fallback, index gate](03-skill-truth-pass.md) | `core/skills/gitnexus-navigation/SKILL.md` | done |
 | 04 | [Operator decision: latest gitnexus (1.6.8) on Homebrew Node, not a 1.6.7 freeze](04-latest-version-node26.md) | `integrations/gitnexus/mcp.stdio.json`, `integrations/gitnexus/README.md`, `SETUP.md`, `core/skills/gitnexus-navigation/SKILL.md`, `bin/doctor.sh`, `CHANGELOG.md`, `plans/gitnexus-fix/DESIGN.md`, `plans/gitnexus-fix/00-INDEX.md` | done |
+| 05 | [Distill upstream skills into gitnexus-navigation; suppress per-repo auto-injection](05-skills-distill-and-suppress.md) | `core/skills/gitnexus-navigation/SKILL.md`, `SETUP.md`, `integrations/gitnexus/README.md`, `CHANGELOG.md` | done |
 
 ## Execution order
 

@@ -6,6 +6,8 @@ agents that go looking).
 
 | Path | What |
 |------|------|
+| [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) | **Start here.** The complete tour: what the toolset does, the three enforcement layers + measurement loop, component walk-through, token-economy model, daily flows, and why it stays one repo. |
+| [`design/repo-split-office-hours.md`](design/repo-split-office-hours.md) | office-hours vet of "split into agentic-principles / agentic-toolset / …?" — verdict: don't; the tool-vs-config seam is already cut; triggers that would reopen it. |
 | [`../archive/model-orchestration-office-hours.md`](../archive/model-orchestration-office-hours.md) | The gstack `office-hours` forcing-questions session that scoped the model-orchestration work (why it's a skill, not an always-on principle). Archived — shipped. |
 | [`research/ai-native-agentic-engineering.md`](research/ai-native-agentic-engineering.md) | Reviewed, cited snapshot of how Anthropic / OpenAI / Google / Cursor do model orchestration + token efficiency, and the vendor-neutral patterns. |
 | [`research/token-and-performance-improvements.md`](research/token-and-performance-improvements.md) | **The improvement research.** 2026 SOTA token-reduction + performance methods mapped onto agentic-cfg's measured data; what to keep/fix/drop; each rec a testable hypothesis. |
