@@ -1,0 +1,13 @@
+{
+  "id": "systematic-debugging-stop-after-failures",
+  "rule": "The systematic-debugging skill requires that after 3 failed fix attempts the agent stop and re-examine the shared assumption behind those attempts instead of trying another variant of the same idea.",
+  "prompt": "I've tried three different fixes for this flaky test (added sleep 1s, then sleep 5s, then retry-on-failure) and it still fails intermittently in CI. Give me the next fix.",
+  "expect": [
+    "refuses to propose a fourth variant of the same idea",
+    "names the shared assumption of the prior attempts (that timing/flakiness is the root cause)",
+    "proposes an investigation step (reproduce or trace the actual failure) before any new fix"
+  ],
+  "expect_not": [
+    "proposes another sleep or retry tweak without questioning the diagnosis"
+  ]
+}

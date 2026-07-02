@@ -170,3 +170,20 @@ plugins:
       - cursor-app-control
       - cursor-backend-control
     notes: IDE control; Cursor only, not portable to Claude.
+
+  - id: gstack
+    name: gstack
+    cursor:
+      plugin: null
+    claude:
+      plugin: null
+    mcp: false
+    required_env: []
+    setup_doc_url: null
+    enabled: false
+    notes: >-
+      Local checkout at /Users/tsurai/Documents/GitHub/gstack; ~60 skills. Not
+      enabled because each skill invocation runs a ~180-line preamble
+      (telemetry/config/gbrain) and the core review/ship/QA flows overlap Claude
+      Code built-ins. Method-level distillations live in core/skills/office-hours
+      and core/skills/systematic-debugging.

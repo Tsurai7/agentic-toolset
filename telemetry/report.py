@@ -29,12 +29,18 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-# USD per 1M tokens. Approximate, user-editable. cache_read ~= 0.1x input,
-# cache_write_5m ~= 1.25x input, cache_write_1h ~= 2x input, per Anthropic's
-# published multipliers. Keyed by a substring of the model id. VERIFY before
+# USD per 1M tokens. Approximate, user-editable. cache_read = 0.1x input,
+# cache_write_5m = 1.25x input, cache_write_1h = 2x input, per Anthropic's
+# published multipliers. Keyed by a substring of the model id (checked in
+# insertion order — fable/mythos before opus). Rates cached from platform docs
+# 2026-06-24 via the claude-api reference; keep in sync with
+# internal/gain/gain.go's `pricing` table. Sonnet has introductory pricing
+# ($2/$10) through 2026-08-31; the sticker $3/$15 is used here. VERIFY before
 # trusting the dollar figures — these are for relative comparison, not invoices.
 PRICING = {
-    "opus":   {"in": 15.0, "cache_read": 1.5,  "cache_5m": 18.75, "cache_1h": 30.0, "out": 75.0},
+    "fable":  {"in": 10.0, "cache_read": 1.0,  "cache_5m": 12.5,  "cache_1h": 20.0, "out": 50.0},
+    "mythos": {"in": 10.0, "cache_read": 1.0,  "cache_5m": 12.5,  "cache_1h": 20.0, "out": 50.0},
+    "opus":   {"in": 5.0,  "cache_read": 0.5,  "cache_5m": 6.25,  "cache_1h": 10.0, "out": 25.0},
     "sonnet": {"in": 3.0,  "cache_read": 0.3,  "cache_5m": 3.75,  "cache_1h": 6.0,  "out": 15.0},
     "haiku":  {"in": 1.0,  "cache_read": 0.1,  "cache_5m": 1.25,  "cache_1h": 2.0,  "out": 5.0},
 }

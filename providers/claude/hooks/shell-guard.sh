@@ -68,11 +68,6 @@ esac
 CMD=$(extract command)
 [ -z "$CMD" ] && exit 0
 
-# Already wrapped — never double-wrap.
-case "$CMD" in
-  lean-ctx\ *|rtk\ *) exit 0 ;;
-esac
-
 # Complex commands cannot be safely re-quoted inside `lean-ctx -c '…'` or after an
 # `rtk` prefix without changing their meaning, so run them untouched (fail-open)
 # rather than mangle them. Covers heredocs, multi-line scripts, `cd` chains (whose
@@ -83,19 +78,36 @@ esac
 
 # --- 1. ast-grep guard -------------------------------------------------------
 # Deny only when grep/rg clearly targets code (a code-file extension appears as
-# a glob, an --include, or a path arg). Text/log greps fall through.
+# a glob, an --include, or a path arg). Text/log greps fall through. Evaluated
+# against a normalized copy of $CMD (leading rtk/lean-ctx wrapper prefixes
+# stripped) so an already-wrapped `rtk grep … foo.go` cannot bypass the deny by
+# skipping straight to the already-wrapped exit below.
+NORM="$CMD"
+while :; do
+  case "$NORM" in
+    rtk\ *) NORM=${NORM#rtk } ;;
+    lean-ctx\ *) NORM=${NORM#lean-ctx } ;;
+    *) break ;;
+  esac
+done
 CODE_EXT='go|cs|py|js|jsx|ts|tsx|java|kt|rb|rs|c|h|cc|cpp|hpp|php|swift|scala|sql|vue'
 # Test with quoted substrings removed, so a code extension that appears only inside
 # the search pattern (e.g. grep "foo.py" data.csv) is not mistaken for a code-file
 # target (BUG-03); only an unquoted .ext argument triggers the deny.
-UNQUOTED=$(printf '%s' "$CMD" | sed -e "s/'[^']*'//g" -e 's/"[^"]*"//g')
-if printf '%s' "$CMD" | grep -qE '(^|[|;`]|&&|\|\||\$\()[[:space:]]*(grep|egrep|fgrep|rg)([[:space:]]|$)' \
+UNQUOTED=$(printf '%s' "$NORM" | sed -e "s/'[^']*'//g" -e 's/"[^"]*"//g')
+if printf '%s' "$NORM" | grep -qE '(^|[|;`]|&&|\|\||\$\()[[:space:]]*(grep|egrep|fgrep|rg)([[:space:]]|$)' \
    && printf '%s' "$UNQUOTED" | grep -qE "\.($CODE_EXT)(\b|['\"]|$)"; then
   REASON="Use ast-grep for structural code search: sg -p '<pattern>' -l <lang>. Plain grep is only for non-code text/logs (see the ast-grep + tool-precedence rules)."
   JSON_REASON=$(printf '%s' "$REASON" | sed 's/\\/\\\\/g;s/"/\\"/g')
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}' "$JSON_REASON"
   exit 0
 fi
+
+# Already wrapped — never double-wrap. Runs after the deny above so a
+# pre-wrapped grep-on-code command cannot skip the guard.
+case "$CMD" in
+  lean-ctx\ *|rtk\ *) exit 0 ;;
+esac
 
 # --- 2. lean-ctx delegate ----------------------------------------------------
 # lean-ctx emits an "allow" envelope even when it does NOT rewrite, so honor its
@@ -119,6 +131,14 @@ command -v rtk >/dev/null 2>&1 || exit 0
 if [[ "$CMD" =~ ^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*= ]]; then
   exit 0
 fi
+# A bare `=`-leading token triggers zsh equals-expansion inside rtk's eval
+# (issues/rtk-wrap-breaks-equals-words.md); pass such a command through
+# untouched rather than mangle it. `=` inside quotes is an acceptable
+# false-positive here — correctness beats compression. The leading-space
+# trick covers both a first token and mid-command tokens.
+case " $CMD" in
+  *' ='*) exit 0 ;;
+esac
 REWRITE="rtk $CMD"
 JSON_CMD=$(printf '%s' "$REWRITE" | sed 's/\\/\\\\/g;s/"/\\"/g')
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"command":"%s"}}}' "$JSON_CMD"

@@ -150,6 +150,24 @@ if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"grep -r foo src/ma
 else
   err "shell-guard fallback: grep -r foo src/main.go was not denied"
 fi
+if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"rtk grep -r foo src/main.go"}}') \
+   && [[ "$out" == *'"permissionDecision":"deny"'* ]]; then
+  ok "rtk-wrapped grep targeting a code file is denied (order fix)"
+else
+  err "shell-guard fallback: rtk grep -r foo src/main.go was not denied"
+fi
+if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"rtk ls"}}') \
+   && [[ "$out" != *updatedInput* ]]; then
+  ok "rtk ls not rewritten (already-wrapped)"
+else
+  err "shell-guard fallback: rtk ls was rewritten"
+fi
+if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"echo ==="}}') \
+   && [[ "$out" != *updatedInput* ]]; then
+  ok "echo === not rewritten (equals-token pass-through)"
+else
+  err "shell-guard fallback: echo === was rewritten"
+fi
 rm -rf "$sg_stub"
 echo ""
 

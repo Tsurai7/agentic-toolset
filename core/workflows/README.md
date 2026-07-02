@@ -21,5 +21,6 @@ See [`core/skills/`](../skills/) — each `SKILL.md` description is its trigger.
 3. **PR / CI** → full gated PR (review/test/docs/lint + CI auto-fix) via `no-mistakes` (see [`integrations/no-mistakes/`](../../integrations/no-mistakes/)); plain PR with no gate via `create-pr`
 4. **Cross-file refactor** → `gitnexus-navigation` for impact, then `ast-grep` for pattern search/rewrite (not regex grep)
 5. **Multi-step or token-expensive task** → `model-orchestration`: plan/decide with a strong tier, delegate well-specified mechanical sub-tasks to a cheaper tier or subagents, verify, escalate only on failure. Skip the split for anything that fits one context. See [`archive/model-orchestration-office-hours.md`](../../archive/model-orchestration-office-hours.md) for the scope rationale.
+6. **Vetting a proposal before building it** → `office-hours`: run the forcing questions (premise, status quo, evidence of value, narrowest wedge, risk, cost of keeping) before writing an implementation plan for a new capability.
 
 See [`catalog/plugins.yaml`](../../catalog/plugins.yaml) for install links.
