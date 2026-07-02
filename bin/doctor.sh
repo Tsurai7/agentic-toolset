@@ -128,6 +128,15 @@ if [[ "$DEEP" -eq 1 ]]; then
   elif [[ -n "$pinned" ]]; then
     ok "gitnexus pinned: $pinned"
   fi
+  if [[ -f "${HOME}/.claude.json" ]] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if "gitnexus" in d.get("mcpServers", {}) else 1)' "${HOME}/.claude.json" 2>/dev/null; then
+    if start_out="$(python3 "${AGENTIC_ROOT}/bin/mcp-start-check.py" "${HOME}/.claude.json" gitnexus 30 2>&1)"; then
+      ok "gitnexus MCP server starts (${start_out})"
+    else
+      fail "gitnexus MCP server failed to start: ${start_out}; re-run bin/install.sh; see integrations/gitnexus/README.md (version pin)"
+    fi
+  else
+    warn "no gitnexus entry in ${HOME}/.claude.json — skipping MCP start check"
+  fi
   for f in "${HOME}/.cursor/mcp.json" "${HOME}/.claude.json"; do
     [[ -f "$f" ]] || continue
     if python3 -m json.tool "$f" >/dev/null 2>&1; then
