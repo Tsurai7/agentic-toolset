@@ -37,3 +37,10 @@ Mitigated: plans/gain-enforcement-fixes/02-rtk-equals-word-guard.md — the rtk 
 both `internal/hook/hook.go` and `providers/claude/hooks/shell-guard.sh` now passes
 through commands containing a bare `=`-leading token instead of wrapping them. The
 upstream rtk/zsh equals-expansion behavior itself is unchanged.
+
+Update (plans/audit-fixes-2026-07/01-shell-guard-correctness.md, A6): the assign and
+equals guards in `providers/claude/hooks/shell-guard.sh` now run *before* the lean-ctx
+delegate (matching the Go order), so the guard shields the lean-ctx delegate too, not
+just the rtk fallback — the earlier "rtk fallback only" framing above was incomplete;
+`lean-ctx -c '…'` is evaluated through zsh the same way rtk's eval is and hits the same
+equals-expansion bug.

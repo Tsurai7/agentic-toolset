@@ -39,3 +39,29 @@ Resolved: plans/gain-enforcement-fixes/01-shell-guard-order.md — the ast-grep 
 evaluated before the already-wrapped exit in both `internal/hook/hook.go` and
 `providers/claude/hooks/shell-guard.sh`, against a normalized command with leading
 `VAR=`/`rtk `/`lean-ctx ` prefixes stripped.
+
+## Known limitations (accepted, not fixed)
+
+`GrepTokenRe`/`codeExtRe` are a best-effort nudge that redirects the default reach
+toward `sg`, not a security boundary. A model that deliberately evades the deny (rather
+than retrying the same shape) can still do so via any of these carrier/quoted-target/flag
+shapes, on both the Go and shell paths:
+
+- **Carriers** that hide the command word from the anchored regex: `command grep`,
+  `\grep`, `/usr/bin/grep`, `env grep`, `xargs grep`, `(grep …)`.
+- **Flag-based targeting** that avoids a literal code extension in the visible argument:
+  `rg -t go`, `rg -g '*.go'`, `grep -r --include="*.go" TODO .` with the extension only
+  inside the `--include` value's quotes.
+- **Quoted or escaped targets**: `grep TODO "main.go"` (quote-stripping removes the
+  target along with the search pattern — see BUG-03 below), `grep TODO main.\go`
+  (backslash-escaped dot breaks the extension match).
+
+**Fix considered and rejected (default decision 1):** broadening `codeExtRe`/quote-handling
+to close the quoted-target gap re-introduces the BUG-03 tension — the guard must still
+allow a code extension that appears only inside the *search pattern* (e.g.
+`grep "foo.py" data.csv`), and a naive fix cannot distinguish that from a quoted *target*.
+Document these as accepted gaps instead of expanding the regex.
+
+*Optional, only if a reviewer opts in later:* close the zero-false-positive carrier subset
+(`command `/`env ` prefix, leading `\`, absolute `/usr/bin/…` path) — deferred by default,
+not implemented in this pass.

@@ -3,10 +3,10 @@
 //
 // It reads the hook JSON from stdin with a real JSON parser (eliminating the
 // grep/sed fragility of the shell version) and writes the hook decision envelope
-// to stdout. Behavior mirrors the fixed shell hook: an ast-grep deny for
-// code-targeted greps, a lean-ctx delegate, then an rtk fallback — with fail-open
-// on complex commands and a leading-assignment guard so a naive wrapper never
-// mangles a command.
+// to stdout. Behavior mirrors the fixed shell hook: fail-open on complex
+// commands first, then an ast-grep deny for code-targeted greps, a lean-ctx
+// delegate, then an rtk fallback — with a leading-assignment guard so a naive
+// wrapper never mangles a command.
 package hook
 
 import (
@@ -20,8 +20,17 @@ import (
 	"github.com/bytedance/sonic"
 )
 
-// Main dispatches `agentic hook <name>`.
-func Main(args []string) int {
+// Main dispatches `agentic hook <name>`. A panic anywhere in the hook path
+// fails open (returns 0) rather than propagating — an unrecovered panic would
+// otherwise exit the process non-zero, which Claude Code treats as a blocking
+// hook error and denies the tool call, inverting the hook's fail-open contract
+// for its worst crash mode.
+func Main(args []string) (code int) {
+	defer func() {
+		if recover() != nil {
+			code = 0
+		}
+	}()
 	name := ""
 	if len(args) > 0 {
 		name = args[0]
@@ -42,7 +51,7 @@ type hookInput struct {
 }
 
 var (
-	codeExtRe       = regexp.MustCompile(`\.(go|cs|py|js|jsx|ts|tsx|java|kt|rb|rs|c|h|cc|cpp|hpp|php|swift|scala|sql|vue)(\b|['"]|$)`)
+	codeExtRe       = regexp.MustCompile(`\.(go|cs|py|js|jsx|ts|tsx|java|kt|rb|rs|c|h|cc|cpp|hpp|php|swift|scala|sql|vue)([\s'"|;&)]|$)`)
 	leadingAssignRe = regexp.MustCompile(`^\s*[A-Za-z_][A-Za-z0-9_]*=`)
 	assignTokenRe   = regexp.MustCompile(`^\s*[A-Za-z_][A-Za-z0-9_]*=\S*\s+`)
 	quotedRe        = regexp.MustCompile(`'[^']*'|"[^"]*"`)
@@ -51,7 +60,10 @@ var (
 
 // GrepTokenRe matches a bare grep/egrep/fgrep/rg invocation as the command word
 // (start of string or after a shell operator) — exported so internal/gain can
-// tally grep/rg adoption without duplicating the pattern.
+// tally grep/rg adoption without duplicating the pattern. This is a best-effort
+// nudge, not a security boundary: carrier/quoted-target/flag shapes evade it by
+// design (see "Known limitations" in
+// issues/shell-guard-astgrep-order-bypass.md).
 var GrepTokenRe = regexp.MustCompile("(^|[|;`]|&&|\\|\\||\\$\\()\\s*(grep|egrep|fgrep|rg)(\\s|$)")
 
 var grepTokenRe = GrepTokenRe
@@ -95,12 +107,24 @@ const (
 )
 
 // Classify returns the decision for a command, matching shellGuard's order
-// exactly (deny -> already-wrapped -> fail-open-complex -> fail-open-assign ->
+// exactly (complex-fail-open -> deny -> already-wrapped -> fail-open-assign ->
 // fail-open-equals -> wrap). It does no I/O, so it cannot distinguish a
 // lean-ctx wrap from an rtk wrap — both collapse to DecisionWrap.
 func Classify(cmd string) Decision {
 	if strings.TrimSpace(cmd) == "" {
 		return DecisionEmpty
+	}
+
+	// Complex commands a wrapper would mangle -> fail open (run untouched),
+	// evaluated before the deny below: a heredoc/multiline/cd-chain/$( )
+	// command cannot be safely re-quoted or reliably attributed to a single
+	// grep target (e.g. `grep … <<EOF\nsee main.go\nEOF` targets the heredoc's
+	// stdin, not `main.go`), so it must fail open even if it superficially
+	// looks like a grep-on-code command.
+	if strings.Contains(cmd, "<<") || strings.Contains(cmd, "\n") ||
+		strings.Contains(cmd, "$(") || strings.Contains(cmd, "`") ||
+		strings.HasPrefix(cmd, "cd ") || strings.Contains(cmd, "&& cd ") || strings.Contains(cmd, "; cd ") {
+		return DecisionFailOpenComplex
 	}
 
 	// 1. ast-grep guard: deny only when grep/rg targets a code FILE. Evaluated
@@ -120,14 +144,7 @@ func Classify(cmd string) Decision {
 		return DecisionAlreadyWrapped
 	}
 
-	// 2. lean-ctx delegate / rtk fallback candidates below this point. Complex
-	// commands a wrapper would mangle -> fail open (run untouched).
-	if strings.Contains(cmd, "<<") || strings.Contains(cmd, "\n") ||
-		strings.Contains(cmd, "$(") || strings.Contains(cmd, "`") ||
-		strings.HasPrefix(cmd, "cd ") || strings.Contains(cmd, "&& cd ") || strings.Contains(cmd, "; cd ") {
-		return DecisionFailOpenComplex
-	}
-
+	// 2. lean-ctx delegate / rtk fallback candidates below this point.
 	// A leading assignment would be lost by a naive prefix, so pass it through
 	// untouched instead.
 	if leadingAssignRe.MatchString(cmd) {
@@ -143,6 +160,12 @@ func Classify(cmd string) Decision {
 	return DecisionWrap
 }
 
+// shellGuard's int return is retained deliberately so Main's panic-recovery
+// wrapper (A7) can keep returning the hook's exit code by value instead of
+// hardcoding it, even though every current path returns 0 (fail-open
+// contract).
+//
+//nolint:unparam // see comment above; int return kept for the A7 fail-open path
 func shellGuard(stdin io.Reader, stdout io.Writer) int {
 	raw, err := io.ReadAll(stdin)
 	if err != nil {

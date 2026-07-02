@@ -5,21 +5,25 @@
 #   1. ast-grep guard — deny a `grep`/`rg`/`egrep`/`fgrep` invocation that
 #      explicitly targets source files (by code-file extension), pointing the
 #      agent at `sg` instead. Plain-text/log greps pass through untouched.
-#   2. lean-ctx delegate — hand the command to `lean-ctx hook rewrite`. If
+#   2. rtk/lean-ctx-mangle guards — a leading `VAR=` assignment or a bare
+#      `=`-leading token would be mangled by either wrapper below, so such a
+#      command passes through untouched before either wrapper sees it.
+#   3. lean-ctx delegate — hand the command to `lean-ctx hook rewrite`. If
 #      lean-ctx decides to wrap it (e.g. `git …` -> `lean-ctx -c "git …"`),
 #      honor that verbatim.
-#   3. rtk fallback — for simple commands lean-ctx leaves bare (e.g. `python3 …`),
-#      prefix `rtk` for token compression. A command a bare prefix would mangle
-#      (a leading `VAR=` assignment) passes through untouched instead.
+#   4. rtk fallback — for simple commands lean-ctx leaves bare (e.g. `python3 …`),
+#      prefix `rtk` for token compression.
 #
-# At most one of these fires per command, so there is no double-wrapping.
+# Complex commands (heredoc/multiline/cd-chain/command-substitution) fail open
+# before any of the above. At most one of the above fires per command, so
+# there is no double-wrapping.
 set -euo pipefail
 
 # Prefer the Go binary when it has been built — it does real JSON parsing and is
 # faster. Fall back to the shell implementation below otherwise. exec preserves
 # stdin (the unread hook JSON) and stdout. SHELL_GUARD_NO_GO=1 forces the shell
 # fallback regardless (used by bin/ci-check.sh's fallback self-test).
-__SG_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd)"
+__SG_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd)" || true
 if [ -z "${SHELL_GUARD_NO_GO:-}" ] && [ -n "${__SG_ROOT:-}" ] && [ -x "${__SG_ROOT}/bin/agentic" ]; then
   exec "${__SG_ROOT}/bin/agentic" hook shell-guard
 fi
@@ -79,16 +83,30 @@ esac
 # --- 1. ast-grep guard -------------------------------------------------------
 # Deny only when grep/rg clearly targets code (a code-file extension appears as
 # a glob, an --include, or a path arg). Text/log greps fall through. Evaluated
-# against a normalized copy of $CMD (leading rtk/lean-ctx wrapper prefixes
-# stripped) so an already-wrapped `rtk grep … foo.go` cannot bypass the deny by
-# skipping straight to the already-wrapped exit below.
-NORM="$CMD"
+# against a normalized copy of $CMD (leading whitespace, a leading VAR=
+# assignment token, and rtk/lean-ctx wrapper prefixes stripped to fixpoint) so
+# an already-wrapped `rtk grep … foo.go` or `FOO=1 rtk grep … foo.go` cannot
+# bypass the deny by skipping straight to the already-wrapped exit below.
+# STRIPPED (whitespace/assignment only, wrapper prefix left intact) feeds the
+# already-wrapped check right after, mirroring Go's stripLeadingAssignments vs
+# stripWrappers split.
+STRIPPED="$CMD"
 while :; do
+  PREV="$STRIPPED"
+  [[ "$STRIPPED" =~ ^[[:space:]]+(.*)$ ]] && STRIPPED="${BASH_REMATCH[1]}"
+  if [[ "$STRIPPED" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+(.*)$ ]]; then
+    STRIPPED="${BASH_REMATCH[1]}"
+  fi
+  [ "$STRIPPED" = "$PREV" ] && break
+done
+NORM="$STRIPPED"
+while :; do
+  PREV="$NORM"
   case "$NORM" in
     rtk\ *) NORM=${NORM#rtk } ;;
     lean-ctx\ *) NORM=${NORM#lean-ctx } ;;
-    *) break ;;
   esac
+  [ "$NORM" = "$PREV" ] && break
 done
 CODE_EXT='go|cs|py|js|jsx|ts|tsx|java|kt|rb|rs|c|h|cc|cpp|hpp|php|swift|scala|sql|vue'
 # Test with quoted substrings removed, so a code extension that appears only inside
@@ -96,7 +114,7 @@ CODE_EXT='go|cs|py|js|jsx|ts|tsx|java|kt|rb|rs|c|h|cc|cpp|hpp|php|swift|scala|sq
 # target (BUG-03); only an unquoted .ext argument triggers the deny.
 UNQUOTED=$(printf '%s' "$NORM" | sed -e "s/'[^']*'//g" -e 's/"[^"]*"//g')
 if printf '%s' "$NORM" | grep -qE '(^|[|;`]|&&|\|\||\$\()[[:space:]]*(grep|egrep|fgrep|rg)([[:space:]]|$)' \
-   && printf '%s' "$UNQUOTED" | grep -qE "\.($CODE_EXT)(\b|['\"]|$)"; then
+   && printf '%s' "$UNQUOTED" | grep -qE "\.($CODE_EXT)([[:space:]'\"|;&)]|$)"; then
   REASON="Use ast-grep for structural code search: sg -p '<pattern>' -l <lang>. Plain grep is only for non-code text/logs (see the ast-grep + tool-precedence rules)."
   JSON_REASON=$(printf '%s' "$REASON" | sed 's/\\/\\\\/g;s/"/\\"/g')
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}' "$JSON_REASON"
@@ -104,12 +122,35 @@ if printf '%s' "$NORM" | grep -qE '(^|[|;`]|&&|\|\||\$\()[[:space:]]*(grep|egrep
 fi
 
 # Already wrapped — never double-wrap. Runs after the deny above so a
-# pre-wrapped grep-on-code command cannot skip the guard.
-case "$CMD" in
+# pre-wrapped grep-on-code command cannot skip the guard. Tests STRIPPED
+# (leading whitespace/assignment stripped, wrapper prefix left intact), not
+# raw $CMD, so `  rtk ls` (leading whitespace) is recognized as already-wrapped
+# instead of being double-wrapped.
+case "$STRIPPED" in
   lean-ctx\ *|rtk\ *) exit 0 ;;
 esac
 
-# --- 2. lean-ctx delegate ----------------------------------------------------
+# --- 2. rtk/lean-ctx-mangle guards -------------------------------------------
+# A naive `rtk <cmd>` prefix (or handing the command to lean-ctx) only wraps
+# the first segment, so a leading variable assignment (`FOO=x …`) would be
+# scoped to the wrapper's subshell and lost from the rest of the command — a
+# wrong-target hazard (see issues/shell-hook-breaks-shell-variables.md). Pass
+# such a command through untouched rather than mangle it, before either
+# wrapper below ever sees it.
+if [[ "$CMD" =~ ^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*= ]]; then
+  exit 0
+fi
+# A bare `=`-leading token triggers zsh equals-expansion inside rtk's eval
+# (issues/rtk-wrap-breaks-equals-words.md) — and, since this guard now also
+# shields the lean-ctx delegate, inside `lean-ctx -c '…'` for the same reason.
+# Pass such a command through untouched rather than mangle it. `=` inside
+# quotes is an acceptable false-positive here — correctness beats compression.
+# The leading-space trick covers both a first token and mid-command tokens.
+case " $CMD" in
+  *' ='*) exit 0 ;;
+esac
+
+# --- 3. lean-ctx delegate ----------------------------------------------------
 # lean-ctx emits an "allow" envelope even when it does NOT rewrite, so honor its
 # output only when it actually rewrote the command (an updatedInput is present).
 if command -v lean-ctx >/dev/null 2>&1; then
@@ -120,25 +161,8 @@ if command -v lean-ctx >/dev/null 2>&1; then
   fi
 fi
 
-# --- 3. rtk fallback ---------------------------------------------------------
-# A naive `rtk <cmd>` prefix only wraps the first segment, so a leading variable
-# assignment (`FOO=x …`) would be scoped to rtk's subshell and lost from the rest
-# of the command — a wrong-target hazard (see issues/shell-hook-breaks-shell-
-# variables.md). lean-ctx safely wraps whole commands above; here, pass such a
-# command through untouched rather than mangle it (this also avoids re-wrapping
-# an already-wrapped `FOO=1 rtk …`).
+# --- 4. rtk fallback ---------------------------------------------------------
 command -v rtk >/dev/null 2>&1 || exit 0
-if [[ "$CMD" =~ ^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*= ]]; then
-  exit 0
-fi
-# A bare `=`-leading token triggers zsh equals-expansion inside rtk's eval
-# (issues/rtk-wrap-breaks-equals-words.md); pass such a command through
-# untouched rather than mangle it. `=` inside quotes is an acceptable
-# false-positive here — correctness beats compression. The leading-space
-# trick covers both a first token and mid-command tokens.
-case " $CMD" in
-  *' ='*) exit 0 ;;
-esac
 REWRITE="rtk $CMD"
 JSON_CMD=$(printf '%s' "$REWRITE" | sed 's/\\/\\\\/g;s/"/\\"/g')
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"command":"%s"}}}' "$JSON_CMD"
