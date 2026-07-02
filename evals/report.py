@@ -75,6 +75,26 @@ def _existing_rows(path: Path) -> dict[tuple[str, str], dict]:
     return rows
 
 
+def _existing_notes(path: Path) -> str:
+    """Return hand-written prose that follows the machine-owned table so it
+    survives regeneration verbatim. The header and table are rebuilt by
+    render(); everything after the last table row (a line starting with '|') is
+    author-owned provenance and is carried forward untouched."""
+    if not path.exists():
+        return ""
+    lines = path.read_text("utf-8").splitlines()
+    last_row = max((i for i, line in enumerate(lines) if line.startswith("|")),
+                   default=-1)
+    if last_row == -1:
+        return ""
+    notes = lines[last_row + 1:]
+    while notes and not notes[0].strip():
+        notes.pop(0)
+    while notes and not notes[-1].strip():
+        notes.pop()
+    return "\n".join(notes)
+
+
 def _eff_delta(rec: dict) -> str:
     """Mean treatment−control tool-call delta across runs (negative ⇒ leaner)."""
     runs = rec.get("runs", [])
@@ -113,7 +133,7 @@ def merged_rows(
     return out
 
 
-def render(rows: dict[tuple[str, str], dict[str, str]]) -> str:
+def render(rows: dict[tuple[str, str], dict[str, str]], notes: str = "") -> str:
     lines = [
         "# Benchmark results",
         "",
@@ -128,6 +148,8 @@ def render(rows: dict[tuple[str, str], dict[str, str]]) -> str:
                   "AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value --model <model>",
                   "python3 evals/report.py",
                   "```", ""]
+        if notes:
+            lines += [notes, ""]
         return "\n".join(lines)
 
     lines += [
@@ -140,6 +162,8 @@ def render(rows: dict[tuple[str, str], dict[str, str]]) -> str:
             f"{row['flip']} | {row['delta']} | {row['confidence']} |"
         )
     lines.append("")
+    if notes:
+        lines += [notes, ""]
     return "\n".join(lines)
 
 
@@ -171,7 +195,7 @@ def main() -> int:
         return 1
 
     rows = merged_rows(fresh, existing)
-    content = render(rows)
+    content = render(rows, _existing_notes(OUT))
     OUT.write_text(content, "utf-8")
     print(f"wrote {OUT.relative_to(EVALS_DIR.parent)}")
     return 0
