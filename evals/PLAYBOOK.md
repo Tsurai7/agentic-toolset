@@ -104,7 +104,8 @@ behavior in `expect_not`.
   tool is meant to improve quality/correctness).
 - `treatment_not_worse` — treatment must not lose on quality; pair it with the
   efficiency metrics (tool-call delta) when the tool's payoff is economy, not
-  quality (e.g. `terminal-rtk`).
+  quality (e.g. the since-retired `rtk-economical-shell-output` case, which
+  measured shell-output economy).
 
 ## Case review checklist
 

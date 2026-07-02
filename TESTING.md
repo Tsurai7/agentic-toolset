@@ -238,7 +238,7 @@ transcripts are persisted under `results/<model>/transcripts/`, `--rejudge` re-j
 from saved transcripts without re-running agents, and the judge is fail-closed
 (malformed output → FAIL, not pass). See [`plans/review-fixes/07-evals-harness-hardening.md`](plans/review-fixes/07-evals-harness-hardening.md).
 
-### The 15 conformance cases
+### The 17 conformance cases
 
 | Case id | Intent |
 |---------|--------|
@@ -251,8 +251,10 @@ from saved transcripts without re-running agents, and the judge is fail-closed
 | `cache-trigger-keyword` | Positive trigger: cache API keywords (`cache_control`, `prompt_cache_key`) must surface prompt-caching-playbook. |
 | `code-search-uses-ast-grep` | Source-code search uses ast-grep (or lean-ctx `ctx_search`), not regex grep as the primary strategy. |
 | `git-safety-no-unrequested-commit` | A "take a look" request must review and offer to commit, but must NOT commit unbidden. |
+| `model-orchestration-delegate-fanout` | A task that fans out into independent, well-specified mechanical sub-tasks is planned on a strong tier and its bulk execution delegated to a cheaper tier / subagents, NOT run inline on the most expensive model. |
+| `model-orchestration-no-over-orchestration` | Over-orchestration guard: a single trivial step that fits in one context is done with one model; must NOT spin up multi-model orchestration or subagents. |
+| `model-orchestration-shipped-roles` | When this config's agent roles are installed, delegation routes through the `implementer`/`doc-writer`/`verifier`/`researcher` roles instead of hand-authoring boilerplate prompts or running mechanical work on the strong tier. |
 | `pr-uses-gh` | PRs are opened with the `gh` CLI after inspecting branch state, not via the GitHub web UI. |
-| `shell-rtk-prefix` | Shell goes through lean-ctx `ctx_shell` or a native terminal prefixed with `rtk`; must NOT double-wrap or run a bare unprefixed command. |
 | `structural-impact-gitnexus` | Structural impact analysis prefers GitNexus graph tools over grepping the method name. |
 | `triage-light-tool-for-lookup` | Tool-precedence triage gate: a trivial single-fact lookup uses one light tool and stops; must NOT open with ctx_overview / semantic search / GitNexus or chain 3+ orientation calls. |
 | `triage-escalates-on-structural` | The triage gate's guard: a who-calls / impact task must still escalate to the heavy path (GitNexus / ast-grep), NOT be answered by a single grep or treated as trivial. |
@@ -345,10 +347,12 @@ self-preference are not, so repeated UNRELIABLE verdicts are the documented cue 
 grading.
 
 Two value cases exist: `ast-grep-structural-precision.json` (skill `ast-grep`,
-`pass_condition: treatment_preferred`) and the since-retired `rtk-economical-shell-output.json`
-case (the terminal-rtk skill was folded into AGENTS.md Global default 2; the case historically 
-measured economy via the `rtk` hook). Both case files carry `"n": 3`, but the repeat count is 
-actually taken from the `--n` CLI flag (default 3 in `run.py`), not from the per-case field.
+`pass_condition: treatment_preferred`) and `model-orchestration-tiered-delegation.json`
+(skill `model-orchestration`, `pass_condition: treatment_preferred`). A third case,
+`rtk-economical-shell-output.json`, was retired when the terminal-rtk skill was folded into
+AGENTS.md Global default 2 (it historically measured economy via the `rtk` hook). Both live
+case files carry `"n": 3`; a case's own `"n"` overrides the `--n` CLI default (itself 3 in
+`run.py`) when present, so each is A/B-tested three times.
 
 How to run:
 

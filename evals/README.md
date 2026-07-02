@@ -69,7 +69,7 @@ python3 evals/run.py --track all
 AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance --model claude-opus-4-8
 
 # Value A/B for one tool, under a chosen model (records to results/<model>/):
-AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value --filter rtk --model claude-opus-4-8
+AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value --filter ast-grep --model claude-opus-4-8
 
 # Refresh the committed summary table:
 python3 evals/report.py
