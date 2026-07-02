@@ -26,7 +26,7 @@ tokens and is run by hand.
 | Layer | What it answers | Primary command | What it guards | Token cost |
 |-------|-----------------|-----------------|----------------|------------|
 | 1. Correctness | Does the install/merge/hook machinery behave correctly? | `make check` (or `go test ./...`, `bash bin/ci-check.sh`) | Go CLI + Python parity, idempotent merges, shell-guard decisions, end-to-end install | zero-deterministic |
-| 2. Behavioral conformance | Does a rule/skill actually trigger and change behavior (and stay quiet when it should)? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance` | 15 single-transcript PASS/FAIL cases judged by an LLM | llm-driven |
+| 2. Behavioral conformance | Does a rule/skill actually trigger and change behavior (and stay quiet when it should)? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance` | Single-transcript PASS/FAIL cases (run: `ls evals/conformance/cases/`) judged by an LLM | llm-driven |
 | 3. Efficiency / КПД | Is the configuration measurably better or cheaper than without it? | `AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value` and `--track metric` | A/B treatment-vs-control, cache-hit-rate threshold, overhead experiment | llm-driven + real-session-telemetry |
 | 4. Real-session telemetry | What is the production token economy on real day-to-day sessions? | `python3 telemetry/report.py`, `python3 telemetry/gate.py` | Token-weighted cache-hit-rate KPI over real `~/.claude` transcripts | real-session-telemetry (zero-LLM) |
 
@@ -39,10 +39,10 @@ Token-cost legend:
 ```mermaid
 graph TD
     subgraph "zero-token, the local gate"
-        L1["Layer 1 — Correctness<br/>go test + bin/ci-check.sh<br/>26 Go tests, 6 packages<br/>+ evals selftest/lint static gates"]
+        L1["Layer 1 — Correctness<br/>go test + bin/ci-check.sh<br/>Run: go test ./...; 9 packages<br/>+ evals selftest/lint static gates"]
     end
     subgraph "llm-driven, manual, dry by default"
-        L2["Layer 2 — Conformance<br/>15 cases, single transcript, PASS/FAIL judge"]
+        L2["Layer 2 — Conformance<br/>Run: ls evals/conformance/cases; single-transcript cases<br/>PASS/FAIL judge"]
         L3["Layer 3 — Efficiency / КПД<br/>value A/B + metric gate + overhead experiment"]
     end
     subgraph "zero-LLM, local-only"
@@ -109,12 +109,11 @@ Diagnose an existing install (read-only):
 bash bin/doctor.sh
 ```
 
-Expected signals when these pass: `go test -count=1 ./...` reports `ok` for
-`internal/claudemd`, `internal/hook`, `internal/installtest`, `internal/jsonorder`,
-`internal/mcpmerge`, `internal/settings` (and `cmd/agentic` has no test files);
-`evals/selftest.py` prints `selftest OK — 8 checks.`; `evals/lint.py` prints
-`lint OK — 18 cases, 8 skills covered.`; `bin/ci-check.sh` ends with
-`All static checks passed.`.
+Expected signals when these pass: `go test -count=1 ./...` reports `ok` for each
+package (run the command to see current count);
+`evals/selftest.py` prints `selftest OK — N checks.`;
+`evals/lint.py` prints `lint OK — N cases, M skills covered.`;
+`bin/ci-check.sh` ends with `All static checks passed.`.
 
 Note that `bin/ci-check.sh` fails open on three tools when they are absent: it WARNs
 (does not fail) if `shellcheck` is missing, if PyYAML is missing (YAML validation is then
@@ -132,7 +131,8 @@ packages, all passing.
 The Go code is the incremental port of the repo's shell + Python install/hook glue
 (`plans/01-go-rewrite.md`). Because both paths coexist during the transition, several
 tests pin the Go output to the Python reference (parity tests). `cmd/agentic/main.go`
-dispatches the subcommands `hook`, `merge-settings`, `merge-mcp`, and `merge-claude-md`.
+dispatches the subcommands `hook`, `merge-settings`, `merge-mcp`, `merge-claude-md`,
+`inject`, `eject`, `status`, `link`, `gain`, and `cache`.
 
 ### What each package guards
 
@@ -190,12 +190,9 @@ executable `bin/agentic` is present (the `run_tool` / `AGENTIC_BIN` `-x` check a
 `bin/ci-check.sh` do build the binary, but that build happens independently of the
 go-test invocation.
 
-Continuous integration status: a GitHub Actions workflow is prepared on disk at
-`.github/workflows/ci.yml` but is not committed on `master` (the `gh` token in use lacks
-the `workflow` scope, so it cannot be pushed yet). GitHub Actions CI is therefore not
-active on the remote — the real, currently-enforced gate is the local `make check` /
-`bin/ci-check.sh`. `bin/ci-check.sh` is written to be the shared gate body, so once the
-workflow is pushed it will run the same checks; until then, run the gate locally.
+Continuous integration: a GitHub Actions workflow (`.github/workflows/ci.yml`) is live
+on master, running `bin/ci-check.sh` and `golangci-lint` on every push and pull request.
+The workflow body and `bin/ci-check.sh` are synchronized, so both run identical checks.
 
 ### Environment-dependent skips
 
@@ -235,6 +232,11 @@ than passing it.
 The transcript is clipped to head 12000 + tail 8000 characters before judging, so an
 early tool-call proof (a skill firing) and the final answer both survive while the middle
 is elided.
+
+**Harness updates (2026-07-01):** The metric track is now included in `--track all`,
+transcripts are persisted under `results/<model>/transcripts/`, `--rejudge` re-judges
+from saved transcripts without re-running agents, and the judge is fail-closed
+(malformed output → FAIL, not pass). See [`plans/review-fixes/07-evals-harness-hardening.md`](plans/review-fixes/07-evals-harness-hardening.md).
 
 ### The 15 conformance cases
 
@@ -343,11 +345,10 @@ self-preference are not, so repeated UNRELIABLE verdicts are the documented cue 
 grading.
 
 Two value cases exist: `ast-grep-structural-precision.json` (skill `ast-grep`,
-`pass_condition: treatment_preferred`) and `rtk-economical-shell-output.json` (skill
-`terminal-rtk`, `pass_condition: treatment_not_worse` — an economy payoff paired with a
-tool-call delta). Both case files carry `"n": 3`, but the repeat count is actually taken
-from the `--n` CLI flag (default 3 in `run.py`), not from the per-case field, which the
-runner does not read for this.
+`pass_condition: treatment_preferred`) and the since-retired `rtk-economical-shell-output.json`
+case (the terminal-rtk skill was folded into AGENTS.md Global default 2; the case historically 
+measured economy via the `rtk` hook). Both case files carry `"n": 3`, but the repeat count is 
+actually taken from the `--n` CLI flag (default 3 in `run.py`), not from the per-case field.
 
 How to run:
 
@@ -446,30 +447,11 @@ than a verdict on the toolset's overall value. Each `claude` call is a subproces
 is not wrapped by the live PreToolUse shell-guard hook.
 
 The original one-off experiment, `evals/experiments/haiku_overhead_decomp.py`, remains for
-provenance — it produced the 2026-06-26 baseline below. It writes its raw results to
-`/tmp/haiku_decomp_result.json`; the committed `plans/data/haiku-overhead-2026-06-26.json`
-is a saved copy of one run, so re-running it does not overwrite the committed file.
-
-Headline findings from 2026-06-26 (raw at `plans/data/haiku-overhead-2026-06-26.json`,
-narrative in `plans/06-overhead-and-uplift.md`):
-
-| Cost class | Easy task (ON vs OFF) | Hard task (ON vs OFF) |
-|------------|-----------------------|------------------------|
-| Total input | 339,284 / 86,298 = 3.93x | 148,847 / 205,557 = 0.72x |
-| Of which cache_read | 323,277 / 73,496 = 4.40x | — |
-| Repriced input (input + cache_creation) | 16,007 / 12,802 = 1.25x | — |
-| Output | 2,263 / 839 = 2.70x | 1,157 / 2,001 = 0.58x |
-| API-equiv cost | $0.0756 / $0.0371 = 2.04x | $0.0479 / $0.0575 = 0.83x |
-| Turns / tool calls | 12/10 vs 4/3 (~3x) | 6/4 vs 11/10 (~0.5x) |
-| Turn-1 prefix | 28,290 / 28,327 = 1.00x | — |
-
-Both arms were correct on both tasks. The narrative conclusions: overhead is induced
-behavior (extra turns times per-turn re-read), not the static prefix (turn-1 context is
-identical ~28.3k across arms); the defect is regime-specific over-engagement — the easy
-task was over-tooled while the hard task was right-sized and the toolset was actually
-cheaper and got there structurally where the bare arm flailed with 10 grep calls; and
-because "input tokens" is roughly 95% cache_read, the honest repriced overhead on the easy
-task is 1.25x, not 3.93x, with the real cost driver (2.04x) being extra turns and output.
+provenance — it produced baseline measurements on 2026-06-26. See the narrative summary and
+raw data in [`plans/06-overhead-and-uplift.md`](plans/06-overhead-and-uplift.md). Key finding:
+overhead is induced behavior (extra turns and output), not the static prefix; the honest
+repriced overhead (input + cache_creation) is 1.25x on easy tasks, while the hard task showed
+the toolset was 0.83x cheaper and structurally superior.
 
 ### 5.5 Deterministic tool benchmarks — not on master
 
@@ -592,7 +574,8 @@ What is measured today on `master`:
 What is on a different branch or only proposed:
 
 - The deterministic tool benchmarks are not on `master` at all — neither the runner (`evals/bench.py`) nor the fixtures (`evals/bench/`) nor the result JSONs (`evals/results/bench/`) are present. They live on the `feature/value-evals-loop` branch (added in commit `ae4c61e`); to run or read them, check out that branch. They were never committed-then-removed on the `master` line.
-- A GitHub Actions CI workflow (`.github/workflows/ci.yml`) is prepared on disk but not committed on `master` (the `gh` token lacks the `workflow` scope). CI is therefore not active on the remote yet; the gate body `bin/ci-check.sh` is shared so it will run identically once pushed.
+- A GitHub Actions CI workflow (`.github/workflows/ci.yml`) is live on master, running
+  `bin/ci-check.sh` and `golangci-lint` on every push and pull request.
 - The overhead KPI is now measurable (workstream W3): `evals/overhead.py` grades ON/OFF against the ≤1.5x bar, backed by `agent.overhead_ratios` + `judge.judge_overhead` and the selftests `test_metrics_overhead_fields` / `test_overhead_ratios` / `test_overhead_verdict`. The easy-task gate is `total_input(ON)/total_input(OFF) <= 1.5` AND `cost(ON)/cost(OFF) <= 1.5` with no correctness regression, plus a hard-regime guard `<= 1.0`. What remains PROPOSED (`plans/impl-overhead/03-overhead-kpi-and-gate.md`): a committed `telemetry/scorecard.py` row (`overhead_ratio_easy` / `overhead_ratio_hard`), a deterministic gate wired into `bin/ci-check.sh` (the live A/B stays on-demand since it spends tokens), committed pass numbers from a real run, and the weak-model uplift floor (`weak_uplift_exceeds_strong` by ≥ 0.20). That plan argues the honest cost basis is `repriced_input` (`input + cache_creation`, ~95% of raw input being cache_read); `overhead_ratios` already reports `repriced_input_ratio` alongside the headline `total_input_ratio`.
 
 The roadmap lives in `plans/06-overhead-and-uplift.md` and `plans/impl-overhead/`

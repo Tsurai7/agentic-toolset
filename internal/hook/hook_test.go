@@ -47,6 +47,11 @@ func TestShellGuard(t *testing.T) {
 		{"real code-file grep denied", "grep pattern src/main.go", "DENY", ""},
 		{"quoted pattern + code target denied", `grep "TODO" main.go`, "DENY", ""},
 		{"non-code target not denied", "grep TODO notes.md", "REWRITE", "rtk grep TODO notes.md"},
+		// grep-in-argument-position: `grep` must be the command word (start of
+		// string, or after a shell operator), not merely preceded by a space —
+		// otherwise `git grep` is mistaken for a bare grep invocation.
+		{"git grep in argument position not denied", "git grep TODO main.py", "REWRITE", "rtk git grep TODO main.py"},
+		{"piped grep still denied", "cat main.go | grep TODO", "DENY", ""},
 		{"leading assignment passes through", "FOO=/tmp; echo $FOO", "PASS", ""},
 		{"already-wrapped rtk", "rtk npm test", "PASS", ""},
 		{"FOO=1 rtk is not double-wrapped", "FOO=1 rtk npm test", "PASS", ""},

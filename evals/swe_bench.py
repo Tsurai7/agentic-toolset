@@ -11,7 +11,12 @@ the hard regime where structural tooling pays off (0.65×).
 
 Two arms per cell:
   ON  — the full agentic-cfg environment (skills, hooks, MCP, prefix)
-  OFF — prompt-isolated bare agent (told to ignore the custom config/tools)
+  OFF — a rendered bare CLAUDE_CONFIG_DIR (see lib/render_config.render_bare_control):
+        no hooks, no repo-managed permission allow-list, no CLAUDE.md import, no
+        MCP servers, no skills. A physical ablation, not a prompt-only one — each
+        arm used to be a plain `claude` subprocess still wrapped by the live
+        PreToolUse shell-guard hook, which mechanically enforced the toolset's own
+        behavior in the "OFF" arm and biased the ratio.
 
 Correctness is DETERMINISTIC. A task is either:
   ("text",  fn(answer)->bool)              — a lookup; checks the final answer
@@ -38,14 +43,10 @@ from pathlib import Path
 
 EVALS = Path(__file__).resolve().parent
 sys.path.insert(0, str(EVALS))
-from lib import agent  # noqa: E402
+from lib import agent, render_config  # noqa: E402
 
 MODEL_ALIASES = {"haiku": "haiku", "sonnet": "sonnet", "opus": "opus"}  # claude CLI resolves these
 PERCALL_TIMEOUT = 600
-OFF_PREFIX = (
-    "Use only the standard built-in tools and plain shell commands. Do not use any "
-    "custom skills, rules, rtk, lean-ctx, ast-grep, or gitnexus. "
-)
 
 
 def _git_init(d: str) -> None:
@@ -286,10 +287,13 @@ def _arm_argv(model: str, prompt: str) -> list:
     return argv
 
 
-def _run_arm(cwd: str, prompt: str, model: str) -> str:
+def _run_arm(cwd: str, prompt: str, model: str, env: dict[str, str] | None = None) -> str:
     argv = _arm_argv(model, prompt)
+    proc_env = {**os.environ, **env} if env else None
     try:
-        p = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=PERCALL_TIMEOUT)
+        p = subprocess.run(
+            argv, cwd=cwd, capture_output=True, text=True, timeout=PERCALL_TIMEOUT, env=proc_env
+        )
         return p.stdout or p.stderr
     except subprocess.TimeoutExpired:
         return '{"type":"result","is_error":true,"subtype":"timeout","result":"<TIMEOUT>","usage":{}}'
@@ -325,34 +329,44 @@ def _ratio_spread(on_runs: list, off_runs: list, key: str):
     return (vals[0], vals[len(vals) // 2], vals[-1])
 
 
-def measure_cell(task_name: str, model: str, reps: int) -> dict:
+def measure_cell(task_name: str, model: str, reps: int, off_config_dir: Path) -> dict:
     """Run one (task, model) cell `reps` times, both arms; report median metrics
     and correctness rates so a single noisy run can't decide the verdict."""
     maker = TASKS[task_name]
-    on_runs, off_runs = [], []
+    on_runs, off_runs = [], []          # non-errored reps only — feeds medians/spread
+    on_raw_runs, off_raw_runs = [], []  # every rep, errored or not — the raw dump
     on_ok = off_ok = 0          # passes, counted only over non-errored reps
     on_n = off_n = 0            # non-errored reps per arm
     on_err = off_err = None     # last error string seen on each arm, if any
+    off_env = {"CLAUDE_CONFIG_DIR": str(off_config_dir)}
 
-    def run_arm(prompt_prefix, accum_runs):
+    def run_arm(env, accum_runs, accum_raw_runs):
         nonlocal_err = None
         d, task, spec = maker()
         try:
-            raw = _run_arm(d, prompt_prefix + task, model)
+            raw = _run_arm(d, task, model, env=env)
             nonlocal_err = agent.result_error(raw)
             ok = None if nonlocal_err else _check(spec, agent.final_text(raw), d)
         finally:
             shutil.rmtree(d, ignore_errors=True)
-        accum_runs.append(agent.metrics(raw))
+        m = agent.metrics(raw)
+        # An errored rep (auth failure, timeout, no result event) has no real
+        # metrics to speak of — a zero tool_calls/num_turns row from it would
+        # otherwise corrupt the median as if it were a genuine fast/cheap run.
+        # It still gets recorded (tagged is_error) for the raw dump/--out, just
+        # excluded from the values medians and _ratio_spread are computed over.
+        accum_raw_runs.append({**m, "is_error": bool(nonlocal_err)})
+        if not nonlocal_err:
+            accum_runs.append(m)
         return ok, nonlocal_err
 
     for _ in range(reps):
-        ok, err = run_arm("", on_runs)
+        ok, err = run_arm(None, on_runs, on_raw_runs)
         if err:
             on_err = err
         else:
             on_ok += int(ok); on_n += 1
-        ok, err = run_arm(OFF_PREFIX, off_runs)
+        ok, err = run_arm(off_env, off_runs, off_raw_runs)
         if err:
             off_err = err
         else:
@@ -385,6 +399,8 @@ def measure_cell(task_name: str, model: str, reps: int) -> dict:
         "correct_off_rate": (off_ok / off_n) if off_n else None,
         "on_error": on_err,
         "off_error": off_err,
+        "raw_runs_on": on_raw_runs,
+        "raw_runs_off": off_raw_runs,
     }
 
 
@@ -442,7 +458,34 @@ def selftest() -> int:
     assert "--effort" in av and av[av.index("--effort") + 1] == "low", "effort not threaded into argv"
     EFFORT = saved
     print("  ok  _arm_argv threads --effort only when set")
-    print(f"swe_bench selftest OK — {len(TASKS)} tasks, {checks} checks + error-guard + spread + effort.")
+    # Errored reps (timeout/auth failure) must be excluded from the median, or a
+    # rep that never really ran looks like a fast/cheap one and drags tool_calls
+    # (always present, even on an error) toward zero. They still show up in the
+    # raw dump, tagged is_error, so the failure is visible without corrupting
+    # the headline number.
+    global _run_arm
+    saved_run_arm = _run_arm
+    _clean = ('{"type":"result","is_error":false,"result":"(int, error)",'
+              '"num_turns":2,"usage":{"input_tokens":10,"output_tokens":5,'
+              '"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}')
+    _timeout = '{"type":"result","is_error":true,"subtype":"timeout","result":"<TIMEOUT>","usage":{}}'
+    on_calls = iter([_clean, _timeout, _clean])  # ON: clean, timeout, clean
+
+    def _fake_run_arm(cwd, prompt, model, env=None):
+        return _clean if env else next(on_calls)  # OFF (env set) always clean
+
+    try:
+        _run_arm = _fake_run_arm
+        cell = measure_cell("trivial", "haiku", reps=3, off_config_dir=Path("/nonexistent-off"))
+    finally:
+        _run_arm = saved_run_arm
+    assert cell["abs_on"]["num_turns"] == 2, cell  # median of {2, 2} (the timeout rep excluded)
+    assert cell["correct_on_rate"] == 1.0, cell     # only the 2 non-errored ON reps count
+    assert len(cell["raw_runs_on"]) == 3, cell       # but the raw dump keeps all 3
+    assert sum(1 for r in cell["raw_runs_on"] if r["is_error"]) == 1, cell
+    assert cell["correct_off_rate"] == 1.0 and len(cell["raw_runs_off"]) == 3, cell
+    print("  ok  measure_cell excludes errored reps from medians, keeps them in the raw dump")
+    print(f"swe_bench selftest OK — {len(TASKS)} tasks, {checks} checks + error-guard + spread + effort + medians.")
     return 0
 
 
@@ -511,7 +554,8 @@ def main(argv=None) -> int:
         print("DRY-RUN — no tokens spent. Matrix that WOULD run (pass --confirm to execute):")
         print(f"  models : {models}")
         print(f"  tasks  : {tasks}")
-        print(f"  arms   : ON (full config) vs OFF (prompt-isolated)")
+        print("  arms   : ON (full config) vs OFF (rendered bare CLAUDE_CONFIG_DIR — "
+              "lib/render_config.render_bare_control: no hooks, no MCP, no skills)")
         print(f"  reps   : {args.reps}  →  {len(models) * len(tasks) * 2 * args.reps} agent invocations")
         print("\nValidate the task checks now, free:  python3 evals/swe_bench.py --selftest")
         return 0
@@ -520,24 +564,26 @@ def main(argv=None) -> int:
     # each cell prints as it finishes and is appended to --out (if given) before the next starts.
     print(_MATRIX_HEADER, flush=True)
     cells = []
-    for m in models:
-        for t in tasks:
-            c = measure_cell(t, m, args.reps)
-            cells.append(c)
-            print(_matrix_row(c), flush=True)
-            if args.out:
-                with open(args.out, "a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(c) + "\n")
-            # Fail fast on a systemic launch failure (e.g. auth): if the very first
-            # cell errored on BOTH arms, every later cell will too — don't grind
-            # through a matrix of phantom data.
-            if len(cells) == 1 and c.get("on_error") and c.get("off_error"):
-                print(f"\nAborting: the agent CLI failed to run — {c['on_error']}\n"
-                      "Both arms errored on the first cell, so this is systemic (not a task failure).\n"
-                      "Most likely the nested `claude` could not authenticate. Run from a shell where\n"
-                      "`claude -p \"hi\"` works (a fresh login, or export CLAUDE_CODE_OAUTH_TOKEN / "
-                      "ANTHROPIC_API_KEY).", file=sys.stderr)
-                return 1
+    with tempfile.TemporaryDirectory(prefix="swe-off-config-") as tmp:
+        off_config_dir = render_config.render_bare_control(Path(tmp) / "off-config")
+        for m in models:
+            for t in tasks:
+                c = measure_cell(t, m, args.reps, off_config_dir)
+                cells.append(c)
+                print(_matrix_row(c), flush=True)
+                if args.out:
+                    with open(args.out, "a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(c) + "\n")
+                # Fail fast on a systemic launch failure (e.g. auth): if the very first
+                # cell errored on BOTH arms, every later cell will too — don't grind
+                # through a matrix of phantom data.
+                if len(cells) == 1 and c.get("on_error") and c.get("off_error"):
+                    print(f"\nAborting: the agent CLI failed to run — {c['on_error']}\n"
+                          "Both arms errored on the first cell, so this is systemic (not a task failure).\n"
+                          "Most likely the nested `claude` could not authenticate. Run from a shell where\n"
+                          "`claude -p \"hi\"` works (a fresh login, or export CLAUDE_CODE_OAUTH_TOKEN / "
+                          "ANTHROPIC_API_KEY).", file=sys.stderr)
+                    return 1
     if args.json:
         json.dump(cells, sys.stdout, indent=2)
         sys.stdout.write("\n")

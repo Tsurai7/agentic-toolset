@@ -43,7 +43,7 @@ type hookInput struct {
 
 var (
 	codeExtRe       = regexp.MustCompile(`\.(go|cs|py|js|jsx|ts|tsx|java|kt|rb|rs|c|h|cc|cpp|hpp|php|swift|scala|sql|vue)(\b|['"]|$)`)
-	grepTokenRe     = regexp.MustCompile(`(^|[|&;]| )(grep|egrep|fgrep|rg)( |$)`)
+	grepTokenRe     = regexp.MustCompile("(^|[|;`]|&&|\\|\\||\\$\\()\\s*(grep|egrep|fgrep|rg)(\\s|$)")
 	leadingAssignRe = regexp.MustCompile(`^\s*[A-Za-z_][A-Za-z0-9_]*=`)
 	assignTokenRe   = regexp.MustCompile(`^\s*[A-Za-z_][A-Za-z0-9_]*=\S*\s+`)
 	quotedRe        = regexp.MustCompile(`'[^']*'|"[^"]*"`)

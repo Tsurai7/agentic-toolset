@@ -80,15 +80,15 @@ func Remove(claudeMdPath string) (bool, error) {
 	if strings.TrimSpace(cleaned) == "" {
 		return true, os.Remove(claudeMdPath)
 	}
-	return true, atomicWrite(claudeMdPath, []byte(cleaned), 0o644)
+	return true, AtomicWrite(claudeMdPath, []byte(cleaned), 0o644)
 }
 
-// atomicWrite writes data to path via a same-directory temp file + fsync + rename,
-// so an interrupted write can never leave the user's CLAUDE.md truncated or empty
-// (the plain os.WriteFile it replaces truncates in place — BUG-12 parity for the
-// hand-written file most at risk). Mirrors internal/jsonorder.WriteFile and
-// providers/shared/safe_io.atomic_write_text.
-func atomicWrite(path string, data []byte, perm os.FileMode) error {
+// AtomicWrite writes data to path via a same-directory temp file + fsync + rename,
+// so an interrupted write can never leave the target truncated or empty (the plain
+// os.WriteFile it replaces truncates in place — BUG-12 parity for every
+// session-critical file, not just CLAUDE.md). Mirrors internal/jsonorder.WriteFile
+// and providers/shared/safe_io.atomic_write_text.
+func AtomicWrite(path string, data []byte, perm os.FileMode) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".claudemd-*")
 	if err != nil {
 		return err
@@ -131,5 +131,5 @@ func Ensure(generatedPath, claudeMdPath string) error {
 		fmt.Printf("[dry-run] would write %s:\n%s\n", claudeMdPath, content)
 		return nil
 	}
-	return atomicWrite(claudeMdPath, []byte(content), 0o644)
+	return AtomicWrite(claudeMdPath, []byte(content), 0o644)
 }

@@ -5,11 +5,22 @@ Raw per-run artifacts stay gitignored under results/; this distills the latest
 verdict per (case, model) into one human-readable table so the value history is
 visible in git without the heavy artifacts. Compare numbers only within one
 EVAL_SET_VERSION — when the case mix changes, bump it (see PLAYBOOK.md).
+
+BENCHMARKS.md is the only durable record of value results (results/ is
+gitignored), so this refuses to shrink it: on a fresh clone or a machine with no
+results/ directory, a naive re-run would overwrite real history with "No value
+results recorded yet" (BUG). Instead, rows already committed for a (case, model)
+pair not present in results/ are carried forward untouched, and the command
+exits 1 without writing anything if the merged table would still have fewer
+rows than what's committed (pass --force to write anyway, e.g. after an
+intentional case removal).
 """
 
 from __future__ import annotations
 
+import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -17,6 +28,12 @@ EVALS_DIR = Path(__file__).resolve().parent
 RESULTS_DIR = EVALS_DIR / "results"
 OUT = EVALS_DIR / "BENCHMARKS.md"
 EVAL_SET_VERSION = "v1"
+
+_ROW_RE = re.compile(
+    r"^\|\s*(?P<case>[^|]+?)\s*\|\s*(?P<model>[^|]+?)\s*\|\s*(?P<verdict>[^|]+?)\s*\|\s*"
+    r"(?P<share>[^|]+?)\s*\|\s*(?P<flip>[^|]+?)\s*\|\s*(?P<delta>[^|]+?)\s*\|\s*"
+    r"(?P<confidence>[^|]+?)\s*\|\s*$"
+)
 
 
 def _latest_per_case_model() -> dict[tuple[str, str], dict]:
@@ -36,6 +53,26 @@ def _latest_per_case_model() -> dict[tuple[str, str], dict]:
     return {k: v[1] for k, v in latest.items()}
 
 
+def _existing_rows(path: Path) -> dict[tuple[str, str], dict]:
+    """Parse the committed BENCHMARKS.md table back into raw row fields, keyed by
+    (case, model), so a (case, model) pair missing from results/ can be carried
+    forward instead of silently dropped. Ignores anything that isn't a data row
+    (header, separator, prose) — a table this repo generates itself, so a small
+    regex is enough without a markdown-table dependency."""
+    if not path.exists():
+        return {}
+    rows: dict[tuple[str, str], dict] = {}
+    for line in path.read_text("utf-8").splitlines():
+        m = _ROW_RE.match(line)
+        if not m or m["case"] in ("Case", "------"):
+            continue
+        rows[(m["case"], m["model"])] = {
+            "verdict": m["verdict"], "share": m["share"], "flip": m["flip"],
+            "delta": m["delta"], "confidence": m["confidence"],
+        }
+    return rows
+
+
 def _eff_delta(rec: dict) -> str:
     """Mean treatment−control tool-call delta across runs (negative ⇒ leaner)."""
     runs = rec.get("runs", [])
@@ -48,7 +85,33 @@ def _eff_delta(rec: dict) -> str:
     return f"{sum(deltas) / len(deltas):+.1f}"
 
 
-def render(records: dict[tuple[str, str], dict]) -> str:
+def _row_from_record(rec: dict) -> dict[str, str]:
+    """Render one results/ JSON record into the table's string fields."""
+    wins = rec.get("wins", {})
+    n = rec.get("n", 0) or 1
+    return {
+        "verdict": rec.get("verdict", "?"),
+        "share": f"{wins.get('treatment', 0)}/{n}",
+        "flip": f"{rec.get('flip_rate', 0):.2f}",
+        "delta": _eff_delta(rec),
+        "confidence": rec.get("confidence", "?"),
+    }
+
+
+def merged_rows(
+    fresh: dict[tuple[str, str], dict], existing: dict[tuple[str, str], dict]
+) -> dict[tuple[str, str], dict[str, str]]:
+    """Fresh results/ scans win for a (case, model) pair; a pair only present in
+    the committed file (no matching results/ artifact on this machine) is
+    carried forward untouched, so a partial or missing results/ never drops
+    history for cases nobody happened to re-run here."""
+    out = dict(existing)
+    for key, rec in fresh.items():
+        out[key] = _row_from_record(rec)
+    return out
+
+
+def render(rows: dict[tuple[str, str], dict[str, str]]) -> str:
     lines = [
         "# Benchmark results",
         "",
@@ -57,7 +120,7 @@ def render(records: dict[tuple[str, str], dict]) -> str:
         "from `results/<model>/`; do not edit by hand.",
         "",
     ]
-    if not records:
+    if not rows:
         lines += ["_No value results recorded yet._ Run:", "",
                   "```bash",
                   "AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value --model <model>",
@@ -69,20 +132,44 @@ def render(records: dict[tuple[str, str], dict]) -> str:
         "| Case | Model | Verdict | Treatment wins | Flip-rate | Tool-call Δ | Confidence |",
         "|------|-------|---------|----------------|-----------|-------------|------------|",
     ]
-    for (cid, model), rec in sorted(records.items()):
-        wins = rec.get("wins", {})
-        n = rec.get("n", 0) or 1
-        share = f"{wins.get('treatment', 0)}/{n}"
+    for (cid, model), row in sorted(rows.items()):
         lines.append(
-            f"| {cid} | {model} | {rec.get('verdict', '?')} | {share} | "
-            f"{rec.get('flip_rate', 0):.2f} | {_eff_delta(rec)} | {rec.get('confidence', '?')} |"
+            f"| {cid} | {model} | {row['verdict']} | {row['share']} | "
+            f"{row['flip']} | {row['delta']} | {row['confidence']} |"
         )
     lines.append("")
     return "\n".join(lines)
 
 
 def main() -> int:
-    content = render(_latest_per_case_model())
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--force", action="store_true",
+                     help="write BENCHMARKS.md even if the fresh results/ scan has fewer "
+                          "(or zero) rows than the committed file — e.g. on a machine with "
+                          "no results/ yet, or after an intentional case removal")
+    args = ap.parse_args()
+
+    fresh = _latest_per_case_model()
+    existing = _existing_rows(OUT)
+
+    # The shrink check compares the FRESH scan (before merge) to what's committed:
+    # zero or fewer fresh rows than committed is the exact "results/ missing or
+    # incomplete on this machine" signal the merge step alone can't catch, since
+    # merging always keeps the row count >= existing. --force bypasses the
+    # refusal but the merge below still applies, so nothing is lost either way.
+    if (len(fresh) == 0 or len(fresh) < len(existing)) and not args.force:
+        print(
+            f"REFUSING to write {OUT.relative_to(EVALS_DIR.parent)}: results/ on this machine "
+            f"produced {len(fresh)} fresh value row(s), fewer than the {len(existing)} already "
+            "committed. This usually means results/ is missing or incomplete here, not that "
+            "the case history actually shrank. Re-run evals/run.py --track value first, or "
+            "pass --force if the shrink is intentional.",
+            file=sys.stderr,
+        )
+        return 1
+
+    rows = merged_rows(fresh, existing)
+    content = render(rows)
     OUT.write_text(content, "utf-8")
     print(f"wrote {OUT.relative_to(EVALS_DIR.parent)}")
     return 0

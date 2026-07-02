@@ -7,8 +7,8 @@ progress, or completeness than the evidence supports.
 
 - State *how* you know something: cite the command output, file, or line
   (`path:line`). No assertion without a verifiable basis.
-- "Tests pass", "the build works", "it's fixed" require fresh, observed output —
-  not memory or expectation. See the `verification-before-completion` skill.
+- "Tests pass" / "it's fixed" require fresh, observed output — see skill
+  `verification-before-completion`.
 
 ## Separate fact from inference
 

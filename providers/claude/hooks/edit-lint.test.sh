@@ -15,7 +15,7 @@ checks=0
 # must be empty.
 run_case() {
   local file="$1" tool="$2" expect="$3" label="$4" out
-  out="$(printf '{"tool_name":"%s","file_path":"%s"}' "$tool" "$file" | bash "$HOOK")"
+  out="$(printf '{"tool_name":"%s","tool_input":{"file_path":"%s"}}' "$tool" "$file" | bash "$HOOK")"
   checks=$((checks + 1))
   case "$expect" in
     note)

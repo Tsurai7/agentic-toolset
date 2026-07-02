@@ -10,11 +10,14 @@ logic is guarded zero-token in `evals/selftest.py`; this file only adds the live
 Dry by default: it prints the plan and exits 0 without spending tokens. Pass `--confirm`
 (or `AGENTIC_EVAL_CONFIRM=1`) to actually invoke the agent CLI on each arm.
 
-Isolation: the OFF arm uses prompt-isolation (the agent still loads the full config and
-is merely told to ignore it), so this measures induced behaviour, not static-prefix
-bytes. It is n=1 per cell — directional, not a verdict on the toolset's value. Each arm
-is a `claude` subprocess, so it is not wrapped by the live PreToolUse shell-guard hook.
-Run it from anywhere; each task builds its own throwaway scratch repo.
+Isolation: the OFF arm runs under a rendered bare CLAUDE_CONFIG_DIR (see
+`lib/render_config.render_bare_control`) — no hooks, no repo-managed permission
+allow-list, no CLAUDE.md import, no MCP servers, no skills. This is a physical
+ablation, not a prompt-only one: earlier, each arm was a plain `claude` subprocess
+still wrapped by the live PreToolUse shell-guard hook, which mechanically enforced
+the toolset's own behavior in the "OFF" arm and biased the ratio. It is n=1 per
+cell — directional, not a verdict on the toolset's value. Run it from anywhere;
+each task builds its own throwaway scratch repo.
 """
 
 from __future__ import annotations
@@ -30,14 +33,10 @@ from pathlib import Path
 
 EVALS = Path(__file__).resolve().parent
 sys.path.insert(0, str(EVALS))
-from lib import agent, judge  # noqa: E402
+from lib import agent, judge, render_config  # noqa: E402
 
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 PERCALL_TIMEOUT = 420
-OFF_PREFIX = (
-    "Use only the standard built-in tools and plain shell commands. Do not use any "
-    "custom skills, rules, rtk, lean-ctx, ast-grep, or gitnexus. "
-)
 
 
 def _git_init(d: str) -> None:
@@ -140,18 +139,23 @@ def _make_hard2():
 TASKS = {"easy": _make_easy, "hard": _make_hard, "hard2": _make_hard2}
 
 
-def _run_arm(cwd: str, prompt: str, model: str) -> str:
+def _run_arm(cwd: str, prompt: str, model: str, env: dict[str, str] | None = None) -> str:
     argv = [
         "claude", "-p", "--output-format", "stream-json", "--verbose",
         "--dangerously-skip-permissions", "--model", model, prompt,
     ]
+    proc_env = {**os.environ, **env} if env else None
     try:
         p = subprocess.run(
-            argv, cwd=cwd, capture_output=True, text=True, timeout=PERCALL_TIMEOUT
+            argv, cwd=cwd, capture_output=True, text=True, timeout=PERCALL_TIMEOUT, env=proc_env
         )
         return p.stdout or p.stderr
     except subprocess.TimeoutExpired:
-        return '{"type":"result","result":"<TIMEOUT>","usage":{}}'
+        # is_error is required — without it agent.result_error() sees a clean
+        # run with result="<TIMEOUT>" instead of an error, and the phantom
+        # transcript's (empty) metrics get averaged into the median as if it
+        # were real data.
+        return '{"type":"result","is_error":true,"subtype":"timeout","result":"<TIMEOUT>","usage":{}}'
 
 
 _MEDIAN_KEYS = (
@@ -165,17 +169,18 @@ def _median(runs: list[dict], key: str):
     return vals[len(vals) // 2] if vals else None
 
 
-def measure_task(name: str, maker, model: str, reps: int) -> dict:
+def measure_task(name: str, maker, model: str, reps: int, off_config_dir: Path) -> dict:
     """Run a task's ON/OFF arms `reps` times; report median metrics and correctness
     rates so a single noisy run can't decide the verdict. The reported ratio is the
     ratio of medians (robust to per-run variance)."""
     on_runs, off_runs = [], []
     correct_on = correct_off = 0
+    off_env = {"CLAUDE_CONFIG_DIR": str(off_config_dir)}
     for _ in range(reps):
         d, task, correct = maker()
         try:
             on_raw = _run_arm(d, task, model)
-            off_raw = _run_arm(d, OFF_PREFIX + task, model)
+            off_raw = _run_arm(d, task, model, env=off_env)
         finally:
             shutil.rmtree(d, ignore_errors=True)
         on_runs.append(agent.metrics(on_raw))
@@ -199,12 +204,27 @@ def _fmt(x, suffix="x"):
     return "—" if x is None else f"{x:.2f}{suffix}"
 
 
+def _worst_ratio(results: list[dict], key: str):
+    """The max ratio across results, or None if ANY result is missing it.
+
+    A missing ratio means that task's OFF-arm denominator was absent/zero — its
+    true overhead is unknown, not zero. Coercing None to 0 before taking the max
+    let an unmeasured task look like the cheapest one and silently pass the
+    ≤1.5x gate; propagating None here lets judge_overhead grade it UNKNOWN
+    instead (nonzero exit), never a false PASS.
+    """
+    vals = [r["ratios"][key] for r in results]
+    if any(v is None for v in vals):
+        return None
+    return max(vals) if vals else None
+
+
 def _verdict(results: list[dict], max_ratio: float = judge.OVERHEAD_EASY_MAX) -> dict:
     """A run PASSes when every task's median total-input AND cost overhead is within
     max_ratio (the owner's <=1.5x bar, applied uniformly to easy and hard tasks) and
     no task regresses correctness (ON solved less often than the bare OFF arm)."""
-    worst_ti = max((r["ratios"]["total_input_ratio"] or 0) for r in results)
-    worst_cost = max((r["ratios"]["cost_ratio"] or 0) for r in results) or None
+    worst_ti = _worst_ratio(results, "total_input_ratio")
+    worst_cost = _worst_ratio(results, "cost_ratio")
     regression = any(r["correct_on_rate"] < r["correct_off_rate"] for r in results)
     return judge.judge_overhead(
         {"total_input_ratio": worst_ti, "cost_ratio": worst_cost,
@@ -258,10 +278,16 @@ def main(argv=None) -> int:
     if not confirm:
         print(f"[dry-run] would run {len(names)} task(s) {names} x 2 arms x {args.reps} "
               f"rep(s) on {args.model} — this spends tokens.")
+        print("OFF arm isolation: a rendered bare CLAUDE_CONFIG_DIR "
+              "(lib/render_config.render_bare_control) — no hooks, no MCP, no skills.")
         print("Re-run with --confirm (or AGENTIC_EVAL_CONFIRM=1) to measure.")
         return 0
 
-    results = [measure_task(n, TASKS[n], args.model, args.reps) for n in names]
+    with tempfile.TemporaryDirectory(prefix="overhead-off-config-") as tmp:
+        off_config_dir = render_config.render_bare_control(Path(tmp) / "off-config")
+        results = [
+            measure_task(n, TASKS[n], args.model, args.reps, off_config_dir) for n in names
+        ]
     verdict = _verdict(results)
 
     if args.json:

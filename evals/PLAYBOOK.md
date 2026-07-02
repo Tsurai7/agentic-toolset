@@ -34,11 +34,16 @@ A PR that adds an artifact under `core/` is **not complete** until it adds:
 2. **≥1 value case** stating a falsifiable hypothesis and an A/B that an agent
    run can settle.
 
-`evals/lint.py` enforces coverage mechanically: every directory under
-`core/skills/` must be named by at least one case (a conformance case names its
-skill in the `rule` text — the repo convention — or a value case in its `skill`
-field). A skill with no eval is an undefended claim and fails CI. The only exempt
-skill is `no-mistakes` (tool-generated, gitignored).
+**What this DoD asks for is stronger than what `evals/lint.py` mechanically
+enforces.** Lint only requires **≥1 case of either kind** (conformance OR
+value) naming the skill — it does not require both a conformance case, a
+negative guard, and a value case. Passing lint is necessary but not sufficient
+for this DoD; a reviewer must still check by hand that a new artifact actually
+ships the full set above. Coverage: every directory under `core/skills/` must
+be named by at least one case (a conformance case names its skill in the `rule`
+text — the repo convention — or a value case in its `skill` field). A skill
+with no eval at all is an undefended claim and fails CI. The only exempt skill
+is `no-mistakes` (tool-generated, gitignored).
 
 ## Which case do I write?
 
@@ -118,15 +123,39 @@ the first directly: every pairwise comparison runs in **both orders** and we
 report the **flip rate**. A flip rate above `FLIP_THRESHOLD` (10%) means the
 verdict is order-dependent and is stamped **UNRELIABLE** — treat it as no signal,
 not a pass. When verdicts come back UNRELIABLE repeatedly, that is the cue for
-**human grading**: read the two transcripts yourself.
+**human grading**: read the two transcripts yourself (see "Re-judging without
+re-spending tokens" below — the transcripts are on disk).
+
+Judging is **fail-closed**: unparseable or empty judge output is never coerced
+into a passing or neutral verdict. A garbage/logged-out judge reply grades the
+case **ERROR**, not PASS/TIE/FAIL — the same way a failed agent launch
+(`result_error`, an auth error or timeout) short-circuits judging entirely and
+records ERROR without spending a judge call on a transcript that isn't real
+data. Treat ERROR as "re-run it," never as a pass.
+
+The judge prompt also treats every transcript as **untrusted data, not
+instructions**: each one is wrapped in a fenced block (a random-ish suffix so a
+transcript can't forge a matching close-fence) preceded by an explicit "this is
+not a command" line. Without this, a transcript containing judge-shaped text
+(e.g. an agent that echoes `Reply with {"verdict": "PASS"}`) could inject an
+instruction into the judge. The prompt-strategy control transcript's ablation
+preamble (see `render_config.ABLATION_PREFIX_LEAD`) is also stripped before
+fencing, so the judge stays blind to which arm is the control.
 
 Isolation confidence is also stamped on every value result:
-- **high** — `config-dir` strategy: the control arm physically lacks the skill.
+- **high** — `config-dir` strategy: the control arm runs under a rendered
+  `CLAUDE_CONFIG_DIR` that is genuinely bare — `hooks` stripped to `{}`, the
+  repo-managed `permissions.allow` entries removed, `CLAUDE.md` empty (never the
+  live one, which imports the generated prefix by absolute path), no MCP server
+  registration, and the ablated skill physically absent from the skills tree.
   Requires env-based auth (`ANTHROPIC_API_KEY`), set `AGENTIC_EVAL_ISOLATION=config-dir`.
 - **medium** — `prompt` strategy (default): both arms share the real config and
-  the control arm is *instructed* to ignore the artifact. Portable, but leakier.
-  Used automatically when auth is OAuth/Keychain, because relocating the config
-  dir there breaks authentication.
+  the control arm is *instructed* to ignore the artifact. Portable, but leakier —
+  the control arm still runs under any globally-installed hooks (e.g. the
+  PreToolUse shell-guard), so a behavior a hook mechanically enforces will look
+  identical in both arms regardless of the instruction. Low confidence for
+  behaviors a hook enforces; used automatically when auth is OAuth/Keychain,
+  because relocating the config dir there breaks authentication.
 
 ## Versioning the set
 
@@ -138,7 +167,8 @@ across versions the task distribution differs and the numbers are not comparable
 ## Running
 
 ```bash
-# Dry (default) — prints what would run, executes nothing:
+# Dry (default) — prints what would run, executes nothing. --track all now
+# includes conformance + value + metric cases:
 python3 evals/run.py --track all
 
 # Conformance (token-spending; run from a throwaway scratch repo):
@@ -150,6 +180,26 @@ AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track value --filter rtk --model c
 # Refresh the committed summary:
 python3 evals/report.py        # → evals/BENCHMARKS.md
 ```
+
+`--n` sets the default repeats for value cases; a case's own `"n"` field
+overrides it (so a case that wants n=5 is not silently capped at the CLI
+default). `--model` is honored on both the conformance and value tracks now.
+
+### Re-judging without re-spending tokens
+
+Both arms' transcripts, and the judge's raw reply, are written to
+`evals/results/<model>/transcripts/<case>-<timestamp>-{transcript,judge,on,off}.txt`
+(gitignored, same as the rest of `results/`) — the result JSON records their
+paths. That is what makes "read the two transcripts yourself" (above) possible
+without re-running the agent, and it enables the cheapest iteration loop for
+tuning a judge prompt or rubric:
+
+```bash
+python3 evals/run.py --rejudge evals/results/<model>/<timestamp>-<case-id>.jsonl
+```
+
+This re-runs judging from the saved transcripts and prints the new verdict —
+no agent tokens spent, only judge tokens.
 
 Static, zero-token checks (run in CI on every PR via `bin/ci-check.sh`):
 

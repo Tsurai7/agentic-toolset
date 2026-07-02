@@ -8,3 +8,12 @@ from `results/<model>/`; do not edit by hand.
 |------|-------|---------|----------------|-----------|-------------|------------|
 | ast-grep-structural-precision | claude-opus-4-8 | PASS | 2/3 | 0.00 | -1.0 | medium |
 | rtk-economical-shell-output | claude-opus-4-8 | UNRELIABLE | 0/3 | 0.67 | -2.0 | medium |
+
+Rows recorded before 2026-07-01 used a control arm that inherited the globally-installed
+hooks and the generated CLAUDE.md prefix (the `prompt` isolation strategy's control arm
+ran under the live config, not a bare one); treat their PASS/UNRELIABLE verdicts
+accordingly until re-run under the now-genuinely-bare `config-dir` strategy.
+
+`terminal-rtk` was folded into AGENTS.md Global default 2 on 2026-07-01 (hook-enforced;
+skill retired), so its `rtk-economical-shell-output` row above is a historical record,
+not a live skill.

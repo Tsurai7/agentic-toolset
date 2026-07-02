@@ -18,27 +18,15 @@ Don't assume. Don't hide confusion. Surface tradeoffs.
 
 ## 2. Simplicity first
 
-Minimum code that solves the problem. Nothing speculative.
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Test: "Would a senior engineer call this overcomplicated?" If yes, simplify.
+Minimum code that solves the problem — scope and over-engineering rules live in
+coding-principles. Test: "Would a senior engineer call this overcomplicated?" If
+yes, simplify.
 
 ## 3. Surgical changes
 
-Touch only what you must. Clean up only your own mess.
-
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- Remove imports/variables/functions that *your* changes orphaned — but don't
-  delete pre-existing dead code unless asked; mention it instead.
-
-Test: every changed line should trace directly to the request.
+Touch only what you must; clean up only your own mess — see coding-principles.
+Match existing style. Remove only what YOUR change orphaned. Test: every
+changed line traces to the request.
 
 ## 4. Goal-driven execution
 
@@ -50,4 +38,4 @@ Define success criteria. Loop until verified.
 
 For multi-step tasks, state a brief plan with a verifiable check per step.
 Strong success criteria let you loop independently; weak ones ("make it work")
-force constant clarification. Complements the `verification-before-completion` skill.
+force constant clarification.

@@ -1,37 +1,21 @@
 ---
-description: "lean-ctx hybrid: MUST use ctx_read/ctx_search (MCP) + lean-ctx -c (CLI). NEVER use native Read/Grep/Shell."
+description: "lean-ctx tool mapping — prefer ctx_* tools for shell/search/read; degrade to native when a tool is absent."
 alwaysApply: true
 ---
 
-# lean-ctx — Context Engineering Layer
-<!-- lean-ctx-rules-v11 -->
+# lean-ctx
+<!-- lean-ctx-rules-v12 -->
 
-## Mode: Hybrid (MCP reads + CLI shell)
+Prefer lean-ctx over native equivalents; when a `ctx_*` tool is unavailable,
+degrade per the AGENTS.md precedence table (it is canonical).
 
-CRITICAL: ALWAYS use lean-ctx tools. This is NOT optional.
+| Task | Prefer | Fallback |
+|------|--------|----------|
+| Read a file | `ctx_read(path, mode)` — modes: full / map / signatures / diff / lines:N-M | native read |
+| Search text | `ctx_search(pattern, path)` | grep (non-code text only) |
+| Run shell | `ctx_shell(command)` | native terminal, `rtk` prefix |
+| List files | `ctx_tree(path, depth)` | ls |
+| Edit | native Edit; `ctx_edit` only when Edit is unavailable | — |
 
-## Tool Mapping (MANDATORY)
-| Instead of | MUST USE | Example |
-|------------|----------|---------|
-| Read/cat/head/tail | `ctx_read(path, mode)` | `ctx_read("src/main.rs", "full")` |
-| Grep/rg/find | `ctx_search(pattern, path)` | `ctx_search("fn handle", "src/")` |
-| Shell/bash | `lean-ctx -c "<cmd>"` | `lean-ctx -c "cargo test"` |
-| ls/find | `lean-ctx ls [path]` | `lean-ctx ls src/ --depth 3` |
-| Edit (when Read unavail.) | `ctx_edit(path, old, new)` | `ctx_edit("f.rs", "old", "new")` |
-
-## ctx_read Modes
-| Goal | Mode |
-|------|------|
-| Edit target | `full` |
-| API surface | `signatures` |
-| Post-edit check | `diff` |
-| Overview | `map` |
-| Region | `lines:N-M` |
-
-## Workflow: Orient → Locate → Read → Edit → Verify → Record
-Use `ctx_overview` or `ctx_compose` first. Then `ctx_search`/`ctx_semantic_search`.
-Read with `ctx_read(path, mode)`. Edit with native Edit or `ctx_edit`.
-Verify: `ctx_read(path, "diff")` + `lean-ctx -c "test cmd"`.
-
-REMINDER: You MUST use lean-ctx tools. NEVER use native Read, Grep, or Shell directly.
+Never nest `rtk` inside `ctx_shell` or vice versa (one wrapper per command).
 <!-- /lean-ctx -->

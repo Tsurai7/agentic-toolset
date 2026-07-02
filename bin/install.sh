@@ -48,6 +48,20 @@ export AGENTIC_ROOT
 # the install flow reads those vars except the merge tools. If you need a var in this
 # script's own environment, export it in your shell before running install.
 
+# Build bin/agentic from this checkout before dispatching to providers, so a fresh
+# machine gets the real JSON-parsing hook (not the shell fallback) and a pulled fix
+# never sits behind a stale, previously-built binary (every install rebuilds).
+echo ""
+if command -v go >/dev/null 2>&1; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[dry-run] would run: go build -o bin/agentic ./cmd/agentic"
+  elif ! (cd "$AGENTIC_ROOT" && go build -o bin/agentic ./cmd/agentic); then
+    echo "WARN: go build failed — hooks will use the shell fallback" >&2
+  fi
+else
+  echo "WARN: go not found — skipping bin/agentic build; hooks will use the shell fallback" >&2
+fi
+
 install_cursor() {
   bash "${AGENTIC_ROOT}/providers/cursor/install.sh"
 }

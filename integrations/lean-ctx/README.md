@@ -35,6 +35,13 @@ defaults) by `providers/shared/merge-mcp.py`:
 
 ## Claude
 
-This wiring currently targets Cursor (where the config was authored). The Claude
-equivalent — lean-ctx in `~/.claude/.mcp.json` (already merged) plus hooks in
-`~/.claude/settings.json` — is a follow-up.
+lean-ctx is wired for both Cursor and Claude Code:
+- **Cursor:** Rule + MCP server + hooks (see above).
+- **Claude Code:** MCP server registered via `~/.claude.json` (user scope, via the `claude` CLI) 
+  plus hooks + permissions merged into `~/.claude/settings.json`.
+
+## Context cost
+
+The lean-ctx server injects a tool-mapping instruction block into every session. Use 
+`AGENTIC_TIER=weak` at install time to install without lean-ctx (now truly removing it — 
+the server, its allow entries in permissions, and the related hook all disappear).

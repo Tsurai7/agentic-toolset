@@ -1,5 +1,6 @@
 # Marketplace plugins — catalog only (install via each provider's marketplace).
 # Do not vendor plugin skill trees into this repo.
+# This catalog is documentation; only YAML validity is machine-checked.
 
 version: 1
 
@@ -22,7 +23,7 @@ plugins:
     required_env:
       - MDB_MCP_CONNECTION_STRING  # or Atlas API / local Docker per plugin docs
     setup_doc_url: https://www.mongodb.com/docs/cursor/
-    notes: Use mongodb-mcp-setup skill after enabling.
+    notes: The MongoDB plugin includes its own setup skill; enable via marketplace then run that skill.
 
   - id: atlassian
     name: Atlassian
