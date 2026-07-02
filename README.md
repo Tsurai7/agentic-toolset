@@ -6,6 +6,8 @@ This repo is the **source of truth**. Provider-specific paths are populated by `
 
 - New machine? See [`SETUP.md`](SETUP.md).
 - Working on the repo itself? See [`ARCHITECTURE.md`](ARCHITECTURE.md).
+- Want the full mental model — layers, components, token economy, daily flows? See
+  [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md).
 
 ## Quick start
 
