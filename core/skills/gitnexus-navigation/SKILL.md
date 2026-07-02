@@ -26,11 +26,11 @@ You are connected to **GitNexus** via MCP in Go / .NET codebases.
 ## If repo not indexed
 
 ```bash
-npx -y gitnexus@1.6.7 analyze
+npx -y gitnexus@1.6.8 analyze
 ```
 
 Run from the repository root (or use MCP analyze tool if available).
-`npx -y gitnexus@1.6.7 status` shows whether the current repo is indexed —
+`npx -y gitnexus@1.6.8 status` shows whether the current repo is indexed —
 queries against a never-indexed repo return nothing useful, so check or index
 first.
 
@@ -51,14 +51,14 @@ first.
 When `mcp__gitnexus__*` tools are not available, the same graph is queryable via CLI
 (output is JSON on stdout):
 
-- `npx -y gitnexus@1.6.7 context <SymbolName> --repo <repo-name>` — 360° view
+- `npx -y gitnexus@1.6.8 context <SymbolName> --repo <repo-name>` — 360° view
   (callers, callees, flows); `--repo` is required once more than one repo is indexed.
-- `npx -y gitnexus@1.6.7 query "<concept>" --repo <repo-name>` — execution flows.
+- `npx -y gitnexus@1.6.8 query "<concept>" --repo <repo-name>` — execution flows.
 
 ## MCP
 
 GitNexus is configured in `integrations/gitnexus/` and installed by
 `bin/install.sh`: registered user-scope for Claude in `~/.claude.json` (via the
 `claude` CLI) and merged into `~/.cursor/mcp.json` for Cursor. The version is
-pinned (`gitnexus@1.6.7` — see `integrations/gitnexus/README.md` for why and the
+pinned (`gitnexus@1.6.8` — see `integrations/gitnexus/README.md` for why and the
 unpin path).

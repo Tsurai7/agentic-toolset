@@ -86,10 +86,10 @@ in the project root (or add this repo as a submodule). Keep project-specific
 skills in the project's own `.cursor/skills` / `.claude/skills`; personal skills
 stay in `$HOME` via the symlink.
 
-GitNexus indexes per repo — run `npx -y gitnexus@1.6.7 analyze` from a project root
-once. The version is pinned repo-wide (see `integrations/gitnexus/README.md` for why
-and how to unpin); an unpinned `npx gitnexus …` resolves `@latest`, which requires
-Node ≥22 and fails on Node 20.
+GitNexus indexes per repo — run `npx -y gitnexus@1.6.8 analyze` from a project root
+once. The version is pinned repo-wide for reproducible installs (see
+`integrations/gitnexus/README.md` for the bump procedure); the pin requires Node ≥22
+(`brew install node`).
 
 ## The `agentic` CLI — install, apply to Claude, verify, remove
 
@@ -151,7 +151,7 @@ agentic eject
    commands; see the tool-precedence section in `AGENTS.md`.
 3. **`ANTHROPIC_BASE_URL`** and other machine-local `env` are intentionally not
    vendored — set them per machine in `~/.claude/settings.json`.
-4. **GitNexus** must be indexed per project (`npx -y gitnexus@1.6.7 analyze`).
+4. **GitNexus** must be indexed per project (`npx -y gitnexus@1.6.8 analyze`).
 5. **CI workflow** (`.github/workflows/ci.yml`) is live on master, running
    `bin/ci-check.sh` and `golangci-lint` on every push and pull request.
 

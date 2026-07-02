@@ -11,6 +11,7 @@ there).
 | 01 | [Re-pin to a runtime-compatible version + doctor MCP start check](01-repin-and-doctor.md) | `integrations/gitnexus/mcp.stdio.json`, `integrations/gitnexus/README.md`, `bin/mcp-start-check.py` (new), `bin/doctor.sh`, `SETUP.md`, `CHANGELOG.md` | done |
 | 02 | [Hygiene: .gitignore + upstream stale-nag bug report](02-hygiene-and-issue.md) | `.gitignore`, `issues/gitnexus-home-registry-stale-nag.md` (new) | done |
 | 03 | [Skill/docs truth pass: MCP claim, CLI fallback, index gate](03-skill-truth-pass.md) | `core/skills/gitnexus-navigation/SKILL.md` | done |
+| 04 | [Operator decision: latest gitnexus (1.6.8) on Homebrew Node, not a 1.6.7 freeze](04-latest-version-node26.md) | `integrations/gitnexus/mcp.stdio.json`, `integrations/gitnexus/README.md`, `SETUP.md`, `core/skills/gitnexus-navigation/SKILL.md`, `bin/doctor.sh`, `CHANGELOG.md`, `plans/gitnexus-fix/DESIGN.md`, `plans/gitnexus-fix/00-INDEX.md` | done |
 
 ## Execution order
 
@@ -30,14 +31,15 @@ bash bin/prefix-budget.sh   # byte total unchanged — no always-on files in thi
 Machine-side (implementing machine, after the diff):
 
 ```bash
-bash bin/install.sh --provider all   # re-registers gitnexus@1.6.7
+bash bin/install.sh --provider all   # re-registers gitnexus@1.6.8 (Homebrew Node ≥22)
 bash bin/doctor.sh --deep            # now includes the MCP start/handshake check
 claude mcp list                      # gitnexus … ✔ Connected
 ```
 
 ## Deferred follow-ups (out of this wave, see DESIGN.md Q4/Q6)
 
-- Machine Node ≥22 upgrade → unpin from 1.6.7 and track upstream.
+- Track upstream stable releases; bump the pin per
+  `integrations/gitnexus/README.md` procedure.
 - Upstream self-installed hooks (`~/.claude/hooks/gitnexus/`): keep/adopt/remove —
   revisit after the filed upstream bug moves.
 - Removal trigger: `agentic gain --adoption` gitnexus count still ~0 after ~30
