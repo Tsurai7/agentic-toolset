@@ -272,6 +272,10 @@ func MergeCursor(root, outPath string) error {
 		if err := json.Unmarshal(b, out); err != nil {
 			return fmt.Errorf("merge-mcp: invalid JSON in %s: %w", outPath, err)
 		}
+	} else if !os.IsNotExist(err) {
+		// An existing-but-unreadable file is a hard error, not a silent "absent"
+		// that would drop the user's hand-added servers.
+		return fmt.Errorf("merge-mcp: cannot read %s: %w", outPath, err)
 	}
 	servers := jsonorder.New()
 	if raw, ok := out.GetRaw("mcpServers"); ok {

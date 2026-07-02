@@ -73,7 +73,7 @@ func GeneratedMD(root string) (string, error) {
 	}
 	b.Write(agents)
 
-	b.WriteString("\n\n## Principles (always-on)\n")
+	b.WriteString("\n## Principles (always-on)\n")
 	princ, _ := filepath.Glob(filepath.Join(root, "core", "principles", "*.md"))
 	sort.Strings(princ)
 	for _, f := range princ {
@@ -86,7 +86,7 @@ func GeneratedMD(root string) (string, error) {
 		}
 	}
 
-	b.WriteString("\n\n## User rules\n")
+	b.WriteString("\n## User rules\n")
 	rules, _ := filepath.Glob(filepath.Join(root, "core", "instructions", "user-rules", "*.md"))
 	sort.Strings(rules)
 	for _, f := range rules {
