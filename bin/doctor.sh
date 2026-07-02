@@ -80,6 +80,22 @@ fi
 echo ""
 
 echo "Binaries"
+# agentic-cfg PATH entry point (symlink created by linkInto during `bin/agentic link`).
+# linkInto always writes absolute targets, so we can assume readlink yields an absolute path.
+if cmd_path="$(command -v agentic-cfg 2>/dev/null)"; then
+  if [[ -L "$cmd_path" ]]; then
+    resolved="$(readlink "$cmd_path")"
+    if [[ "$resolved" == "${AGENTIC_ROOT}/bin/agentic" ]]; then
+      ok "agentic-cfg on PATH -> ${AGENTIC_ROOT}/bin/agentic"
+    else
+      warn "agentic-cfg on PATH but resolves to $resolved (expected ${AGENTIC_ROOT}/bin/agentic)"
+    fi
+  else
+    warn "agentic-cfg found at $cmd_path but is not a symlink"
+  fi
+else
+  warn "agentic-cfg not on PATH — run bin/install.sh (or bin/agentic link)"
+fi
 # NPX (if set) is a full path merge-mcp resolves itself; only a hardcoded
 # fallback here (that path may not exist on this machine) is dropped —
 # `command -v npx` on PATH is the actual signal.

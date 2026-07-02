@@ -2,6 +2,19 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.15.0] — 2026-07-02
+
+### Added
+- `agentic update` and `agentic version` subcommands (`internal/selfupdate/`): one-command
+  update workflow (fast-forward pull + rebuild + re-apply to all providers) and version
+  visibility (git describe + commit date + repo root).
+- `bin/install.sh` auto-links `agentic` and `agentic-cfg` into `~/.local/bin` after
+  provider dispatch, idempotent and honoring `--dry-run`.
+- `bin/doctor.sh` PATH entry-point check: verifies `agentic-cfg` symlink resolves to the
+  correct checkout binary.
+- `SETUP.md` "Updating" section: documents one-time link setup and ongoing update flow.
+- Git versioning via tags starting `v0.15.0` (applied post-merge by orchestrator).
+
 ## [0.14.1] — 2026-07-02
 
 ### Fixed

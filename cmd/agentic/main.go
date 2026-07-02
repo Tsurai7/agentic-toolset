@@ -17,6 +17,7 @@ import (
 	"github.com/Tsurai7/agentic-cfg/internal/hook"
 	"github.com/Tsurai7/agentic-cfg/internal/lifecycle"
 	"github.com/Tsurai7/agentic-cfg/internal/mcpmerge"
+	"github.com/Tsurai7/agentic-cfg/internal/selfupdate"
 	"github.com/Tsurai7/agentic-cfg/internal/settings"
 )
 
@@ -52,6 +53,10 @@ func run(args []string) int {
 		return statusCmd(args[1:])
 	case "link":
 		return linkCmd(args[1:])
+	case "update":
+		return updateCmd(args[1:])
+	case "version":
+		return versionCmd(args[1:])
 	case "-h", "--help", "help":
 		usage()
 		return 0
@@ -166,6 +171,32 @@ func statusCmd(args []string) int {
 	return 1
 }
 
+func updateCmd(args []string) int {
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	root := fs.String("root", defaultRoot(), "agentic-cfg repo root")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if err := selfupdate.Update(os.Stdout, *root); err != nil {
+		fmt.Fprintf(os.Stderr, "agentic update: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func versionCmd(args []string) int {
+	fs := flag.NewFlagSet("version", flag.ContinueOnError)
+	root := fs.String("root", defaultRoot(), "agentic-cfg repo root")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if err := selfupdate.Version(os.Stdout, *root); err != nil {
+		fmt.Fprintf(os.Stderr, "agentic version: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
 // defaultRoot derives the repo root from the running binary (repo/bin/agentic ->
 // repo). Falls back to the current directory.
 func defaultRoot() string {
@@ -277,5 +308,7 @@ commands:
   eject  [--root DIR] [--home DIR] [--dry-run]   cleanly remove it (preserves your own content)
   status [--root DIR] [--home DIR] [--json]      report whether agentic-cfg is injected
   link   [--dir DIR]                             symlink agentic + agentic-cfg onto your PATH (~/.local/bin)
+  update [--root DIR]                            pull latest (ff-only), rebuild, re-apply to all providers
+  version [--root DIR]                           show checkout version (git describe) and repo root
 `)
 }
