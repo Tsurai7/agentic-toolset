@@ -101,7 +101,8 @@ def _eff_delta(rec: dict) -> str:
     if not runs:
         return "—"
     deltas = [r["treatment"]["tool_calls"] - r["control"]["tool_calls"]
-              for r in runs if "treatment" in r and "control" in r]
+              for r in runs
+              if r.get("winner") != "error" and "treatment" in r and "control" in r]
     if not deltas:
         return "—"
     return f"{sum(deltas) / len(deltas):+.1f}"
