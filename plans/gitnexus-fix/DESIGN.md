@@ -22,6 +22,17 @@ the tool was **unusable**, not unused, for the whole measured window:
    session since the pin had zero graph tools. Before the pin, `@latest` resolved to a
    cached **1.6.7**, which starts fine on Node 20 (handshake verified:
    `serverInfo {"name":"gitnexus","version":"1.6.7"}`).
+
+   **Refinement (same day):** the outage had *two* layers. The `engines.node >=22`
+   mismatch was real but advisory; the actual crash trigger was a **corrupt npx
+   cache** (`~/.npm/_npx/1aef5872f6ce4e6c`, created 2026-06-30 — `commander`
+   resolved without its named exports there on Node 20 *and* Node 26 alike). After
+   `rm -rf` of that cache dir, `npx -y gitnexus@1.6.8 --version` → `1.6.8` on Node
+   26, and the MCP server handshakes in 2.4 s. Operator decision: install a current
+   Node locally (`brew install node` → v26, resolving ahead of the old system Node
+   on PATH) and track the latest gitnexus release instead of freezing on `1.6.7`.
+   The doctor start-check from this wave catches both failure modes, so it stays
+   exactly as shipped.
 2. **No working repo was indexed.** `~/.gitnexus/registry.json` shows exactly one
    index ever built: `Omni`, 2026-06-15 (430 files, 5,442 nodes) — proof of real prior
    use, and consistent with the single MCP call the audit found. `agentic-cfg` itself
@@ -75,9 +86,10 @@ CLI invocations (the MCP schema + skill normally carry that discovery).
 met — the tests show a ~23% token / ~39% time saving at equal correctness once the
 runtime works. The wedge, in this wave:
 
-1. Re-pin `1.6.8 → 1.6.7` (the newest release that runs on the machine's Node 20)
-   everywhere the version is spelled, and document the unpin path (upgrade machine
-   Node to ≥22, then track upstream — it ships multiple RCs per day as of 2026-07-02).
+1. Pin the version everywhere it is spelled and track upstream stable releases (the
+   pin now follows `1.6.8`, on Homebrew Node ≥22 — it ships multiple RCs per day as
+   of 2026-07-02); a `doctor.sh --deep` Node floor check enforces the machine
+   requirement instead of a version freeze.
 2. Make `doctor.sh --deep` actually **start** the registered MCP server and require a
    successful `initialize` handshake — the check that would have caught this outage
    the day the pin landed (today it only greps the pin string and validates JSON).

@@ -5,13 +5,20 @@ All notable changes to this config are recorded here. Newest first.
 ## [0.14.1] — 2026-07-02
 
 ### Fixed
-- Re-pinned gitnexus `1.6.8` → `1.6.7`: `1.6.8` requires Node ≥22, so the
-  registered MCP server was silently failing to start since 2026-06-24.
+- Root-caused the gitnexus MCP outage to two layers: the advisory
+  `engines.node >=22` mismatch, and the actual trigger — a corrupt npx cache
+  (`~/.npm/_npx/<hash>`) resolving `commander` without its named exports on
+  Node 20 *and* Node 26 alike. Resolution: pin to the latest stable
+  `gitnexus@1.6.8`, raise the machine's Node baseline to ≥22 via Homebrew
+  (`brew install node`, resolving ahead of any older Node on PATH), and clear
+  the offending npx cache directory.
 
 ### Added
 - MCP start/handshake check (`bin/mcp-start-check.py`) wired into
   `doctor.sh --deep`, so a registered-but-dead stdio MCP server fails the
   health check instead of passing a JSON-validity-only grep.
+- `doctor.sh --deep` Node floor check: fails if `node` is missing or below
+  major version 22, ahead of the gitnexus MCP start check.
 
 ## [0.14.0] — 2026-07-02
 

@@ -128,6 +128,17 @@ if [[ "$DEEP" -eq 1 ]]; then
   elif [[ -n "$pinned" ]]; then
     ok "gitnexus pinned: $pinned"
   fi
+  if node_version="$(command -v node >/dev/null 2>&1 && node --version)"; then
+    node_major="${node_version#v}"
+    node_major="${node_major%%.*}"
+    if [[ "$node_major" -ge 22 ]]; then
+      ok "node $node_version (>=22)"
+    else
+      fail "node $node_version — gitnexus requires Node >=22 (brew install node)"
+    fi
+  else
+    fail "node missing — gitnexus requires Node >=22 (brew install node)"
+  fi
   if [[ -f "${HOME}/.claude.json" ]] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if "gitnexus" in d.get("mcpServers", {}) else 1)' "${HOME}/.claude.json" 2>/dev/null; then
     if start_out="$(python3 "${AGENTIC_ROOT}/bin/mcp-start-check.py" "${HOME}/.claude.json" gitnexus 30 2>&1)"; then
       ok "gitnexus MCP server starts (${start_out})"
