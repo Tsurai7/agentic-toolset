@@ -8,10 +8,14 @@ rather than vibes.
 
 > **Freshness & confidence.** Compiled June 2026 from primary sources (vendor engineering
 > blogs and docs), then fact-checked by a separate adversarial pass; claims that couldn't be
-> confirmed were dropped or hedged. The product/model landscape moves fast — **exact model
-> names, prices, and limits drift monthly**, so this doc routes by *tier* and marks specific
-> figures as "up to" where the source did. Verify numbers at the linked source before
-> quoting them.
+> confirmed were dropped or hedged. **Re-verified and extended July 2026**: at least six
+> load-bearing claims were re-checked against current vendor docs (see
+> [What changed since the June snapshot](#what-changed-since-the-june-snapshot) below for
+> what moved), one broken link was fixed, and no previously-cited figure was found to be
+> wrong — only more precise or superseded by a newer number, which is now noted inline. The
+> product/model landscape moves fast — **exact model names, prices, and limits drift
+> monthly**, so this doc routes by *tier* and marks specific figures as "up to" where the
+> source did. Verify numbers at the linked source before quoting them.
 
 ## The big picture — what everyone agrees on
 
@@ -34,6 +38,52 @@ Despite different products, the four companies have converged on the same playbo
 
 The rest of this doc is the evidence behind each.
 
+## What changed since the June snapshot
+
+As of July 2026, the underlying playbook above is unchanged — every vendor still tiers
+models and exposes an effort dial. What moved is the concrete lineup and a couple of new
+orchestration primitives:
+
+- **Anthropic shipped a tier above Opus: Claude Fable 5** (`claude-fable-5`), generally
+  available since June 9, 2026, with an invitation-only sibling **Claude Mythos 5** for
+  Project Glasswing (defensive cybersecurity). Fable 5 runs **adaptive thinking always-on**
+  and adds a fifth effort level, **`xhigh`** (between `high` and `max`), aimed at long-horizon
+  agentic work with token budgets in the millions. Claude Code's effort menu also gained an
+  **`ultracode`** mode that pairs `xhigh` with standing permission to launch multi-agent
+  workflows. ([Models overview](https://platform.claude.com/docs/en/about-claude/models/overview) ·
+  [Effort](https://platform.claude.com/docs/en/build-with-claude/effort))
+- **Claude Code added Agent Teams**, an experimental (opt-in, disabled by default)
+  orchestration primitive distinct from subagents: teammates get their own context window
+  *and* message each other directly over a shared task list, rather than only reporting back
+  to a lead. Anthropic's own guidance keeps the same escalation logic this doc already
+  recommends — start with 3–5 teammates, prefer subagents for tasks that don't need
+  inter-agent discussion, and expect materially higher token cost than a single session.
+  ([Agent teams](https://code.claude.com/docs/en/agent-teams))
+- **OpenAI's reasoning-effort dial gained `none` and `xhigh`** (confirmed, not new relative to
+  the June text, but now verified directly against current docs) as the model line moved to
+  **GPT-5.4 / GPT-5.5**; `xhigh` targets "deep research and asynchronous workflows requiring
+  very long reasoning," mirroring Anthropic's new top effort level. Codex also picked up
+  **Codex Remote** (approve/monitor cloud runs from the ChatGPT mobile app), extending the
+  "plan/verify locally, delegate long work to the cloud" split this doc already describes.
+  ([Reasoning models](https://developers.openai.com/api/docs/guides/reasoning) ·
+  [Codex changelog](https://developers.openai.com/codex/changelog))
+- **Google folded Gemini CLI into the Go-based Antigravity CLI**; free/consumer-tier Gemini
+  CLI and Gemini Code Assist IDE extensions stop serving requests **June 18, 2026** (paid
+  Gemini Code Assist Standard/Enterprise licenses are unaffected). The Gemini model line also
+  moved a generation, to **Gemini 3.1 Pro / Gemini 3 Flash / Gemini 3.5 Flash / Gemini 3.1
+  Flash-Lite**, alongside a desktop **Antigravity 2.0** for multi-agent orchestration.
+  ([Transitioning Gemini CLI to Antigravity CLI](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/) ·
+  [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing))
+- **Cursor shipped Composer 2.5**, trained on "25x more synthetic coding tasks" than Composer
+  2 per Cursor's own post, with a cheaper "faster variant" alongside the standard tier; Auto
+  and Composer now draw from a shared "Auto + Composer" usage pool distinct from third-party
+  frontier models. ([Composer 2.5](https://cursor.com/blog/composer-2-5))
+
+None of this changes the doc's routing advice — it's more evidence for the same pattern:
+tier the model, tune effort before switching tiers, and reserve multi-agent fan-out
+(subagents, Agent Teams, or Cursor's parallel-agent interface) for work that actually
+fans out.
+
 ## Anthropic
 
 **Tiering & orchestration.** Anthropic's *Building effective agents* essay is the canonical
@@ -55,9 +105,15 @@ the task value justifies a 15× token bill.*
 
 The cheap tier is explicit. On the Haiku release: "Sonnet … can break down a complex problem
 into multi-step plans, then orchestrate a team of multiple **Haiku**s to complete subtasks in
-parallel." Docs list "sub-agent tasks" as a primary Haiku use case. (The current top tier has
-moved beyond Opus 4.8 in the live model picker; route by tier — *frontier / balanced / cheap*
-— and let `/model` pick the concrete name.)
+parallel." Docs list "sub-agent tasks" as a primary Haiku use case — the current model
+selection matrix still names Haiku 4.5 for "sub-agent tasks" explicitly. Previously this doc
+hedged that "the current top tier has moved beyond Opus 4.8 in the live model picker"; as of
+July 2026 that tier has a name: **Claude Fable 5** (GA since June 9, 2026), a widely-released
+tier above Opus, with an invitation-only **Claude Mythos 5** alongside it for defensive
+cybersecurity workflows (Project Glasswing). Opus 4.8 remains the recommended starting point
+for "complex agentic coding and enterprise work"; Fable 5 is for workloads that need the
+highest available capability. Route by tier — *frontier / balanced / cheap* — and let
+`/model` pick the concrete name.
 
 **Token efficiency.** Three named levers:
 - **Prompt caching** — "reducing costs by **up to 90%** and latency by **up to 85%** for long
@@ -66,31 +122,45 @@ moved beyond Opus 4.8 in the live model picker; route by tier — *frontier / ba
   by *context rot* (accuracy degrades as the window fills against a finite attention budget).
   For long horizons: **compaction**, **structured note-taking/memory**, and **sub-agent
   isolation**.
-- **Effort tuning** — "tuning effort is often a better lever than switching models."
+- **Effort tuning** — "tuning effort is often a better lever than switching models." As of
+  July 2026 the dial has five levels (`low`/`medium`/`high`/`xhigh`/`max`); `xhigh` is new
+  since the June snapshot, aimed at "long-running agentic and coding tasks (over 30 minutes)
+  with token budgets in the millions." `high` remains the default on every current model.
 
 **Productized.** Claude Code **subagents** implement orchestrator-workers locally: each runs
 in its own context window with a custom prompt, restricted tools, and a **configurable
-model** (the built-in `Explore` runs on a cheap fast tier; `Plan` inherits the main model);
-forked subagents reuse the parent's prompt cache. The Claude Agent SDK exposes the same loop
-for building these in code.
+model** (the `model` frontmatter field accepts `sonnet`/`opus`/`haiku`/`fable`/a full model
+ID/`inherit`; the built-in `Explore` runs on Haiku, `Plan` inherits the main model);
+forked subagents reuse the parent's prompt cache. As of July 2026, Claude Code also ships an
+**experimental Agent Teams** mode for cases subagents don't cover — see
+[What changed since the June snapshot](#what-changed-since-the-june-snapshot). The Claude
+Agent SDK exposes the same loop for building these in code.
 
 Sources: [Building effective agents](https://www.anthropic.com/engineering/building-effective-agents) ·
 [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (2025-06) ·
 [Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) (2025-09) ·
-[Prompt caching](https://www.anthropic.com/news/prompt-caching) ·
+[Prompt caching](https://claude.com/blog/prompt-caching) (moved from anthropic.com/news, verified July 2026) ·
 [Claude Code subagents](https://code.claude.com/docs/en/sub-agents) ·
-[Choosing a model](https://platform.claude.com/docs/en/about-claude/models/choosing-a-model)
+[Claude Code agent teams](https://code.claude.com/docs/en/agent-teams) ·
+[Choosing a model](https://platform.claude.com/docs/en/about-claude/models/choosing-a-model) ·
+[Effort](https://platform.claude.com/docs/en/build-with-claude/effort)
 
 ## OpenAI
 
 **Tiering & orchestration.** OpenAI fields a frontier coding/reasoning model plus
 progressively cheaper variants and **mini/nano** tiers explicitly "for tasks where speed and
-cost matter most like classification, data extraction, ranking, and **sub-agents**." Its
-official model-selection method is **optimize-down**: "Optimize for accuracy first … then
-maintain accuracy with the cheapest, fastest model possible." A single **`reasoning.effort`**
-control (values are model-dependent; recent models add `none` and `xhigh`) tunes thinking,
-and "**higher reasoning effort isn't automatically better**" — high effort on weakly-specified
-tasks causes overthinking. A separate `text.verbosity` knob trims output length independently.
+cost matter most like classification, data extraction, ranking, and **sub-agents**." As of
+July 2026 the frontier line is **GPT-5.5** (defaulting to `medium` reasoning effort), with
+**GPT-5.4** the source of the cheaper **mini** and **nano** variants; OpenAI's own migration
+guidance is to "begin migration with a fresh baseline instead of carrying over every
+instruction from an older prompt stack" rather than assume drop-in compatibility across
+generations. Its official model-selection method is **optimize-down**, confirmed verbatim in
+current docs: "Optimize for accuracy first … then maintain accuracy with the cheapest,
+fastest model possible." A single **`reasoning.effort`** control — confirmed values as of
+July 2026: `none`, `minimal`, `low`, `medium`, `high`, `xhigh` (model-dependent; check the
+model page) — tunes thinking, and "**higher reasoning effort isn't automatically better**" —
+high effort on weakly-specified tasks causes overthinking. A separate `text.verbosity` knob
+trims output length independently.
 
 The **Agents SDK** offers two orchestration shapes — a code-owned **Manager** (agents-as-
 tools, the manager keeps the reply) and decentralized **Handoffs** (control transfers to a
@@ -101,7 +171,10 @@ model to halt bad requests *before* the expensive agent runs.
 **Codex** is the agentic-coding product across a local CLI, a parallel **cloud** environment,
 and an IDE extension; the guidance is to "treat Codex like a teammate with explicit context
 and a clear definition of 'done'" — plan/verify in the tight local loop, delegate long
-implementations to background cloud tasks.
+implementations to background cloud tasks. New since June 2026: **Codex Remote** reached
+general availability, letting you start, monitor, and approve a cloud run from the ChatGPT
+mobile app — the same local-plan/cloud-delegate split, with the approval step no longer tied
+to a desk.
 
 **Token efficiency.** **Automatic prompt caching** gives "**up to 90%** cheaper cached input
 tokens" with no cache-write fee (place static content first, variable content last, ≥1024-
@@ -111,20 +184,27 @@ Reasoning tokens are billed as (hidden) output tokens and discarded between turn
 
 Sources: [Models](https://developers.openai.com/api/docs/models) ·
 [Model selection](https://developers.openai.com/api/docs/guides/model-selection) ·
-[Latest-model guide](https://developers.openai.com/api/docs/guides/latest-model) ·
+[Latest-model guide (GPT-5.5)](https://developers.openai.com/api/docs/guides/latest-model) ·
+[Reasoning models](https://developers.openai.com/api/docs/guides/reasoning) ·
 [A practical guide to building agents (PDF)](https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf) ·
 [Agents SDK handoffs](https://openai.github.io/openai-agents-python/handoffs/) ·
-[Prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching)
+[Prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching) ·
+[Codex changelog](https://developers.openai.com/codex/changelog)
 
 ## Google
 
 **Tiering & orchestration.** Google tiers the **Gemini** family into **Pro** (deep reasoning/
 agentic coding), **Flash** (fast, frontier-class), and **Flash-Lite** (budget high-volume),
 with the cheap-vs-deep split visible in pricing (Flash-Lite output is several-fold cheaper
-than Pro). A unified **thinking-level** control (low/medium/high; numeric `thinking_budget`
-still supported) trades reasoning depth for cost, since thinking tokens bill as output.
-Google markets Flash as delivering "Pro-grade reasoning with Flash-level latency, efficiency
-and cost" — using materially fewer tokens than the prior Pro on everyday tasks.
+than Pro). As of July 2026 the generation has moved to **Gemini 3.1 Pro**, **Gemini 3 Flash**,
+**Gemini 3.5 Flash**, and **Gemini 3.1 Flash-Lite** (the 2.5 generation is still listed and
+priced, but no longer the newest); the tier split holds at the new generation too — 3.1
+Flash-Lite input is roughly 8x cheaper than 3.1 Pro input. A unified **thinking-level**
+control (low/medium/high; numeric `thinking_budget` still supported) trades reasoning depth
+for cost, since thinking tokens bill as output. Google markets Flash as delivering "Pro-grade
+reasoning with Flash-level latency, efficiency and cost" — using materially fewer tokens than
+the prior Pro on everyday tasks; per Google's own I/O 2026 claim, Gemini 3.5 Flash
+"outperforms Gemini 3.1 Pro across almost all benchmarks while running four times faster."
 
 Uniquely, Google ships a **managed cost router**: the **Vertex AI Model Optimizer** is "a
 single meta-endpoint that auto-selects the best Gemini model per request" via a quality-vs-
@@ -132,24 +212,37 @@ cost preference (`PRIORITIZE_QUALITY` / `BALANCED` / `PRIORITIZE_COST`) — rout
 platform instead of app code.
 
 **Agentic coding** consolidated in 2026: **Gemini CLI** (open-source) is being folded into
-the Go-based **Antigravity CLI**; **Antigravity** is an agent-first platform centered on
-parallel multi-agent orchestration; **Jules** is an async coding agent that runs in an
-isolated cloud VM, plans before acting, and returns reviewable GitHub PRs; the Gemini API
-added **Managed Agents** ("a single API call … spins up an agent that reasons, uses tools and
-executes code in an isolated Linux environment"). The open-source **Agent Development Kit
-(ADK)** provides sequential/parallel/loop/hierarchical (coordinator-dispatcher) orchestration
-and is model-agnostic — assign cheap models to workers, a stronger one to the coordinator.
+the Go-based **Antigravity CLI** — previously stated as an in-progress move, now confirmed
+with a firm date: free/consumer-tier Gemini CLI and Gemini Code Assist IDE extensions stopped
+serving requests **June 18, 2026** (paid Gemini Code Assist Standard/Enterprise and
+Gemini-Code-Assist-for-GitHub customers are unaffected). **Antigravity** is an agent-first
+platform centered on parallel multi-agent orchestration, and gained a desktop **Antigravity
+2.0** at I/O 2026 for the same purpose; **Jules** is an async coding agent that runs in an
+isolated cloud VM, plans before acting, and returns reviewable GitHub PRs — as of I/O 2026 its
+context window grew to 2M tokens and it now auto-fixes its own CI failures on a PR before
+requesting review; the Gemini API's **Managed Agents** ("a single API call … spins up an agent
+that reasons, uses tools and executes code in an isolated Linux environment") moved from
+preview toward broader availability, running on Gemini 3.5 Flash inside an isolated,
+OS-level-sandboxed Linux environment. The open-source **Agent Development Kit (ADK)** provides
+sequential/parallel/loop/hierarchical (coordinator-dispatcher) orchestration and is
+model-agnostic — assign cheap models to workers, a stronger one to the coordinator.
 
 **Token efficiency.** The **1M-token context window** plus **context caching** is the
 strategy: **implicit caching** is automatic (no storage fee) and **explicit caching** manages
-reusable cache objects (hourly storage fee). Cached-input discounts are large (on the order of
-75% on the 2.5 generation, higher on newer ones). The signature move: **load a whole repo
-once and cache it**, so every subsequent agent turn reads context at the cached rate.
+reusable cache objects (hourly storage fee). Cached-input discounts are large; previously
+stated as "on the order of 75% on the 2.5 generation, higher on newer ones" — confirmed
+directionally correct as of July 2026: Gemini 3.5 Flash's cached input is **$0.15/MTok
+against a $1.50/MTok standard rate, a 90% discount**, per Google's own pricing page. The
+signature move: **load a whole repo once and cache it**, so every subsequent agent turn reads
+context at the cached rate.
 
 Sources: [Gemini caching](https://ai.google.dev/gemini-api/docs/caching) ·
+[Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing) ·
 [Vertex AI Model Optimizer](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/vertex-ai-model-optimizer) ·
 [Antigravity](https://developers.googleblog.com/build-with-google-antigravity-our-new-agentic-development-platform/) ·
+[Transitioning Gemini CLI to Antigravity CLI](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/) ·
 [Jules](https://blog.google/innovation-and-ai/models-and-research/google-labs/jules/) ·
+[Managed Agents in the Gemini API](https://blog.google/innovation-and-ai/technology/developers-tools/managed-agents-gemini-api/) ·
 [ADK](https://adk.dev/) ·
 [I/O 2026 highlights](https://blog.google/innovation-and-ai/technology/developers-tools/google-io-2026-developer-highlights/)
 
@@ -160,13 +253,18 @@ third-party frontier models, it **trained its own** model family, **Composer** �
 mixture-of-experts model trained with reinforcement learning *inside the real Cursor agent
 harness* (semantic search, grep, edit, terminal). Cursor reports (vendor self-report)
 Composer generates **~4× faster** than similarly intelligent models, finishing most agent
-turns under 30s. Orchestration centers on an **"Auto"** router that "balance[s] intelligence,
-cost efficiency, and reliability" for everyday tasks — billed from a cheaper included-usage
-pool than named frontier models, a deliberate strong-vs-cheap tradeoff. **Plan Mode**
-separates planning from execution: the agent researches, asks clarifying questions, and
-produces an editable plan you approve before any code is written. **Cursor 2.0** added a
-multi-agent interface to run many agents in parallel (git worktrees or remote VMs), including
-racing several models on one problem (best-of-N).
+turns under 30s. As of July 2026 the current release is **Composer 2.5**, trained on "25x
+more synthetic coding tasks" than Composer 2 per Cursor's own post, aimed at more reliable
+sustained work on long-running tasks; it ships alongside a cheaper "faster variant" at the
+same intelligence level. Orchestration centers on an **"Auto"** router that "balance[s]
+intelligence, cost efficiency, and reliability" for everyday tasks — billed from a cheaper
+included-usage pool than named frontier models, a deliberate strong-vs-cheap tradeoff; Cursor
+now names this pool **"Auto + Composer,"** split out from a separate "Third-Party API" pool
+(Claude, GPT, Gemini) on Teams seats. **Plan Mode** separates planning from execution: the
+agent researches, asks clarifying questions, and produces an editable plan you approve before
+any code is written. **Cursor 2.0** added a multi-agent interface to run many agents in
+parallel (git worktrees or remote VMs), including racing several models on one problem
+(best-of-N).
 
 **Token / context efficiency.**
 - **Codebase indexing** — chunk code, embed it, store obfuscated vectors remotely, **re-embed
@@ -184,6 +282,7 @@ racing several models on one problem (best-of-N).
 
 Sources: [Cursor 2.0](https://cursor.com/blog/2-0) ·
 [Composer](https://cursor.com/blog/composer) ·
+[Composer 2.5](https://cursor.com/blog/composer-2-5) ·
 [Models](https://cursor.com/docs/models) ·
 [Codebase indexing](https://cursor.com/docs/context/codebase-indexing) ·
 [Rules](https://cursor.com/docs/context/rules) ·
