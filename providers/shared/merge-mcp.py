@@ -295,14 +295,23 @@ def main() -> int:
         for name in removed_names:
             result["mcpServers"].pop(name, None)
 
-    rendered = json.dumps(result, indent=2) + "\n"
+    rendered = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
     sidecar_rendered = (
-        json.dumps({"version": SIDECAR_VERSION, "servers": managed_names}, indent=2) + "\n"
+        json.dumps({"version": SIDECAR_VERSION, "servers": managed_names}, indent=2, ensure_ascii=False) + "\n"
     )
     if os.environ.get("DRY_RUN") == "1":
         print(f"[dry-run] would write {output}:\n{rendered}", end="")
         print(f"[dry-run] would write {sidecar_path}:\n{sidecar_rendered}", end="")
         return 0
+    # Known limitation (audit 2026-07): the config and its sidecar are two
+    # separate atomic writes, not one transaction. A crash between them leaves the
+    # sidecar one run stale; the common case self-heals on the next run (the pop of
+    # an already-removed name is a no-op). A naive fix (write the sidecar first) is
+    # NOT strictly safer — it trades the rare "user re-adds a same-named server
+    # before the next run, which then deletes it" race for a new case where a
+    # server the repo stopped managing is orphaned in the config and never cleaned
+    # (removed_names would always be empty). Full two-file atomicity would need a
+    # journal; deferred. Kept config-first so the normal path self-heals.
     atomic_write_text(output, rendered)
     atomic_write_text(sidecar_path, sidecar_rendered)
     print(
