@@ -172,9 +172,17 @@ def _median(runs: list[dict], key: str):
 def measure_task(name: str, maker, model: str, reps: int, off_config_dir: Path) -> dict:
     """Run a task's ON/OFF arms `reps` times; report median metrics and correctness
     rates so a single noisy run can't decide the verdict. The reported ratio is the
-    ratio of medians (robust to per-run variance)."""
+    ratio of medians (robust to per-run variance).
+
+    Errored reps (timeout, auth failure, no result event) are excluded from an arm's
+    medians and its correctness rate: their empty/zero metrics would otherwise be
+    medianed in as if a phantom run were a real, cheap one. An arm whose every rep
+    errored yields None medians and a None correctness rate, which propagates to an
+    UNKNOWN verdict rather than a false PASS on a median of zeros.
+    """
     on_runs, off_runs = [], []
     correct_on = correct_off = 0
+    on_n = off_n = 0
     off_env = {"CLAUDE_CONFIG_DIR": str(off_config_dir)}
     for _ in range(reps):
         d, task, correct = maker()
@@ -183,10 +191,14 @@ def measure_task(name: str, maker, model: str, reps: int, off_config_dir: Path) 
             off_raw = _run_arm(d, task, model, env=off_env)
         finally:
             shutil.rmtree(d, ignore_errors=True)
-        on_runs.append(agent.metrics(on_raw))
-        off_runs.append(agent.metrics(off_raw))
-        correct_on += int(bool(correct(agent.final_text(on_raw))))
-        correct_off += int(bool(correct(agent.final_text(off_raw))))
+        if agent.result_error(on_raw) is None:
+            on_runs.append(agent.metrics(on_raw))
+            correct_on += int(bool(correct(agent.final_text(on_raw))))
+            on_n += 1
+        if agent.result_error(off_raw) is None:
+            off_runs.append(agent.metrics(off_raw))
+            correct_off += int(bool(correct(agent.final_text(off_raw))))
+            off_n += 1
     on_med = {k: _median(on_runs, k) for k in _MEDIAN_KEYS}
     off_med = {k: _median(off_runs, k) for k in _MEDIAN_KEYS}
     return {
@@ -195,13 +207,17 @@ def measure_task(name: str, maker, model: str, reps: int, off_config_dir: Path) 
         "ratios": agent.overhead_ratios(on_med, off_med),
         "median_turns_on": on_med["num_turns"],
         "median_turns_off": off_med["num_turns"],
-        "correct_on_rate": correct_on / reps,
-        "correct_off_rate": correct_off / reps,
+        "correct_on_rate": (correct_on / on_n) if on_n else None,
+        "correct_off_rate": (correct_off / off_n) if off_n else None,
     }
 
 
 def _fmt(x, suffix="x"):
     return "—" if x is None else f"{x:.2f}{suffix}"
+
+
+def _pct(x):
+    return "—" if x is None else f"{x:.0%}"
 
 
 def _worst_ratio(results: list[dict], key: str):
@@ -225,7 +241,11 @@ def _verdict(results: list[dict], max_ratio: float = judge.OVERHEAD_EASY_MAX) ->
     no task regresses correctness (ON solved less often than the bare OFF arm)."""
     worst_ti = _worst_ratio(results, "total_input_ratio")
     worst_cost = _worst_ratio(results, "cost_ratio")
-    regression = any(r["correct_on_rate"] < r["correct_off_rate"] for r in results)
+    regression = any(
+        r["correct_on_rate"] is not None and r["correct_off_rate"] is not None
+        and r["correct_on_rate"] < r["correct_off_rate"]
+        for r in results
+    )
     return judge.judge_overhead(
         {"total_input_ratio": worst_ti, "cost_ratio": worst_cost,
          "correct_on": not regression, "correct_off": True},
@@ -236,8 +256,8 @@ def _verdict(results: list[dict], max_ratio: float = judge.OVERHEAD_EASY_MAX) ->
 def _print_human(results: list[dict], verdict: dict) -> None:
     for r in results:
         ra = r["ratios"]
-        print(f"\n== {r['task']} (reps={r['reps']}; correct ON={r['correct_on_rate']:.0%} "
-              f"OFF={r['correct_off_rate']:.0%}) ==")
+        print(f"\n== {r['task']} (reps={r['reps']}; correct ON={_pct(r['correct_on_rate'])} "
+              f"OFF={_pct(r['correct_off_rate'])}) ==")
         print(f"  median total_input ON/OFF : {_fmt(ra['total_input_ratio'])}"
               f"  (repriced {_fmt(ra['repriced_input_ratio'])})")
         print(f"  median cost ON/OFF        : {_fmt(ra['cost_ratio'])}")

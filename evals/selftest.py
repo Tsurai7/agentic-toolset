@@ -335,6 +335,44 @@ def test_overhead_worst_ratio_propagates_none():
     assert verdict["verdict"] == "UNKNOWN", verdict
 
 
+def test_overhead_measure_task_excludes_errored_reps():
+    # An errored rep (timeout) must not be medianed into an arm as if it were a
+    # real, cheap run, and must not count toward the correctness rate — mirrors
+    # swe_bench.measure_cell. An arm whose every rep errored yields None medians,
+    # which grades UNKNOWN rather than a false PASS on a median of zeros.
+    spec = importlib.util.spec_from_file_location("overhead", EVALS / "overhead.py")
+    overhead = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(overhead)
+    clean = ('{"type":"result","is_error":false,"result":"A, B, D, E — total 4",'
+             '"num_turns":2,"usage":{"input_tokens":10,"output_tokens":5,'
+             '"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}')
+    timeout = '{"type":"result","is_error":true,"subtype":"timeout","result":"<TIMEOUT>","usage":{}}'
+    on_calls = iter([clean, timeout, clean])  # ON: clean, timeout, clean
+
+    def fake_run_arm(cwd, prompt, model, env=None):
+        return clean if env else next(on_calls)  # OFF (env set) always clean
+
+    saved = overhead._run_arm
+    try:
+        overhead._run_arm = fake_run_arm
+        res = overhead.measure_task("easy", overhead.TASKS["easy"], "haiku", 3, Path("/nonexistent-off"))
+
+        assert res["median_turns_on"] == 2, res     # median of {2, 2}; timeout excluded
+        assert res["correct_on_rate"] == 1.0, res    # only the 2 non-errored ON reps count
+        assert res["correct_off_rate"] == 1.0, res
+
+        def all_timeout(cwd, prompt, model, env=None):
+            return timeout
+
+        overhead._run_arm = all_timeout
+        errored = overhead.measure_task("easy", overhead.TASKS["easy"], "haiku", 2, Path("/nonexistent-off"))
+    finally:
+        overhead._run_arm = saved
+    assert errored["ratios"]["total_input_ratio"] is None, errored
+    assert errored["correct_on_rate"] is None and errored["correct_off_rate"] is None, errored
+    assert overhead._verdict([errored])["verdict"] == "UNKNOWN", errored
+
+
 def test_cases_loader_names_bad_file():
     # BUG-22: a malformed case file must produce a legible, file-named error —
     # not a bare JSONDecodeError traceback — and must not abort the good files.
