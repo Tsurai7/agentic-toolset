@@ -184,7 +184,7 @@ def render(rows: dict[tuple[str, str], dict[str, str]], notes: str = "") -> str:
         return "\n".join(lines)
 
     lines += [
-        "| Case | Model | Verdict | Treatment wins | Flip-rate | Tool-call Δ | Confidence |",
+        _MACHINE_HEADER,
         "|------|-------|---------|----------------|-----------|-------------|------------|",
     ]
     for (cid, model), row in sorted(rows.items()):
