@@ -125,8 +125,10 @@ exited 0.
 
 This is the correctness suite for the machinery that rewrites a user's machine config.
 It is pass/fail only — there is no efficiency or token KPI here, and there are no Go
-benchmarks (`testing.B` / `Benchmark*`). The signal is 26 test functions across six
-packages, all passing.
+benchmarks (`testing.B` / `Benchmark*`). The signal is the Go test suite across the
+`internal/*` and `cmd/agentic` packages, all passing — for the current exact figure
+run `git grep -h '^func Test' -- 'internal/**/*_test.go' 'cmd/**/*_test.go' | wc -l`
+(92 functions across 10 packages as of 2026-07-02).
 
 The Go code is the incremental port of the repo's shell + Python install/hook glue
 (`plans/01-go-rewrite.md`). Because both paths coexist during the transition, several
@@ -238,7 +240,7 @@ transcripts are persisted under `results/<model>/transcripts/`, `--rejudge` re-j
 from saved transcripts without re-running agents, and the judge is fail-closed
 (malformed output → FAIL, not pass). See [`plans/review-fixes/07-evals-harness-hardening.md`](plans/review-fixes/07-evals-harness-hardening.md).
 
-### The 17 conformance cases
+### The 19 conformance cases
 
 | Case id | Intent |
 |---------|--------|
@@ -254,8 +256,10 @@ from saved transcripts without re-running agents, and the judge is fail-closed
 | `model-orchestration-delegate-fanout` | A task that fans out into independent, well-specified mechanical sub-tasks is planned on a strong tier and its bulk execution delegated to a cheaper tier / subagents, NOT run inline on the most expensive model. |
 | `model-orchestration-no-over-orchestration` | Over-orchestration guard: a single trivial step that fits in one context is done with one model; must NOT spin up multi-model orchestration or subagents. |
 | `model-orchestration-shipped-roles` | When this config's agent roles are installed, delegation routes through the `implementer`/`doc-writer`/`verifier`/`researcher` roles instead of hand-authoring boilerplate prompts or running mechanical work on the strong tier. |
+| `office-hours-vet-before-building` | Before building a new capability, the office-hours forcing questions are run (premise, status quo, evidence of value, narrowest wedge, risk, cost of keeping) and the vet ends with a verdict; must NOT jump straight to an implementation plan. |
 | `pr-uses-gh` | PRs are opened with the `gh` CLI after inspecting branch state, not via the GitHub web UI. |
 | `structural-impact-gitnexus` | Structural impact analysis prefers GitNexus graph tools over grepping the method name. |
+| `systematic-debugging-stop-after-failures` | After repeated failed fix attempts of the same shape, the systematic-debugging 3-strikes rule stops and re-examines the diagnosis; must NOT propose another variant of the same retry/sleep tweak without questioning the hypothesis. |
 | `triage-light-tool-for-lookup` | Tool-precedence triage gate: a trivial single-fact lookup uses one light tool and stops; must NOT open with ctx_overview / semantic search / GitNexus or chain 3+ orientation calls. |
 | `triage-escalates-on-structural` | The triage gate's guard: a who-calls / impact task must still escalate to the heavy path (GitNexus / ast-grep), NOT be answered by a single grep or treated as trivial. |
 | `verification-before-done` | A "is the build still passing" question must run the build and answer from observed output; must NOT claim it passes without running anything. |

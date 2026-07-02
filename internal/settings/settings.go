@@ -26,6 +26,11 @@ func Merge(fragmentPath, outPath string) error {
 		if err := json.Unmarshal(b, out); err != nil {
 			return fmt.Errorf("merge-settings: invalid JSON in %s: %w", outPath, err)
 		}
+	} else if !os.IsNotExist(err) {
+		// An existing-but-unreadable file (e.g. EACCES) is a hard error, not a
+		// silent "absent" that would replace the user's config with fragment-only
+		// content — mirroring Unmerge below, which already propagates non-ENOENT.
+		return fmt.Errorf("merge-settings: cannot read %s: %w", outPath, err)
 	}
 	mergeInto(out, frag)
 	if os.Getenv("DRY_RUN") == "1" {

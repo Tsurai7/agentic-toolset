@@ -25,6 +25,11 @@ def atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
     as it was, so a crashed merge never corrupts the user's live config.
     """
     path = Path(path)
+    # Resolve a symlinked destination (dotfiles/stow pattern) so the atomic
+    # os.replace lands on the link target instead of replacing the user's symlink
+    # with a regular file. Only an actual symlink is resolved.
+    if path.is_symlink():
+        path = Path(os.path.realpath(path))
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=".agentic-", suffix=".tmp", dir=str(path.parent))
     try:

@@ -3,6 +3,7 @@ package hook
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"testing"
 )
 
@@ -82,6 +83,21 @@ func TestShellGuard(t *testing.T) {
 		// BUG-01: a real multiline command (decoded \n from the JSON) must fail
 		// open, never get a literal-\n-mangled rewrite from string-munged JSON.
 		{"plain multiline fail-open (BUG-01)", "echo a\necho b", "PASS", ""},
+		// A1: complex-command fail-open must run before the ast-grep deny, so a
+		// heredoc/multiline/cd-chain/$( )-containing grep-on-code command fails
+		// open instead of being denied (issues/shell-guard-astgrep-order-bypass.md).
+		{"multiline grep-on-code fails open (A1)", "grep TODO main.go\necho b", "PASS", ""},
+		{"heredoc grep-on-code fails open (A1)", "grep TODO main.go <<EOF\nx\nEOF", "PASS", ""},
+		{"cd-chain grep-on-code fails open (A1)", "cd src && grep TODO main.go", "PASS", ""},
+		{"cmdsub grep-on-code fails open (A1)", "grep TODO main.go $(pwd)", "PASS", ""},
+		{"heredoc-body false-positive fails open (A1)", "grep bug notes.txt <<EOF\nsee main.go\nEOF", "PASS", ""},
+		// A3: a code extension mid-filename (backup/suffixed text file) must not
+		// deny, but a code extension terminated by a pipe/semicolon still must.
+		{"backup file .go.orig not denied (A3)", "grep foo main.go.orig", "REWRITE", "rtk grep foo main.go.orig"},
+		{"backup file .go.txt not denied (A3)", "grep TODO main.go.txt", "REWRITE", "rtk grep TODO main.go.txt"},
+		{"backup file .py.bak not denied (A3)", "rg pat src/util.py.bak", "REWRITE", "rtk rg pat src/util.py.bak"},
+		{"unspaced pipe still denied (A3)", "grep foo main.go|head", "DENY", ""},
+		{"semicolon still denied (A3)", "grep foo main.go;ls", "DENY", ""},
 	}
 	for _, c := range cases {
 		gotDec, gotCmd := decide(c.cmd)
@@ -107,6 +123,17 @@ func TestClassify(t *testing.T) {
 		{"FOO=1 echo hi", DecisionFailOpenAssign},
 		{"echo ===", DecisionFailOpenEquals},
 		{"echo hi", DecisionWrap},
+		// A1: complex-command fail-open must win over the ast-grep deny for
+		// grep-on-code commands wrapped in a heredoc/multiline/cd-chain/$( ).
+		{"grep TODO main.go\necho b", DecisionFailOpenComplex},
+		{"grep TODO main.go <<EOF\nx\nEOF", DecisionFailOpenComplex},
+		{"cd src && grep TODO main.go", DecisionFailOpenComplex},
+		{"grep TODO main.go $(pwd)", DecisionFailOpenComplex},
+		{"grep bug notes.txt <<EOF\nsee main.go\nEOF", DecisionFailOpenComplex},
+		// A3: a code extension mid-filename must not deny; terminated by a pipe
+		// still must.
+		{"grep foo main.go.orig", DecisionWrap},
+		{"grep foo main.go|head", DecisionDenyGrepCode},
 	}
 	for _, c := range cases {
 		if got := Classify(c.cmd); got != c.want {
@@ -145,5 +172,36 @@ func TestLeanCtxRewriteHonored(t *testing.T) {
 	dec, cmd := decide("ls -la")
 	if dec != "REWRITE" || cmd != "lean-ctx -c 'ls'" {
 		t.Errorf("lean-ctx output should be honored verbatim, got (%s, %q)", dec, cmd)
+	}
+}
+
+// A7: a panic anywhere in the hook path must fail open (return 0), not
+// propagate — an unrecovered panic would otherwise exit the process non-zero,
+// which Claude Code treats as a blocking hook error.
+func TestPanicFailsOpen(t *testing.T) {
+	leanCtxRewrite = func(raw []byte) ([]byte, bool) { panic("boom") }
+	hasRTK = func() bool { return true }
+	defer func() { leanCtxRewrite = func(raw []byte) ([]byte, bool) { return nil, false } }()
+
+	raw, _ := json.Marshal(map[string]any{
+		"tool_name":  "Bash",
+		"tool_input": map[string]any{"command": "ls -la"},
+	})
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(raw); err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+	origStdin := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = origStdin }()
+
+	code := Main([]string{"shell-guard"})
+	if code != 0 {
+		t.Errorf("Main should fail open (return 0) on panic, got %d", code)
 	}
 }

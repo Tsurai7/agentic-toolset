@@ -117,8 +117,12 @@ existing: dict = {}
 if os.path.isfile(out_path):
     try:
         existing = json.loads(open(out_path, encoding="utf-8").read()) or {}
-    except json.JSONDecodeError:
-        existing = {}
+    except json.JSONDecodeError as exc:
+        # A malformed existing hooks.json is a hard error (leave it untouched),
+        # matching merge-settings/merge-mcp — not a silent clobber that would drop
+        # the user's hand-added hook events.
+        print(f"merge-hooks: invalid JSON in {out_path}: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 before = json.dumps(existing, indent=2, sort_keys=True)
 
@@ -136,7 +140,7 @@ else:
         backup = f"{out_path}.bak.{int(time.time())}"
         os.rename(out_path, backup)
         print(f"backed up {out_path} -> {backup}")
-    atomic_write_text(out_path, json.dumps(merged, indent=2) + "\n")
+    atomic_write_text(out_path, json.dumps(merged, indent=2, ensure_ascii=False) + "\n")
     print(f"hooks: {out_path}")
 PY
 }
@@ -245,7 +249,7 @@ if os.path.isfile(mcp_path):
     servers = data.get("mcpServers", {})
     for name in managed:
         servers.pop(name, None)
-    atomic_write_text(mcp_path, json.dumps(data, indent=2) + "\n")
+    atomic_write_text(mcp_path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     print(f"removed {len(managed)} managed MCP server(s) from {mcp_path}")
 PY
     fi
@@ -274,7 +278,7 @@ hooks = dict(existing.get("hooks", {}) or {})
 for event in fragment.get("hooks", {}):
     hooks.pop(event, None)
 existing["hooks"] = hooks
-atomic_write_text(out_path, json.dumps(existing, indent=2) + "\n")
+atomic_write_text(out_path, json.dumps(existing, indent=2, ensure_ascii=False) + "\n")
 print(f"removed repo-managed hook event(s) from {out_path}")
 PY
     fi

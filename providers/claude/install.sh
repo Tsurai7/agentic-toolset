@@ -59,7 +59,16 @@ link_skills() {
   elif [[ -d "$target" ]]; then
     log "backup existing $target"
     if [[ "$DRY_RUN" != "1" ]]; then
-      mv "$target" "${target}.bak.$(date +%s)"
+      # Back up to the same name `agentic eject` restores (.pre-agentic), so the
+      # documented install.sh -> eject flow returns the user's own dir instead of
+      # stranding it under a timestamped name it never looks for. If a
+      # .pre-agentic backup already exists, keep it (earliest wins) and fall back
+      # to a timestamped name so nothing is lost.
+      if [[ -e "${target}.pre-agentic" ]]; then
+        mv "$target" "${target}.bak.$(date +%s)"
+      else
+        mv "$target" "${target}.pre-agentic"
+      fi
     fi
   fi
   run ln -sfn "$source" "$target"
@@ -75,7 +84,16 @@ link_agents() {
   elif [[ -d "$target" ]]; then
     log "backup existing $target"
     if [[ "$DRY_RUN" != "1" ]]; then
-      mv "$target" "${target}.bak.$(date +%s)"
+      # Back up to the same name `agentic eject` restores (.pre-agentic), so the
+      # documented install.sh -> eject flow returns the user's own dir instead of
+      # stranding it under a timestamped name it never looks for. If a
+      # .pre-agentic backup already exists, keep it (earliest wins) and fall back
+      # to a timestamped name so nothing is lost.
+      if [[ -e "${target}.pre-agentic" ]]; then
+        mv "$target" "${target}.bak.$(date +%s)"
+      else
+        mv "$target" "${target}.pre-agentic"
+      fi
     fi
   fi
   run ln -sfn "$source" "$target"
@@ -164,6 +182,9 @@ install_settings() {
   # commands point at the repo-owned scripts regardless of install location.
   local resolved
   resolved="$(mktemp)"
+  # Clean up the temp file even if the merge below fails under `set -e` (the
+  # explicit rm at the end is unreachable on early exit).
+  trap 'rm -f "$resolved"' RETURN
   resolve_root "$fragment" >"$resolved"
   # Weak tier: drop the lean-ctx Read/Grep redirect hook (the turn-multiplier on
   # trivial tasks) and the mcp__lean-ctx__* allow entries. shell-guard, edit-lint,

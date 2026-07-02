@@ -89,6 +89,14 @@ func Remove(claudeMdPath string) (bool, error) {
 // session-critical file, not just CLAUDE.md). Mirrors internal/jsonorder.WriteFile
 // and providers/shared/safe_io.atomic_write_text.
 func AtomicWrite(path string, data []byte, perm os.FileMode) error {
+	// Resolve a symlinked destination so the atomic rename lands on the link
+	// target (dotfiles/stow pattern) instead of replacing the symlink with a
+	// regular file. Only an actual symlinked final component is resolved.
+	if fi, lerr := os.Lstat(path); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if resolved, rerr := filepath.EvalSymlinks(path); rerr == nil {
+			path = resolved
+		}
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".claudemd-*")
 	if err != nil {
 		return err
@@ -122,6 +130,11 @@ func Ensure(generatedPath, claudeMdPath string) error {
 	existing := ""
 	if b, err := os.ReadFile(claudeMdPath); err == nil {
 		existing = string(b)
+	} else if !os.IsNotExist(err) {
+		// An existing-but-unreadable CLAUDE.md is a hard error, not a silent
+		// "absent" that would drop the user's prose and keep only the managed
+		// import block.
+		return fmt.Errorf("merge-claude-md: cannot read %s: %w", claudeMdPath, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(claudeMdPath), 0o755); err != nil {
 		return err

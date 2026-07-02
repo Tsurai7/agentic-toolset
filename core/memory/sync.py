@@ -33,6 +33,11 @@ import sys
 import time
 from pathlib import Path
 
+# Reuse the merge scripts' atomic writer (providers/shared/safe_io.py) so a crash
+# mid-write can never leave a half-written or empty live memory file.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "providers" / "shared"))
+from safe_io import atomic_write_text  # noqa: E402
+
 INDEX_LINK_RE = re.compile(r"\]\(([^)]+\.md)\)")
 DESC_RE = re.compile(r"^description:\s*(.+)$", re.MULTILINE)
 
@@ -70,7 +75,7 @@ def ensure_index(mem_dir: Path, new_seeds: list[Path], apply: bool) -> list[str]
     additions = [index_line(s) for s in new_seeds if s.name not in linked]
     if additions and apply:
         body = existing.rstrip("\n") + "\n" + "\n".join(additions) + "\n"
-        index.write_text(body)
+        atomic_write_text(index, body)
     return additions
 
 
@@ -88,8 +93,11 @@ def main() -> int:
         print(f"seeds dir not found: {seeds_dir}", file=sys.stderr)
         return 2
     if not root.exists():
-        print(f"projects root not found: {root}", file=sys.stderr)
-        return 2
+        # Fresh machine: Claude Code has never run, so there are zero active
+        # projects to seed into. Not an error — degrade to a no-op so a fresh
+        # `bin/install.sh --provider all` completes instead of aborting at exit 2.
+        print(f"projects root not present yet ({root}); nothing to seed", file=sys.stderr)
+        return 0
 
     seeds = seed_files(seeds_dir)
     projects = active_projects(root, args.active_days)
@@ -113,7 +121,7 @@ def main() -> int:
             print(f"  + {s.name}")
             if args.apply:
                 mem.mkdir(parents=True, exist_ok=True)
-                (mem / s.name).write_text(s.read_text(errors="replace"))
+                atomic_write_text(mem / s.name, s.read_text(errors="replace"))
         added_idx = ensure_index(mem, to_add, args.apply)
         for line in added_idx:
             print(f"    index: {line}")

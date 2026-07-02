@@ -110,12 +110,20 @@ func mergeClaudeMD(args []string) int {
 	return 0
 }
 
+// isSandboxHome reports whether resolvedHome is not the user's real home, so the
+// global `claude` MCP step (which is not --home-scoped) should be skipped to avoid
+// mutating the real user config while every file step targets the sandbox.
+func isSandboxHome(resolvedHome, realHome string, realHomeErr error) bool {
+	return realHomeErr != nil || filepath.Clean(resolvedHome) != filepath.Clean(realHome)
+}
+
 func injectEject(action string, args []string) int {
 	fs := flag.NewFlagSet(action, flag.ContinueOnError)
 	root := fs.String("root", defaultRoot(), "agentic-cfg repo root (default: derived from the binary location)")
 	home := fs.String("home", "", "target home dir (default: $HOME)")
 	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
 	skipMCP := fs.Bool("skip-mcp", false, "skip the MCP step (the `claude` CLI is global, not --home-scoped)")
+	withMCP := fs.Bool("with-mcp", false, "run the global `claude` MCP step even when --home targets a sandbox (default: skip it for a non-real --home)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -127,7 +135,19 @@ func injectEject(action string, args []string) int {
 			return 1
 		}
 	}
-	opts := lifecycle.Options{Root: *root, Home: h, DryRun: *dryRun, SkipMCP: *skipMCP}
+	mcpSkip := *skipMCP
+	// The global `claude` CLI writes MCP servers to the real user config, not to
+	// --home. When --home points somewhere other than the real home (a sandbox),
+	// running the MCP step would mutate the real ~/.claude.json while every file
+	// step targets the sandbox — so skip it unless --with-mcp is given explicitly.
+	if !mcpSkip && !*withMCP && *home != "" {
+		realHome, herr := os.UserHomeDir()
+		if isSandboxHome(h, realHome, herr) {
+			mcpSkip = true
+			fmt.Fprintf(os.Stderr, "agentic %s: --home %q is not your real home; skipping the global `claude` MCP step (it is not --home-scoped). Pass --with-mcp to override.\n", action, h)
+		}
+	}
+	opts := lifecycle.Options{Root: *root, Home: h, DryRun: *dryRun, SkipMCP: mcpSkip}
 	var err error
 	if action == "inject" {
 		err = lifecycle.Inject(opts)
@@ -302,7 +322,7 @@ commands:
   merge-mcp <root> <out>                    merge managed MCP servers into a mcp.json (Cursor)
   merge-mcp <root> --register-claude-user   register managed MCP servers at Claude user scope
   merge-claude-md <generated> <claude_md>   ensure CLAUDE.md @imports the generated config
-  gain [--last N] [--project S] [--json]    performance readout: token volume, cache hit rate, cost saved
+  gain [--last N] [--project S] [--json] [--adoption]   token economy: volume, cache hit rate, cache avoided
   cache [--last N] [--by-model] [--json]    cache-focused readout: prompt-cache hit rate + cost saved
   inject [--root DIR] [--home DIR] [--dry-run]   add the agentic-cfg footprint to a Claude config
   eject  [--root DIR] [--home DIR] [--dry-run]   cleanly remove it (preserves your own content)

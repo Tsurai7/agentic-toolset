@@ -193,6 +193,15 @@ func WriteFile(path string, m *Map) error {
 	if err != nil {
 		return err
 	}
+	// If the destination is a symlink (dotfiles/stow pattern), resolve it so the
+	// temp+rename lands on the link target and the symlink survives, instead of
+	// replacing the user's symlink with a regular file. Only an actual symlinked
+	// final component is resolved; regular and not-yet-existing files are left as-is.
+	if fi, lerr := os.Lstat(path); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if resolved, rerr := filepath.EvalSymlinks(path); rerr == nil {
+			path = resolved
+		}
+	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err

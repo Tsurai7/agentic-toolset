@@ -158,6 +158,25 @@ Isolation confidence is also stamped on every value result:
   behaviors a hook enforces; used automatically when auth is OAuth/Keychain,
   because relocating the config dir there breaks authentication.
 
+## Discrimination backlog
+
+Two conformance cases were added well-formed but never run against a
+skill-less control, so it is not yet confirmed they actually discriminate
+(rather than passing regardless of whether the skill fired):
+`office-hours-vet-before-building` and `systematic-debugging-stop-after-failures`.
+
+To settle either one: run the treatment arm (skill present) —
+
+```bash
+AGENTIC_EVAL_CONFIRM=1 python3 evals/run.py --track conformance --filter office-hours
+```
+
+— then run the same prompt again under a bare `CLAUDE_CONFIG_DIR` (no skills,
+no `CLAUDE.md` import) as the control arm, judged by the same
+`judge_conformance` template used above. If the control also comes back PASS,
+the case cannot discriminate and needs a sharper `expect`/`expect_not` or a
+different prompt.
+
 ## Versioning the set
 
 When the case mix changes materially, bump `EVAL_SET_VERSION` in

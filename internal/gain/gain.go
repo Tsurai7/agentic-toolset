@@ -149,6 +149,27 @@ func (a *AdoptionStats) add(o *AdoptionStats) {
 // sgCallRe matches an sg/ast-grep invocation as the command word.
 var sgCallRe = regexp.MustCompile(`(^|[\s|;&])(sg|ast-grep)\s`)
 
+// assignPrefixRe matches a single leading `VAR=value ` assignment, mirroring
+// internal/hook's assignTokenRe (kept local rather than exported/reused, to
+// leave internal/hook untouched per this bucket's file scope).
+var assignPrefixRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=\S*\s+`)
+
+// stripRtkPrefix strips one leading VAR= assignment and one leading
+// rtk/lean-ctx wrapper prefix from cmd, so GrepTokenRe (anchored at
+// start-of-string / after an operator) can be applied to a self-wrapped `rtk
+// grep …` the same way sgCallRe already matches `rtk sg …` (via its
+// after-any-whitespace anchor).
+func stripRtkPrefix(cmd string) string {
+	s := assignPrefixRe.ReplaceAllString(cmd, "")
+	switch {
+	case strings.HasPrefix(s, "rtk "):
+		return s[len("rtk "):]
+	case strings.HasPrefix(s, "lean-ctx "):
+		return s[len("lean-ctx "):]
+	}
+	return s
+}
+
 // TotalInput is fresh + cache-read + cache-write across both buckets. This is the
 // denominator of the cache hit rate, matching telemetry/report.py.
 func (s *Session) TotalInput() int { return s.Main.totalInput() + s.Sub.totalInput() }
@@ -226,8 +247,10 @@ type ParseOpts struct {
 // ParseLines reads a transcript stream and returns the aggregated Session, or
 // nil if the stream carried no usage-bearing assistant turns. Malformed lines
 // are skipped (legible degradation), never fatal. Claude Code repeats the
-// message-level usage on every content-block record, so usage is counted once
-// per message.id to avoid inflating tokens and cost.
+// message-level usage on every content-block record, and output_tokens grows
+// to its final value on the last record while input-side fields stay
+// byte-identical across repeats — so usage is reconciled last-wins per
+// message.id via per-field deltas (see addUsage/ParseLinesOpts).
 func ParseLines(r io.Reader) (*Session, error) {
 	return ParseLinesOpts(r, ParseOpts{})
 }
@@ -239,7 +262,7 @@ func ParseLinesOpts(r io.Reader, opts ParseOpts) (*Session, error) {
 	if opts.Adoption {
 		adoption = &AdoptionStats{ByDecision: map[string]int{}}
 	}
-	seen := map[string]bool{}
+	seen := map[string]*tUsage{}
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 1024*1024), 64*1024*1024) // transcript lines can be large
 	for sc.Scan() {
@@ -267,10 +290,17 @@ func ParseLinesOpts(r io.Reader, opts ParseOpts) (*Session, error) {
 			continue
 		}
 		if id := rec.Message.ID; id != "" {
-			if seen[id] {
+			if prev, ok := seen[id]; ok {
+				// Repeat record for an id already seen: Claude Code writes one
+				// record per content block and output_tokens grows to its final
+				// value on the last one, so reconcile last-wins via a per-field
+				// delta against the stored snapshot rather than re-counting the
+				// turn.
+				s.addUsageDelta(&rec, prev)
+				seen[id] = rec.Message.Usage
 				continue
 			}
-			seen[id] = true
+			seen[id] = rec.Message.Usage
 		}
 		s.addUsage(&rec)
 	}
@@ -308,7 +338,11 @@ func scanAdoption(rec *tRecord, a *AdoptionStats) {
 				_ = json.Unmarshal(b.Input, &input)
 				dec := string(hook.Classify(input.Command))
 				a.ByDecision[dec]++
-				if hook.GrepTokenRe.MatchString(input.Command) {
+				// Apply GrepTokenRe to the wrapper-normalized command, symmetric
+				// with sgCallRe (which matches after any whitespace, incl. "rtk
+				// "), so a self-wrapped `rtk grep`/`rtk rg` counts as a grep call
+				// instead of only the un-wrapped form.
+				if hook.GrepTokenRe.MatchString(stripRtkPrefix(input.Command)) {
 					a.GrepCalls++
 				}
 				if sgCallRe.MatchString(input.Command) {
@@ -329,24 +363,102 @@ func scanAdoption(rec *tRecord, a *AdoptionStats) {
 			if b.Type != "tool_result" {
 				continue
 			}
-			if strings.Contains(string(b.Content), astGrepReasonPrefix) {
+			if strings.HasPrefix(toolResultText(b.Content), astGrepReasonPrefix) {
 				a.DeniesObserved++
 			}
 		}
 	}
 }
 
-// astGrepReasonPrefix identifies an observed ast-grep deny in a tool_result,
-// matching the hook's astGrepReason text (unexported there; kept short and
-// exact enough to avoid false positives).
+// toolResultText extracts the text of a tool_result's content field, which is
+// either a plain JSON string or an array of {type, text} blocks (inspected on
+// real transcripts: a genuine deny is always the plain-string shape).
+func toolResultText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	if raw[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil {
+			return s
+		}
+		return ""
+	}
+	if raw[0] == '[' {
+		var blocks []struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(raw, &blocks); err == nil {
+			var sb strings.Builder
+			for _, blk := range blocks {
+				sb.WriteString(blk.Text)
+			}
+			return sb.String()
+		}
+	}
+	return ""
+}
+
+// astGrepReasonPrefix identifies an observed ast-grep deny in a tool_result:
+// a real deny result's text *starts with* the hook's astGrepReason text
+// (unexported there). HasPrefix, not Contains — a Read dump or diff of the
+// guard's own source can contain the literal deep inside line-numbered
+// content, but only a genuine deny payload starts with it.
 const astGrepReasonPrefix = "Use ast-grep for structural code search"
 
 func (s *Session) addUsage(rec *tRecord) {
-	u := rec.Message.Usage
 	s.AssistantTurns++
 	if rec.Message.Model != "" {
 		s.Models[rec.Message.Model]++
 	}
+	s.addUsageTokens(rec.Message.Usage, rec.Message.Model, rec.IsSidechain)
+}
+
+// addUsageDelta reconciles a repeat record for an already-seen message.id:
+// Claude Code writes one record per content block, and usage fields (notably
+// output_tokens) grow to their final value on the last record while
+// input-side fields stay byte-identical across repeats. Adding the per-field
+// delta (new - prev) for every usage field — rather than the record's raw
+// values — makes the running totals converge on the last record (last-wins)
+// without re-incrementing turn/model counts, and stays correct even if a
+// non-output field were ever to vary across repeats.
+func (s *Session) addUsageDelta(rec *tRecord, prev *tUsage) {
+	u := rec.Message.Usage
+	delta := deltaUsage(prev, u)
+	s.addUsageTokens(delta, rec.Message.Model, rec.IsSidechain)
+}
+
+// deltaUsage returns new-prev for every usage field, so repeat records
+// reconcile to last-wins via addition rather than overwrite.
+func deltaUsage(prev, cur *tUsage) *tUsage {
+	d := &tUsage{
+		InputTokens:              cur.InputTokens - prev.InputTokens,
+		OutputTokens:             cur.OutputTokens - prev.OutputTokens,
+		CacheReadInputTokens:     cur.CacheReadInputTokens - prev.CacheReadInputTokens,
+		CacheCreationInputTokens: cur.CacheCreationInputTokens - prev.CacheCreationInputTokens,
+	}
+	prev1h, prev5m := 0, 0
+	if cc := prev.CacheCreation; cc != nil {
+		prev1h, prev5m = cc.Ephemeral1h, cc.Ephemeral5m
+	}
+	cur1h, cur5m := 0, 0
+	if cc := cur.CacheCreation; cc != nil {
+		cur1h, cur5m = cc.Ephemeral1h, cc.Ephemeral5m
+	}
+	if cur1h != 0 || cur5m != 0 || prev1h != 0 || prev5m != 0 {
+		d.CacheCreation = &struct {
+			Ephemeral1h int `json:"ephemeral_1h_input_tokens"`
+			Ephemeral5m int `json:"ephemeral_5m_input_tokens"`
+		}{Ephemeral1h: cur1h - prev1h, Ephemeral5m: cur5m - prev5m}
+	}
+	return d
+}
+
+// addUsageTokens folds one usage snapshot (a full record's usage, or a
+// per-field delta between two records for the same message.id) into the
+// session's token and cost accumulators. Does not touch AssistantTurns or
+// Models — callers decide whether this is a first-sight or a reconciling add.
+func (s *Session) addUsageTokens(u *tUsage, model string, isSidechain bool) {
 	cw1h, cw5m := 0, 0
 	if cc := u.CacheCreation; cc != nil {
 		cw1h, cw5m = cc.Ephemeral1h, cc.Ephemeral5m
@@ -355,7 +467,7 @@ func (s *Session) addUsage(rec *tRecord) {
 		cw5m = u.CacheCreationInputTokens
 	}
 	b := &s.Main
-	if rec.IsSidechain {
+	if isSidechain {
 		b = &s.Sub
 	}
 	b.Input += u.InputTokens
@@ -363,21 +475,21 @@ func (s *Session) addUsage(rec *tRecord) {
 	b.CacheRead += u.CacheReadInputTokens
 	b.CacheWrite += u.CacheCreationInputTokens
 
-	model := rec.Message.Model
-	if model == "" {
-		model = "unknown"
+	pmKey := model
+	if pmKey == "" {
+		pmKey = "unknown"
 	}
-	pm := s.PerModel[model]
+	pm := s.PerModel[pmKey]
 	if pm == nil {
 		pm = &Bucket{}
-		s.PerModel[model] = pm
+		s.PerModel[pmKey] = pm
 	}
 	pm.Input += u.InputTokens
 	pm.Output += u.OutputTokens
 	pm.CacheRead += u.CacheReadInputTokens
 	pm.CacheWrite += u.CacheCreationInputTokens
 
-	r := ratesFor(rec.Message.Model)
+	r := ratesFor(model)
 	inCost := float64(u.InputTokens)*r.in + float64(u.CacheReadInputTokens)*r.cacheRead +
 		float64(cw1h)*r.cache1h + float64(cw5m)*r.cache5m
 	s.InputCostReal += inCost / 1e6

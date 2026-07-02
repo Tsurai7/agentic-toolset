@@ -61,6 +61,20 @@ def test_failed_write_leaves_original_intact():
         assert leftovers == [], f"temp file leaked after failure: {leftovers}"
 
 
+def test_atomic_write_preserves_symlink():
+    # A symlinked destination (dotfiles/stow pattern) must survive the atomic
+    # rename: the write lands on the link target instead of replacing the user's
+    # symlink with a regular file.
+    with tempfile.TemporaryDirectory() as d:
+        target = Path(d) / "real.json"
+        target.write_text("OLD", encoding="utf-8")
+        link = Path(d) / "settings.json"
+        link.symlink_to(target)
+        safe_io.atomic_write_text(link, "NEW")
+        assert link.is_symlink(), "destination was de-linked (replaced with a regular file)"
+        assert target.read_text(encoding="utf-8") == "NEW", "link target not updated"
+
+
 def test_merge_settings_tolerates_null_hooks_and_permissions():
     # merge-settings.py must treat "hooks": null and "permissions": null in an
     # existing settings.json as {} rather than crashing (plan 06 change 6);
