@@ -51,17 +51,25 @@ FULL_VARIANT_EXCLUDES = frozenset({"lean-ctx", "gitnexus", "shell-guard"})
 _MCP_EXCLUDE_SERVERS = {"lean-ctx": "lean-ctx", "gitnexus": "gitnexus"}
 
 
-def _load_merge_mcp():
-    """Import providers/shared/merge-mcp.py by file path (hyphenated filename,
-    not a normal package import) — same technique evals/selftest.py uses to load
-    run.py. Re-imported per call; the module is tiny and this keeps
+def _load_module(name: str, filename: str):
+    """Import a providers/shared/*.py helper by file path (hyphenated filenames,
+    not normal package imports) — same technique evals/selftest.py uses to load
+    run.py. Re-imported per call; the modules are tiny and this keeps
     render_full_variant() free of import-time side effects on other tests."""
     spec = importlib.util.spec_from_file_location(
-        "agentic_merge_mcp", REPO_ROOT / "providers" / "shared" / "merge-mcp.py"
+        name, REPO_ROOT / "providers" / "shared" / filename
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def _load_merge_mcp():
+    return _load_module("agentic_merge_mcp", "merge-mcp.py")
+
+
+def _load_merge_settings():
+    return _load_module("agentic_merge_settings", "merge-settings.py")
 
 
 # Settings keys managed by this repo's install (hooks + the lean-ctx allow-list);
@@ -234,24 +242,45 @@ def _assemble_claude_md() -> str:
 
 
 def _full_settings(exclude: frozenset[str]) -> dict:
-    """settings.hooks.json with __AGENTIC_ROOT__ resolved and the excluded
-    hook groups dropped: "shell-guard" removes the `^Bash$` matcher group;
-    "lean-ctx" removes the `lean-ctx hook redirect` group and every
-    `mcp__lean-ctx__*` permissions.allow entry — mirrors install.sh's
-    AGENTIC_TIER=weak settings transform."""
+    """Merge the resolved hooks fragment onto the SAME preserved live-settings base
+    as `_bare_settings`, mirroring install.sh's merge-settings step: the live
+    settings.json auth/runtime keys (`env`, `apiKeyHelper`, `forceLoginMethod`,
+    `model`, ...) pass through untouched while the repo's hook groups and
+    `mcp__lean-ctx__*` allow entries are merged on top (via merge-settings.py's
+    own `merge_hooks`/`_merge_allow`, the single source of merge truth). Overwriting
+    with only the fragment would drop those auth keys and leave the full arm on a
+    different auth footing than the bare control.
+
+    Exclusions are applied to the fragment before the merge, mirroring install.sh's
+    AGENTIC_TIER=weak settings transform: "shell-guard" removes the `^Bash$` matcher
+    group; "lean-ctx" removes the `lean-ctx hook redirect` group and every
+    `mcp__lean-ctx__*` allow entry."""
     resolved = SETTINGS_FRAGMENT.read_text().replace("__AGENTIC_ROOT__", str(REPO_ROOT))
-    settings = json.loads(resolved)
+    fragment = json.loads(resolved)
     if "shell-guard" in exclude:
-        pre = settings.get("hooks", {}).get("PreToolUse", [])
-        settings["hooks"]["PreToolUse"] = [g for g in pre if g.get("matcher") != "^Bash$"]
+        pre = fragment.get("hooks", {}).get("PreToolUse", [])
+        fragment["hooks"]["PreToolUse"] = [g for g in pre if g.get("matcher") != "^Bash$"]
     if "lean-ctx" in exclude:
-        pre = settings.get("hooks", {}).get("PreToolUse", [])
-        settings["hooks"]["PreToolUse"] = [
+        pre = fragment.get("hooks", {}).get("PreToolUse", [])
+        fragment["hooks"]["PreToolUse"] = [
             g for g in pre
             if not any("lean-ctx hook redirect" in h.get("command", "") for h in g.get("hooks", []))
         ]
-        allow = settings.get("permissions", {}).get("allow", [])
-        settings["permissions"]["allow"] = [a for a in allow if not a.startswith("mcp__lean-ctx__")]
+        allow = fragment.get("permissions", {}).get("allow", [])
+        fragment["permissions"]["allow"] = [a for a in allow if not a.startswith("mcp__lean-ctx__")]
+
+    merge_settings = _load_merge_settings()
+    src = REAL_CONFIG / "settings.json"
+    settings = json.loads(src.read_text()) if src.exists() else {}
+    schema = fragment.get("$schema")
+    if schema is not None:
+        settings.setdefault("$schema", schema)
+    if "hooks" in fragment:
+        settings["hooks"] = merge_settings.merge_hooks(settings.get("hooks") or {}, fragment["hooks"])
+    perms = settings.get("permissions") or {}
+    settings["permissions"] = perms
+    perms["allow"] = merge_settings._merge_allow(perms.get("allow", []) or [], fragment)
+    perms.setdefault("deny", [])
     return settings
 
 
@@ -263,13 +292,23 @@ def _full_mcp_config(dest: Path, exclude: frozenset[str]) -> str | None:
     __AGENTIC_ROOT__/__PATH__-style placeholder resolution, and
     Claude-Code-compatible key filtering the installer's merge path uses)
     rather than re-implementing them. Returns None when every server is
-    excluded (nothing to load)."""
+    excluded (nothing to load).
+
+    Exclusions are driven ONLY by the explicit `exclude` argument: ambient
+    AGENTIC_MCP_EXCLUDE (which `collect_fragments` honors internally, e.g.
+    inherited from a weak-tier install shell) is cleared for the collect so it
+    cannot silently drop servers and quietly make the 'full' arm not-full."""
     merge_mcp = _load_merge_mcp()
     exclude_servers = {_MCP_EXCLUDE_SERVERS[tok] for tok in exclude if tok in _MCP_EXCLUDE_SERVERS}
+    ambient_exclude = os.environ.pop("AGENTIC_MCP_EXCLUDE", None)
+    try:
+        all_servers = merge_mcp.collect_fragments(INTEGRATIONS_SRC).get("mcpServers", {})
+    finally:
+        if ambient_exclude is not None:
+            os.environ["AGENTIC_MCP_EXCLUDE"] = ambient_exclude
     fragments = {
         "mcpServers": {
-            name: cfg for name, cfg in
-            merge_mcp.collect_fragments(INTEGRATIONS_SRC).get("mcpServers", {}).items()
+            name: cfg for name, cfg in all_servers.items()
             if name not in exclude_servers
         }
     }

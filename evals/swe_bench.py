@@ -575,6 +575,23 @@ def selftest() -> int:
         assert "lean-ctx" in _mcp["mcpServers"] and "gitnexus" in _mcp["mcpServers"], \
             f"render_full_variant: mcp-config missing lean-ctx/gitnexus: {sorted(_mcp['mcpServers'])}"
     print("  ok  render_full_variant() renders CLAUDE.md/settings.json/skills+agents/mcp-config into an isolated dir")
+    # Ambient AGENTIC_MCP_EXCLUDE (e.g. inherited from a weak-tier shell) must NOT
+    # silently drop servers from the 'full' arm — exclusions come only from the
+    # explicit `exclude` argument, or the baseline would quietly be not-full.
+    _saved_ambient = os.environ.get("AGENTIC_MCP_EXCLUDE")
+    os.environ["AGENTIC_MCP_EXCLUDE"] = "lean-ctx,gitnexus"
+    try:
+        with tempfile.TemporaryDirectory(prefix="selftest-ambient-") as _tmp:
+            _result = render_config.render_full_variant(Path(_tmp) / "full")
+            _mcp = json.loads(Path(_result["mcp_config"]).read_text())
+            assert "lean-ctx" in _mcp["mcpServers"] and "gitnexus" in _mcp["mcpServers"], \
+                f"ambient AGENTIC_MCP_EXCLUDE leaked into the full arm: {sorted(_mcp['mcpServers'])}"
+    finally:
+        if _saved_ambient is None:
+            os.environ.pop("AGENTIC_MCP_EXCLUDE", None)
+        else:
+            os.environ["AGENTIC_MCP_EXCLUDE"] = _saved_ambient
+    print("  ok  render_full_variant ignores ambient AGENTIC_MCP_EXCLUDE (explicit exclude only)")
     # exclude={"shell-guard"} drops only the ^Bash$ group; exclude={"lean-ctx"}
     # drops the redirect hook group + mcp__lean-ctx__* allow entries + the
     # lean-ctx MCP server (gitnexus untouched); exclude={"gitnexus"} mirrors it.
@@ -865,6 +882,19 @@ def main(argv=None) -> int:
                     if args.out:
                         with open(args.out, "a", encoding="utf-8") as fh:
                             fh.write(json.dumps({**c, "arm": ",".join(arm_names)}) + "\n")
+                    # Fail fast on a systemic launch failure (e.g. auth), same as the
+                    # legacy path below: if EVERY arm of the very first cell errored,
+                    # every later cell will too — don't grind through an N-way matrix
+                    # of phantom data.
+                    arms = c["arms"]
+                    if len(cells) == 1 and arms and all(a.get("error") for a in arms.values()):
+                        first_err = next(a["error"] for a in arms.values())
+                        print(f"\nAborting: the agent CLI failed to run — {first_err}\n"
+                              "Every arm errored on the first cell, so this is systemic (not a task failure).\n"
+                              "Most likely the nested `claude` could not authenticate. Run from a shell where\n"
+                              "`claude -p \"hi\"` works (a fresh login, or export CLAUDE_CODE_OAUTH_TOKEN / "
+                              "ANTHROPIC_API_KEY).", file=sys.stderr)
+                        return 1
     else:
         print(_MATRIX_HEADER, flush=True)
         with tempfile.TemporaryDirectory(prefix="swe-off-config-") as tmp:

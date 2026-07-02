@@ -174,8 +174,10 @@ from those runs.
 - **Fidelity note**: the isolated full arm differs from a live machine in exactly one
   way — MCP comes from `--mcp-config` instead of `~/.claude.json` user scope.
 - n=3 medians with per-rep [min..max]; errored reps excluded from medians (6/87
-  attempts: one OAuth-expiry batch — arms now re-render per invocation — and two
-  transient 403s); affected cells fully re-run.
+  attempts: one OAuth-expiry batch and two transient 403s); affected cells were
+  re-run as separate per-model invocations, each snapshotting fresh credentials (a
+  single long invocation snapshots once up front, and arms mode now fail-fasts on a
+  systemic auth failure).
 - Models: `claude-haiku-4-5-20251001`, `claude-sonnet-5`, `claude-opus-4-8`
   (2026-07-02). Runner: `evals/swe_bench.py --arms … --reps 3`.
 - **Limitations**: two small synthetic Go tasks in one tiny repo; single sessions of
