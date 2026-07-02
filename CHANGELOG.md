@@ -2,6 +2,17 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.14.1] — 2026-07-02
+
+### Fixed
+- Re-pinned gitnexus `1.6.8` → `1.6.7`: `1.6.8` requires Node ≥22, so the
+  registered MCP server was silently failing to start since 2026-06-24.
+
+### Added
+- MCP start/handshake check (`bin/mcp-start-check.py`) wired into
+  `doctor.sh --deep`, so a registered-but-dead stdio MCP server fails the
+  health check instead of passing a JSON-validity-only grep.
+
 ## [0.14.0] — 2026-07-02
 
 ### Added

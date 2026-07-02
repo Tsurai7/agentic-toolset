@@ -2,7 +2,7 @@
   "mcpServers": {
     "gitnexus": {
       "command": "__NPX__",
-      "args": ["-y", "gitnexus@1.6.8", "mcp"],
+      "args": ["-y", "gitnexus@1.6.7", "mcp"],
       "env": {
         "PATH": "__PATH__",
         "NODE_PATH": "__NODE_PATH__"
