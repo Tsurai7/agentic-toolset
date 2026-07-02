@@ -22,13 +22,18 @@ agentic gain --gate                # regression gate: exit 1 if hit rate < 80% (
 ```
 
 ```
-agentic-cfg gain — over 20 session(s)
-  input (fresh)    : 168.4k
-  cache read       : 34.1M
-  cache hit rate   : 94.6%   (cache_read / total input) — healthy (≥ 80% floor)
-  subagent share   : 10.5%   (context isolated off the main thread)
-  input cost saved : $409.75  (81% of the would-be input bill, avoided by caching)
-  est. cost        : $118.05  (approximate — verify rates vs current pricing)
+agentic-cfg gain — session token economy over 20 session(s)
+  input (fresh)      : 205k
+  cache read         : 239.0M
+  cache write        : 6.9M
+  output             : 1.5M
+  cache hit rate     : 97.1%   (cache_read / total input) — healthy (≥ 80% floor)
+  subagent share     : 23.7%   (context isolated off the main thread)
+  input bill (actual): $278.83  (input + cache — what you actually paid)
+  cache avoided      : $1549.31  (85% — vs re-sending the same context uncached)
+  est. total cost    : $331.93  (incl. output; approximate — verify rates)
+  note: prompt caching is a Claude platform feature; agentic-cfg's lever is cache
+        hygiene (a warm, byte-stable prefix), not the avoided figure itself.
 ```
 
 It mirrors `report.py`'s parsing (and agrees with it on the hit rate), but leads

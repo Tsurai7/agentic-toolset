@@ -2,6 +2,40 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.16.0] — 2026-07-02
+
+### Fixed
+- Audit-fixes wave (`plans/audit-fixes-2026-07`): a 31-agent adversarial repository
+  audit found 21 independently-verified bug/risk defects, fixed here with a
+  regression test per fix.
+  - hook: `Classify()` evaluated the ast-grep deny *before* the complex-command
+    fail-open, diverging from the design doc and the shell fallback (false-positive
+    denials on heredoc/multiline/`cd`-chain/`$()` grep-on-code commands). Restored
+    fail-open-first; mirrored the shell fallback's normalization (leading `VAR=`
+    assignments + whitespace) and moved its equals-guard ahead of the lean-ctx
+    delegate so the Go and shell paths give identical verdicts; `codeExtRe` no
+    longer denies suffixed text files (`main.go.orig`); `hook.Main` recovers from
+    panics (fail open, not a blocking exit 2).
+  - gain/telemetry: first-wins usage dedup undercounted output tokens (Claude Code
+    grows `output_tokens` across per-content-block records) — switched to last-wins
+    per-field delta reconciliation in `gain.go` and `report.py` in lockstep. The
+    deny counter now matches the reason exactly (was ~3x inflated by Read-dumps of
+    the guard's own source); the grep adoption tally counts self-wrapped `rtk grep`.
+  - install: an unreadable existing config is a hard error (was silently replaced
+    with fragment-only content); `inject|eject --home <sandbox>` no longer drives
+    the real global `claude` CLI; the atomic writers preserve symlinked configs
+    (dotfiles/stow); fresh-machine `sync.py` no longer aborts the install at exit 2;
+    a malformed cursor `hooks.json` is a hard error; the Python JSON writers preserve
+    non-ASCII; `install.sh` backs up to the `.pre-agentic` name `eject` restores.
+  - evals: `cases.validate()` rejects unknown keys (a typo'd `expects` was silently
+    ignored); `rejudge()` guards an empty results file.
+
+### Note
+- The prior gain-enforcement-fixes wave (PR #13 — shell-guard deny-ordering, the rtk
+  `=`-word guard, `agentic gain --adoption`, Claude 5 pricing rows, and the
+  office-hours + systematic-debugging skills) shipped without its own CHANGELOG
+  entry; this wave audits and hardens it.
+
 ## [0.15.0] — 2026-07-02
 
 ### Added
