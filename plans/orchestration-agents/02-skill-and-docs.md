@@ -98,9 +98,10 @@ Do not change the skill's frontmatter `description`.
 3. `ARCHITECTURE.md`: same rule — extend the existing structure/render description with
    one short paragraph or table row: `core/agents/` → symlinked to `~/.claude/agents/`
    by `providers/claude/install.sh` (Claude-only; Cursor has no subagent equivalent).
-4. `docs/README.md`: add one table row for
-   [`../plans/orchestration-agents/DESIGN.md`](../plans/orchestration-agents/DESIGN.md)
-   — "office-hours session #2: mechanized orchestration (agent roles as repo artifacts)".
+4. `docs/README.md`: add one table row linking `plans/orchestration-agents/DESIGN.md`
+   (as a markdown link with href `../plans/orchestration-agents/DESIGN.md`, relative to
+   docs/) — "office-hours session #2: mechanized orchestration (agent roles as repo
+   artifacts)".
 
 ## Acceptance criteria
 

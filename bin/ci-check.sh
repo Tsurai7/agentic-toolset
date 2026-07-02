@@ -118,7 +118,14 @@ if bash providers/claude/hooks/edit-lint.test.sh >/dev/null 2>&1; then ok "edit-
 echo ""
 
 echo "== shell-guard fallback self-test (SHELL_GUARD_NO_GO=1) =="
-sg_out() { SHELL_GUARD_NO_GO=1 bash providers/claude/hooks/shell-guard.sh <<<"$1"; }
+# Deterministic across environments: stub rtk (the rewrite needs one on PATH — the
+# hook exits envelope-less without it, by design) and lean-ctx (so the delegate
+# branch never rewrites), pinning these checks to the fallback path under test.
+sg_stub="$(mktemp -d)"
+printf '#!/bin/sh\nexit 0\n' >"${sg_stub}/rtk"
+printf '#!/bin/sh\nexit 0\n' >"${sg_stub}/lean-ctx"
+chmod +x "${sg_stub}/rtk" "${sg_stub}/lean-ctx"
+sg_out() { SHELL_GUARD_NO_GO=1 PATH="${sg_stub}:${PATH}" bash providers/claude/hooks/shell-guard.sh <<<"$1"; }
 if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"echo hi"}}') \
    && [[ "$out" == *'"command":"rtk echo hi"'* ]]; then
   ok "single-line command rewritten with rtk"
@@ -143,6 +150,7 @@ if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"grep -r foo src/ma
 else
   err "shell-guard fallback: grep -r foo src/main.go was not denied"
 fi
+rm -rf "$sg_stub"
 echo ""
 
 echo "== swe benchmark self-test (task checks; needs Go) =="
