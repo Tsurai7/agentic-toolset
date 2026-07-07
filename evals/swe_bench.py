@@ -9,14 +9,21 @@ actually helps where it matters: the weak-model + trivial-task *over-tooling*
 regime that `plans/06-overhead-and-uplift.md` measured (Haiku 3.15× on easy), and
 the hard regime where structural tooling pays off (0.65×).
 
-Two arms per cell:
-  ON  — the full agentic-cfg environment (skills, hooks, MCP, prefix)
-  OFF — a rendered bare CLAUDE_CONFIG_DIR (see lib/render_config.render_bare_control):
-        no hooks, no repo-managed permission allow-list, no CLAUDE.md import, no
-        MCP servers, no skills. A physical ablation, not a prompt-only one — each
-        arm used to be a plain `claude` subprocess still wrapped by the live
-        PreToolUse shell-guard hook, which mechanically enforced the toolset's own
-        behavior in the "OFF" arm and biased the ratio.
+Two modes:
+
+  legacy (default, `--arms` unset) — two arms per cell:
+    ON  — the full agentic-cfg environment (skills, hooks, MCP, prefix)
+    OFF — a rendered bare CLAUDE_CONFIG_DIR (see lib/render_config.render_bare_control):
+          no hooks, no repo-managed permission allow-list, no CLAUDE.md import, no
+          MCP servers, no skills. A physical ablation, not a prompt-only one — each
+          arm used to be a plain `claude` subprocess still wrapped by the live
+          PreToolUse shell-guard hook, which mechanically enforced the toolset's own
+          behavior in the "OFF" arm and biased the ratio.
+
+  arms (`--arms bare,full,no-leanctx,no-gitnexus,no-shellguard`) — an N-way sweep,
+    each arm an isolated CLAUDE_CONFIG_DIR (see lib/render_config.render_full_variant),
+    never the live ~/.claude. Reports absolute per-arm medians (no baked-in ratio),
+    including duration_ms, so a reader can compare any two arms directly.
 
 Correctness is DETERMINISTIC. A task is either:
   ("text",  fn(answer)->bool)              — a lookup; checks the final answer
@@ -47,6 +54,7 @@ from lib import agent, render_config  # noqa: E402
 
 MODEL_ALIASES = {"haiku": "haiku", "sonnet": "sonnet", "opus": "opus"}  # claude CLI resolves these
 PERCALL_TIMEOUT = 600
+ARM_NAMES = ("bare", "full", "no-leanctx", "no-gitnexus", "no-shellguard")
 
 
 def _git_init(d: str) -> None:
@@ -276,19 +284,27 @@ _SOLUTIONS = {
 EFFORT = None
 
 
-def _arm_argv(model: str, prompt: str) -> list:
+def _arm_argv(model: str, prompt: str, extra_argv: list | None = None) -> list:
+    """Build the `claude -p` argv. `extra_argv` (arms mode only) is spliced in
+    before the trailing prompt — e.g. `--mcp-config <path> --strict-mcp-config`
+    for an arm that carries its own MCP server set (see render_config.
+    render_full_variant). Legacy callers never pass it, so legacy argv is
+    unchanged (AC 5)."""
     argv = [
         "claude", "-p", "--output-format", "stream-json", "--verbose",
         "--dangerously-skip-permissions", "--model", model,
     ]
     if EFFORT:
         argv += ["--effort", EFFORT]
+    if extra_argv:
+        argv += extra_argv
     argv.append(prompt)
     return argv
 
 
-def _run_arm(cwd: str, prompt: str, model: str, env: dict[str, str] | None = None) -> str:
-    argv = _arm_argv(model, prompt)
+def _run_arm(cwd: str, prompt: str, model: str, env: dict[str, str] | None = None,
+             extra_argv: list | None = None) -> str:
+    argv = _arm_argv(model, prompt, extra_argv=extra_argv)
     proc_env = {**os.environ, **env} if env else None
     try:
         p = subprocess.run(
@@ -329,56 +345,76 @@ def _ratio_spread(on_runs: list, off_runs: list, key: str):
     return (vals[0], vals[len(vals) // 2], vals[-1])
 
 
-def measure_cell(task_name: str, model: str, reps: int, off_config_dir: Path) -> dict:
-    """Run one (task, model) cell `reps` times, both arms; report median metrics
-    and correctness rates so a single noisy run can't decide the verdict."""
-    maker = TASKS[task_name]
-    on_runs, off_runs = [], []          # non-errored reps only — feeds medians/spread
-    on_raw_runs, off_raw_runs = [], []  # every rep, errored or not — the raw dump
-    on_ok = off_ok = 0          # passes, counted only over non-errored reps
-    on_n = off_n = 0            # non-errored reps per arm
-    on_err = off_err = None     # last error string seen on each arm, if any
-    off_env = {"CLAUDE_CONFIG_DIR": str(off_config_dir)}
+def _abs_spread(runs: list, key: str):
+    """Per-rep `(min, median, max)` of a single arm's own metric across reps —
+    the arms-mode counterpart of `_ratio_spread` for a metric that has no
+    paired denominator to divide by (there is no single "off" in an N-way
+    sweep). Same purpose: surface how noisy one arm's median is. Returns None
+    when no rep has the key."""
+    vals = sorted(r[key] for r in runs if r.get(key) is not None)
+    if not vals:
+        return None
+    return (vals[0], vals[len(vals) // 2], vals[-1])
 
-    def run_arm(env, accum_runs, accum_raw_runs):
-        nonlocal_err = None
+
+def _run_arm_reps(task_name: str, model: str, reps: int, env: dict[str, str] | None,
+                   extra_argv: list | None = None):
+    """Run one arm of one (task, model) cell `reps` times. Returns
+    (runs, raw_runs, ok_count, n, last_error): `runs` holds only non-errored
+    reps' metrics (feeds medians/spread — see measure_cell's docstring for why
+    an errored rep must never be medianed as if it were a real, cheap run);
+    `raw_runs` holds every rep tagged `is_error`, for the crash-resilient raw
+    dump. Shared by measure_cell (legacy ON/OFF, called twice) and
+    measure_cell_arms (N-way, called once per arm) so the per-rep loop is
+    written once."""
+    maker = TASKS[task_name]
+    runs, raw_runs = [], []
+    ok_count = n = 0
+    last_err = None
+    for _ in range(reps):
         d, task, spec = maker()
         try:
-            raw = _run_arm(d, task, model, env=env)
-            nonlocal_err = agent.result_error(raw)
-            ok = None if nonlocal_err else _check(spec, agent.final_text(raw), d)
+            raw = _run_arm(d, task, model, env=env, extra_argv=extra_argv)
+            err = agent.result_error(raw)
+            ok = None if err else _check(spec, agent.final_text(raw), d)
         finally:
             shutil.rmtree(d, ignore_errors=True)
         m = agent.metrics(raw)
-        # An errored rep (auth failure, timeout, no result event) has no real
-        # metrics to speak of — a zero tool_calls/num_turns row from it would
-        # otherwise corrupt the median as if it were a genuine fast/cheap run.
-        # It still gets recorded (tagged is_error) for the raw dump/--out, just
-        # excluded from the values medians and _ratio_spread are computed over.
-        accum_raw_runs.append({**m, "is_error": bool(nonlocal_err)})
-        if not nonlocal_err:
-            accum_runs.append(m)
-        return ok, nonlocal_err
-
-    for _ in range(reps):
-        ok, err = run_arm(None, on_runs, on_raw_runs)
+        raw_runs.append({**m, "is_error": bool(err)})
         if err:
-            on_err = err
+            last_err = err
         else:
-            on_ok += int(ok); on_n += 1
-        ok, err = run_arm(off_env, off_runs, off_raw_runs)
-        if err:
-            off_err = err
-        else:
-            off_ok += int(ok); off_n += 1
+            runs.append(m)
+            ok_count += int(ok)
+            n += 1
+    return runs, raw_runs, ok_count, n, last_err
 
-    def med(runs, k):
+
+def _median(runs: list, keys: tuple) -> dict:
+    def med(k):
         vals = sorted(r.get(k) for r in runs if r.get(k) is not None)
         return vals[len(vals) // 2] if vals else None
+    return {k: med(k) for k in keys}
 
-    keys = ("total_input_tokens", "repriced_input_tokens", "output_tokens", "cost_usd", "tool_calls", "num_turns")
-    on_med = {k: med(on_runs, k) for k in keys}
-    off_med = {k: med(off_runs, k) for k in keys}
+
+_LEGACY_MEDIAN_KEYS = (
+    "total_input_tokens", "repriced_input_tokens", "output_tokens", "cost_usd", "tool_calls", "num_turns",
+)
+# Arms mode extends the legacy median keys with duration_ms (change 2) — the
+# user's "speed" column, already captured by agent.metrics() but never medianed
+# or printed before this.
+ARMS_MEDIAN_KEYS = _LEGACY_MEDIAN_KEYS + ("duration_ms",)
+
+
+def measure_cell(task_name: str, model: str, reps: int, off_config_dir: Path) -> dict:
+    """Run one (task, model) cell `reps` times, both arms; report median metrics
+    and correctness rates so a single noisy run can't decide the verdict."""
+    off_env = {"CLAUDE_CONFIG_DIR": str(off_config_dir)}
+    on_runs, on_raw_runs, on_ok, on_n, on_err = _run_arm_reps(task_name, model, reps, None)
+    off_runs, off_raw_runs, off_ok, off_n, off_err = _run_arm_reps(task_name, model, reps, off_env)
+
+    on_med = _median(on_runs, _LEGACY_MEDIAN_KEYS)
+    off_med = _median(off_runs, _LEGACY_MEDIAN_KEYS)
     return {
         "task": task_name,
         "model": model,
@@ -401,6 +437,70 @@ def measure_cell(task_name: str, model: str, reps: int, off_config_dir: Path) ->
         "off_error": off_err,
         "raw_runs_on": on_raw_runs,
         "raw_runs_off": off_raw_runs,
+    }
+
+
+def _render_arm(name: str, workdir: Path) -> dict:
+    """Render one named arm into an isolated CLAUDE_CONFIG_DIR under `workdir`
+    and return {"env": {"CLAUDE_CONFIG_DIR": ...}, "extra_argv": [...] | []}.
+    `bare` is the existing zero-skill/zero-hook/zero-MCP control
+    (render_bare_control); every other arm is a `render_full_variant` isolated
+    render (never the live ~/.claude — see that function's docstring), minus
+    the tool(s) its name ablates. When the arm carries an mcp_config, it is
+    passed via `--mcp-config` plus `--strict-mcp-config` (confirmed present in
+    the installed CLI's `claude --help` / `claude -p --help`: "Only use MCP
+    servers from --mcp-config, ignoring all other MCP configurations") so
+    ambient user-scope servers registered in ~/.claude.json do NOT also load
+    alongside the arm's own set — the isolation the arm exists to guarantee.
+    """
+    dest = workdir / name.replace("/", "-")
+    if name == "bare":
+        render_config.render_bare_control(dest)
+        return {"env": {"CLAUDE_CONFIG_DIR": str(dest)}, "extra_argv": []}
+    exclude_map = {
+        "full": frozenset(),
+        "no-leanctx": frozenset({"lean-ctx"}),
+        "no-gitnexus": frozenset({"gitnexus"}),
+        "no-shellguard": frozenset({"shell-guard"}),
+    }
+    rendered = render_config.render_full_variant(dest, exclude=exclude_map[name])
+    extra_argv = []
+    if rendered["mcp_config"]:
+        extra_argv = ["--mcp-config", rendered["mcp_config"], "--strict-mcp-config"]
+    return {"env": {"CLAUDE_CONFIG_DIR": rendered["config_dir"]}, "extra_argv": extra_argv}
+
+
+def measure_cell_arms(task_name: str, model: str, reps: int, arm_specs: dict) -> dict:
+    """Run one (task, model) cell across every arm in `arm_specs`
+    ({name: {"env", "extra_argv"}}, see `_render_arm`); report each arm's
+    absolute median metrics (including duration_ms) and correctness rate — no
+    on/off ratio baked in, since there is no single "off" in an N-way sweep.
+    Errored reps are excluded from the median exactly as `measure_cell` does
+    (shared via `_run_arm_reps`), still kept (tagged `is_error`) in the raw
+    dump.
+    """
+    per_arm = {}
+    for name, spec in arm_specs.items():
+        runs, raw_runs, ok, n, err = _run_arm_reps(
+            task_name, model, reps, spec["env"], extra_argv=spec["extra_argv"]
+        )
+        per_arm[name] = {
+            "median": _median(runs, ARMS_MEDIAN_KEYS),
+            "correct_rate": (ok / n) if n else None,
+            "error": err,
+            "raw_runs": raw_runs,
+            "spread": {
+                "total_input": _abs_spread(runs, "total_input_tokens"),
+                "cost": _abs_spread(runs, "cost_usd"),
+            },
+        }
+    return {
+        "schema": "arms-v1",
+        "task": task_name,
+        "model": model,
+        "effort": EFFORT,
+        "reps": reps,
+        "arms": per_arm,
     }
 
 
@@ -446,6 +546,97 @@ def selftest() -> int:
     assert _ratio_spread(on, off, "total_input_tokens") == (2.0, 3.0, 4.0)
     assert _ratio_spread([{"total_input_tokens": 5}], [{"total_input_tokens": 0}], "total_input_tokens") is None
     print("  ok  _ratio_spread reports per-rep min/median/max and skips zero denominators")
+    assert _abs_spread(on, "total_input_tokens") == (200, 300, 400)
+    assert _abs_spread([], "total_input_tokens") is None
+    print("  ok  _abs_spread reports a single arm's own per-rep min/median/max")
+    # render_full_variant (plan change 3, items 1-3): a real, isolated render
+    # (into a temp dir — never the live ~/.claude) must produce every piece the
+    # arms need, and must fail loudly on a typo'd exclude token rather than
+    # silently rendering a still-full arm.
+    with tempfile.TemporaryDirectory(prefix="selftest-full-") as _tmp:
+        _dest = Path(_tmp) / "full"
+        _result = render_config.render_full_variant(_dest)
+        _claude_md = (_dest / "CLAUDE.md").read_text()
+        assert _claude_md, "render_full_variant: CLAUDE.md is empty"
+        assert "Personal agent configuration is maintained in" in _claude_md, \
+            "render_full_variant: CLAUDE.md missing the stub marker text"
+        assert "## Principles (always-on)" in _claude_md, \
+            "render_full_variant: CLAUDE.md missing the Principles section"
+        _settings = json.loads((_dest / "settings.json").read_text())
+        _pre = _settings["hooks"]["PreToolUse"]
+        assert any(g.get("matcher") == "^Bash$" for g in _pre), \
+            "render_full_variant: settings.json missing the ^Bash$ shell-guard group"
+        assert (_dest / "skills").resolve() == render_config.SKILLS_SRC.resolve(), \
+            "render_full_variant: skills symlink does not point into this repo"
+        assert (_dest / "agents").resolve() == render_config.AGENTS_SRC.resolve(), \
+            "render_full_variant: agents symlink does not point into this repo"
+        assert _result["mcp_config"], "render_full_variant: mcp_config missing for a non-excluded render"
+        _mcp = json.loads(Path(_result["mcp_config"]).read_text())
+        assert "lean-ctx" in _mcp["mcpServers"] and "gitnexus" in _mcp["mcpServers"], \
+            f"render_full_variant: mcp-config missing lean-ctx/gitnexus: {sorted(_mcp['mcpServers'])}"
+    print("  ok  render_full_variant() renders CLAUDE.md/settings.json/skills+agents/mcp-config into an isolated dir")
+    # Ambient AGENTIC_MCP_EXCLUDE (e.g. inherited from a weak-tier shell) must NOT
+    # silently drop servers from the 'full' arm — exclusions come only from the
+    # explicit `exclude` argument, or the baseline would quietly be not-full.
+    _saved_ambient = os.environ.get("AGENTIC_MCP_EXCLUDE")
+    os.environ["AGENTIC_MCP_EXCLUDE"] = "lean-ctx,gitnexus"
+    try:
+        with tempfile.TemporaryDirectory(prefix="selftest-ambient-") as _tmp:
+            _result = render_config.render_full_variant(Path(_tmp) / "full")
+            _mcp = json.loads(Path(_result["mcp_config"]).read_text())
+            assert "lean-ctx" in _mcp["mcpServers"] and "gitnexus" in _mcp["mcpServers"], \
+                f"ambient AGENTIC_MCP_EXCLUDE leaked into the full arm: {sorted(_mcp['mcpServers'])}"
+    finally:
+        if _saved_ambient is None:
+            os.environ.pop("AGENTIC_MCP_EXCLUDE", None)
+        else:
+            os.environ["AGENTIC_MCP_EXCLUDE"] = _saved_ambient
+    print("  ok  render_full_variant ignores ambient AGENTIC_MCP_EXCLUDE (explicit exclude only)")
+    # exclude={"shell-guard"} drops only the ^Bash$ group; exclude={"lean-ctx"}
+    # drops the redirect hook group + mcp__lean-ctx__* allow entries + the
+    # lean-ctx MCP server (gitnexus untouched); exclude={"gitnexus"} mirrors it.
+    with tempfile.TemporaryDirectory(prefix="selftest-nosg-") as _tmp:
+        render_config.render_full_variant(Path(_tmp) / "d", exclude=frozenset({"shell-guard"}))
+        _settings = json.loads((Path(_tmp) / "d" / "settings.json").read_text())
+        _pre = _settings["hooks"]["PreToolUse"]
+        assert not any(g.get("matcher") == "^Bash$" for g in _pre), \
+            "exclude={shell-guard}: ^Bash$ group should be gone"
+        assert any(
+            any("lean-ctx hook redirect" in h.get("command", "") for h in g.get("hooks", []))
+            for g in _pre
+        ), "exclude={shell-guard}: the lean-ctx redirect group should remain intact"
+    print("  ok  exclude={'shell-guard'} drops only the ^Bash$ group")
+    with tempfile.TemporaryDirectory(prefix="selftest-nolc-") as _tmp:
+        _result = render_config.render_full_variant(Path(_tmp) / "d", exclude=frozenset({"lean-ctx"}))
+        _settings = json.loads((Path(_tmp) / "d" / "settings.json").read_text())
+        _pre = _settings["hooks"]["PreToolUse"]
+        assert not any(
+            any("lean-ctx hook redirect" in h.get("command", "") for h in g.get("hooks", []))
+            for g in _pre
+        ), "exclude={lean-ctx}: the redirect group should be gone"
+        assert any(g.get("matcher") == "^Bash$" for g in _pre), \
+            "exclude={lean-ctx}: the ^Bash$ group should remain intact"
+        assert not any(a.startswith("mcp__lean-ctx__") for a in _settings["permissions"]["allow"]), \
+            "exclude={lean-ctx}: mcp__lean-ctx__* allow entries should be gone"
+        _mcp = json.loads(Path(_result["mcp_config"]).read_text())
+        assert "lean-ctx" not in _mcp["mcpServers"], "exclude={lean-ctx}: lean-ctx server should be gone"
+        assert "gitnexus" in _mcp["mcpServers"], "exclude={lean-ctx}: gitnexus server should remain"
+    print("  ok  exclude={'lean-ctx'} drops the redirect group, allow entries, and the mcp server")
+    with tempfile.TemporaryDirectory(prefix="selftest-nogn-") as _tmp:
+        _result = render_config.render_full_variant(Path(_tmp) / "d", exclude=frozenset({"gitnexus"}))
+        _mcp = json.loads(Path(_result["mcp_config"]).read_text())
+        assert "gitnexus" not in _mcp["mcpServers"], "exclude={gitnexus}: gitnexus server should be gone"
+        assert "lean-ctx" in _mcp["mcpServers"], "exclude={gitnexus}: lean-ctx server should remain"
+    print("  ok  exclude={'gitnexus'} drops only the gitnexus mcp server (mirror image of no-leanctx)")
+    # Fail loud, not open: a typo'd/unknown exclude token must raise, never
+    # silently render a still-full arm that looks ablated.
+    with tempfile.TemporaryDirectory(prefix="selftest-bad-") as _tmp:
+        try:
+            render_config.render_full_variant(Path(_tmp) / "d", exclude=frozenset({"totally-bogus"}))
+            raise AssertionError("render_full_variant accepted an unknown exclude token")
+        except ValueError:
+            pass
+    print("  ok  render_full_variant raises ValueError on an unknown exclude token")
     # The --effort axis must reach the launch argv only when set, or an effort-routing
     # experiment would silently run at the CLI default and measure nothing.
     global EFFORT
@@ -458,6 +649,34 @@ def selftest() -> int:
     assert "--effort" in av and av[av.index("--effort") + 1] == "low", "effort not threaded into argv"
     EFFORT = saved
     print("  ok  _arm_argv threads --effort only when set")
+    # Legacy regression (AC 5): with extra_argv unset (every legacy call site),
+    # argv is byte-identical to the pre-arms-mode shape — no --mcp-config /
+    # --strict-mcp-config ever leaks into a legacy invocation.
+    legacy_av = _arm_argv("haiku", "p")
+    assert "--mcp-config" not in legacy_av and "--strict-mcp-config" not in legacy_av, legacy_av
+    assert legacy_av == [
+        "claude", "-p", "--output-format", "stream-json", "--verbose",
+        "--dangerously-skip-permissions", "--model", "haiku", "p",
+    ], legacy_av
+    print("  ok  _arm_argv legacy shape unchanged when extra_argv is not passed")
+    # Arms-mode argv construction: --mcp-config appears exactly when extra_argv
+    # carries one, and --strict-mcp-config always rides along with it (AC on the
+    # ambient-server strictness question — see _render_arm's docstring).
+    arms_av = _arm_argv("haiku", "p", extra_argv=["--mcp-config", "/tmp/x.json", "--strict-mcp-config"])
+    assert "--mcp-config" in arms_av and "/tmp/x.json" in arms_av, arms_av
+    assert "--strict-mcp-config" in arms_av, arms_av
+    assert arms_av[-1] == "p", "prompt must stay last even with extra_argv"
+    no_mcp_av = _arm_argv("haiku", "p", extra_argv=[])
+    assert "--mcp-config" not in no_mcp_av, no_mcp_av
+    print("  ok  _arm_argv splices --mcp-config/--strict-mcp-config only when the arm carries one")
+    # duration_ms must be a first-class arms-mode median key (the user's "speed"
+    # column) while the legacy median keys stay exactly as they were (AC 5).
+    assert "duration_ms" in ARMS_MEDIAN_KEYS, ARMS_MEDIAN_KEYS
+    assert "duration_ms" not in _LEGACY_MEDIAN_KEYS, _LEGACY_MEDIAN_KEYS
+    assert _LEGACY_MEDIAN_KEYS == (
+        "total_input_tokens", "repriced_input_tokens", "output_tokens", "cost_usd", "tool_calls", "num_turns",
+    ), _LEGACY_MEDIAN_KEYS
+    print("  ok  arms-mode median keys extend the legacy keys with duration_ms; legacy keys unchanged")
     # Errored reps (timeout/auth failure) must be excluded from the median, or a
     # rep that never really ran looks like a fast/cheap one and drags tool_calls
     # (always present, even on an error) toward zero. They still show up in the
@@ -471,7 +690,7 @@ def selftest() -> int:
     _timeout = '{"type":"result","is_error":true,"subtype":"timeout","result":"<TIMEOUT>","usage":{}}'
     on_calls = iter([_clean, _timeout, _clean])  # ON: clean, timeout, clean
 
-    def _fake_run_arm(cwd, prompt, model, env=None):
+    def _fake_run_arm(cwd, prompt, model, env=None, extra_argv=None):
         return _clean if env else next(on_calls)  # OFF (env set) always clean
 
     try:
@@ -485,7 +704,42 @@ def selftest() -> int:
     assert sum(1 for r in cell["raw_runs_on"] if r["is_error"]) == 1, cell
     assert cell["correct_off_rate"] == 1.0 and len(cell["raw_runs_off"]) == 3, cell
     print("  ok  measure_cell excludes errored reps from medians, keeps them in the raw dump")
-    print(f"swe_bench selftest OK — {len(TASKS)} tasks, {checks} checks + error-guard + spread + effort + medians.")
+    # measure_cell_arms: same error-exclusion guarantee, N-way. One arm ("full")
+    # times out on rep 2; its median must exclude that rep while the raw dump
+    # keeps all 3 (mirrors the legacy-mode assertion above, N-way).
+    _duration_clean = (
+        '{"type":"result","is_error":false,"result":"(int, error)","num_turns":2,'
+        '"duration_ms":1500,"usage":{"input_tokens":10,"output_tokens":5,'
+        '"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}'
+    )
+    full_calls = iter([_duration_clean, _timeout, _duration_clean])
+
+    def _fake_run_arm_arms(cwd, prompt, model, env=None, extra_argv=None):
+        if extra_argv:  # the "full" arm carries extra_argv (its mcp-config)
+            return next(full_calls)
+        return _duration_clean  # "bare" arm: no extra_argv, always clean
+
+    try:
+        _run_arm = _fake_run_arm_arms
+        arm_specs = {
+            "bare": {"env": {"CLAUDE_CONFIG_DIR": "/nonexistent-bare"}, "extra_argv": []},
+            "full": {"env": {"CLAUDE_CONFIG_DIR": "/nonexistent-full"},
+                     "extra_argv": ["--mcp-config", "/tmp/x.json", "--strict-mcp-config"]},
+        }
+        arms_cell = measure_cell_arms("trivial", "haiku", reps=3, arm_specs=arm_specs)
+    finally:
+        _run_arm = saved_run_arm
+    assert arms_cell["schema"] == "arms-v1", arms_cell
+    assert set(arms_cell["arms"]) == {"bare", "full"}, arms_cell
+    assert arms_cell["arms"]["full"]["median"]["num_turns"] == 2, arms_cell  # timeout rep excluded
+    assert arms_cell["arms"]["full"]["median"]["duration_ms"] == 1500, arms_cell
+    assert arms_cell["arms"]["full"]["correct_rate"] == 1.0, arms_cell
+    assert len(arms_cell["arms"]["full"]["raw_runs"]) == 3, arms_cell
+    assert sum(1 for r in arms_cell["arms"]["full"]["raw_runs"] if r["is_error"]) == 1, arms_cell
+    assert arms_cell["arms"]["bare"]["median"]["duration_ms"] == 1500, arms_cell
+    print("  ok  measure_cell_arms excludes errored reps per-arm, keeps duration_ms in the median keys")
+    print(f"swe_bench selftest OK — {len(TASKS)} tasks, {checks} checks + error-guard + spread + effort + "
+          "medians + arms.")
     return 0
 
 
@@ -524,6 +778,43 @@ def _print_matrix(cells: list[dict]) -> None:
         print(_matrix_row(c))
 
 
+def _fmt_ms(x):
+    return "—" if x is None else f"{x / 1000:.1f}s"
+
+
+def _fmt_int(x):
+    return "—" if x is None else str(x)
+
+
+def _print_arms_cell(c: dict) -> None:
+    """Human table for one arms-mode cell: arms × {duration_s, repriced_tokens,
+    tool_calls, turns, cost, correct}, with per-rep spread (min–max, from
+    `_abs_spread`) appended for the ratio-critical fields (total_input_tokens,
+    cost_usd) whenever reps > 1 — mirrors legacy mode's `_matrix_row` spread
+    suffix."""
+    print(f"\n{c['task']} / {c['model']}  (reps={c['reps']}, effort={c['effort'] or 'default'})")
+    header = (f"  {'arm':<14} {'duration':>9} {'in tok':>9} {'tools':>6} "
+              f"{'turns':>6} {'cost':>8} {'correct':>8}")
+    print(header)
+    print(f"  {'-' * (len(header) - 2)}")
+    for name in ARM_NAMES:
+        arm = c["arms"].get(name)
+        if arm is None:
+            continue
+        if arm.get("error"):
+            print(f"  {name:<14} {'ERR':>9}  {str(arm['error'])[:40]}")
+            continue
+        med = arm["median"]
+        row = (f"  {name:<14} {_fmt_ms(med.get('duration_ms')):>9} "
+               f"{_fmt_int(med.get('repriced_input_tokens')):>9} "
+               f"{_fmt_int(med.get('tool_calls')):>6} {_fmt_int(med.get('num_turns')):>6} "
+               f"{_fmt(med.get('cost_usd'), suffix=''):>8} {_pct(arm.get('correct_rate')):>8}")
+        sp = (arm.get("spread") or {}).get("total_input")
+        if c.get("reps", 1) > 1 and sp:
+            row += f"  in[{sp[0]}–{sp[2]}]"
+        print(row)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="SWE benchmark — config A/B across difficulty tiers and models.")
     ap.add_argument("--confirm", action="store_true", help="actually invoke the agent CLI (spends tokens)")
@@ -532,6 +823,9 @@ def main(argv=None) -> int:
     ap.add_argument("--reps", type=int, default=1, help="repetitions per cell; the median is reported")
     ap.add_argument("--effort", default=None,
                     help="reasoning effort for `claude -p --effort` (e.g. low|medium|high); default = CLI default")
+    ap.add_argument("--arms", default=None,
+                    help="comma-separated arm names (bare,full,no-leanctx,no-gitnexus,no-shellguard) — an "
+                         "N-way isolated-config sweep instead of the legacy ON/OFF pair; unset = legacy mode")
     ap.add_argument("--selftest", action="store_true", help="zero-token validation of the task checks")
     ap.add_argument("--json", action="store_true", help="emit raw JSON")
     ap.add_argument("--out", default=None, help="append each completed cell as a JSON line (crash-resilient)")
@@ -549,41 +843,80 @@ def main(argv=None) -> int:
         return 2
     models = [MODEL_ALIASES.get(m.strip(), m.strip()) for m in args.models.split(",") if m.strip()]
 
+    arm_names = None
+    if args.arms:
+        arm_names = [a.strip() for a in args.arms.split(",") if a.strip()]
+        unknown = [a for a in arm_names if a not in ARM_NAMES]
+        if unknown:
+            print(f"unknown arm(s) {unknown}; choose from {list(ARM_NAMES)}", file=sys.stderr)
+            return 2
+
     confirm = args.confirm or os.environ.get("AGENTIC_EVAL_CONFIRM") == "1"
     if not confirm:
         print("DRY-RUN — no tokens spent. Matrix that WOULD run (pass --confirm to execute):")
         print(f"  models : {models}")
         print(f"  tasks  : {tasks}")
-        print("  arms   : ON (full config) vs OFF (rendered bare CLAUDE_CONFIG_DIR — "
-              "lib/render_config.render_bare_control: no hooks, no MCP, no skills)")
-        print(f"  reps   : {args.reps}  →  {len(models) * len(tasks) * 2 * args.reps} agent invocations")
+        if arm_names:
+            print(f"  arms   : {arm_names}  (each an isolated CLAUDE_CONFIG_DIR — "
+                  "lib/render_config.render_full_variant / render_bare_control — never the live ~/.claude)")
+            print(f"  reps   : {args.reps}  →  {len(models) * len(tasks) * len(arm_names) * args.reps} "
+                  "agent invocations")
+        else:
+            print("  arms   : ON (full config) vs OFF (rendered bare CLAUDE_CONFIG_DIR — "
+                  "lib/render_config.render_bare_control: no hooks, no MCP, no skills)")
+            print(f"  reps   : {args.reps}  →  {len(models) * len(tasks) * 2 * args.reps} agent invocations")
         print("\nValidate the task checks now, free:  python3 evals/swe_bench.py --selftest")
         return 0
 
     # Run incrementally so a long matrix is observable mid-run and survives a kill:
     # each cell prints as it finishes and is appended to --out (if given) before the next starts.
-    print(_MATRIX_HEADER, flush=True)
     cells = []
-    with tempfile.TemporaryDirectory(prefix="swe-off-config-") as tmp:
-        off_config_dir = render_config.render_bare_control(Path(tmp) / "off-config")
-        for m in models:
-            for t in tasks:
-                c = measure_cell(t, m, args.reps, off_config_dir)
-                cells.append(c)
-                print(_matrix_row(c), flush=True)
-                if args.out:
-                    with open(args.out, "a", encoding="utf-8") as fh:
-                        fh.write(json.dumps(c) + "\n")
-                # Fail fast on a systemic launch failure (e.g. auth): if the very first
-                # cell errored on BOTH arms, every later cell will too — don't grind
-                # through a matrix of phantom data.
-                if len(cells) == 1 and c.get("on_error") and c.get("off_error"):
-                    print(f"\nAborting: the agent CLI failed to run — {c['on_error']}\n"
-                          "Both arms errored on the first cell, so this is systemic (not a task failure).\n"
-                          "Most likely the nested `claude` could not authenticate. Run from a shell where\n"
-                          "`claude -p \"hi\"` works (a fresh login, or export CLAUDE_CODE_OAUTH_TOKEN / "
-                          "ANTHROPIC_API_KEY).", file=sys.stderr)
-                    return 1
+    if arm_names:
+        with tempfile.TemporaryDirectory(prefix="swe-arms-") as tmp:
+            arm_specs = {name: _render_arm(name, Path(tmp)) for name in arm_names}
+            for m in models:
+                for t in tasks:
+                    c = measure_cell_arms(t, m, args.reps, arm_specs)
+                    cells.append(c)
+                    _print_arms_cell(c)
+                    if args.out:
+                        with open(args.out, "a", encoding="utf-8") as fh:
+                            fh.write(json.dumps({**c, "arm": ",".join(arm_names)}) + "\n")
+                    # Fail fast on a systemic launch failure (e.g. auth), same as the
+                    # legacy path below: if EVERY arm of the very first cell errored,
+                    # every later cell will too — don't grind through an N-way matrix
+                    # of phantom data.
+                    arms = c["arms"]
+                    if len(cells) == 1 and arms and all(a.get("error") for a in arms.values()):
+                        first_err = next(a["error"] for a in arms.values())
+                        print(f"\nAborting: the agent CLI failed to run — {first_err}\n"
+                              "Every arm errored on the first cell, so this is systemic (not a task failure).\n"
+                              "Most likely the nested `claude` could not authenticate. Run from a shell where\n"
+                              "`claude -p \"hi\"` works (a fresh login, or export CLAUDE_CODE_OAUTH_TOKEN / "
+                              "ANTHROPIC_API_KEY).", file=sys.stderr)
+                        return 1
+    else:
+        print(_MATRIX_HEADER, flush=True)
+        with tempfile.TemporaryDirectory(prefix="swe-off-config-") as tmp:
+            off_config_dir = render_config.render_bare_control(Path(tmp) / "off-config")
+            for m in models:
+                for t in tasks:
+                    c = measure_cell(t, m, args.reps, off_config_dir)
+                    cells.append(c)
+                    print(_matrix_row(c), flush=True)
+                    if args.out:
+                        with open(args.out, "a", encoding="utf-8") as fh:
+                            fh.write(json.dumps(c) + "\n")
+                    # Fail fast on a systemic launch failure (e.g. auth): if the very first
+                    # cell errored on BOTH arms, every later cell will too — don't grind
+                    # through a matrix of phantom data.
+                    if len(cells) == 1 and c.get("on_error") and c.get("off_error"):
+                        print(f"\nAborting: the agent CLI failed to run — {c['on_error']}\n"
+                              "Both arms errored on the first cell, so this is systemic (not a task failure).\n"
+                              "Most likely the nested `claude` could not authenticate. Run from a shell where\n"
+                              "`claude -p \"hi\"` works (a fresh login, or export CLAUDE_CODE_OAUTH_TOKEN / "
+                              "ANTHROPIC_API_KEY).", file=sys.stderr)
+                        return 1
     if args.json:
         json.dump(cells, sys.stdout, indent=2)
         sys.stdout.write("\n")

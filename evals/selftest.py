@@ -402,6 +402,24 @@ def test_cases_loader_names_bad_file():
         assert cases._read_case(ok)["id"] == "ok"
 
 
+def test_report_render_emits_machine_header():
+    # report.py anchors its machine-owned table by an EXACT match on
+    # _MACHINE_HEADER (lines.index); render() must emit that same constant, or a
+    # drifted header literal would make _machine_region miss the table and the
+    # next run would clobber the hand-maintained impact dashboard below it.
+    spec = importlib.util.spec_from_file_location("report", EVALS / "report.py")
+    report = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(report)
+    rows = {("case-x", "haiku"): {
+        "verdict": "PASS", "share": "3/3", "flip": "0.00",
+        "delta": "-1.0", "confidence": "high"}}
+    out = report.render(rows)
+    assert report._MACHINE_HEADER in out, out
+    # The anchor must round-trip: _machine_region locates the header render() emitted.
+    start, end = report._machine_region(out.splitlines())
+    assert start != -1 and end > start, (start, end)
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

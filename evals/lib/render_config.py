@@ -25,6 +25,7 @@ verdict with how much to trust it.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import shutil
@@ -34,7 +35,42 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SKILLS_SRC = REPO_ROOT / "core" / "skills"
+AGENTS_SRC = REPO_ROOT / "core" / "agents"
 REAL_CONFIG = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
+STUB_PATH = REPO_ROOT / "providers" / "claude" / "CLAUDE.md.stub"
+AGENTS_MD_PATH = REPO_ROOT / "core" / "instructions" / "AGENTS.md"
+PRINCIPLES_SRC = REPO_ROOT / "core" / "principles"
+USER_RULES_SRC = REPO_ROOT / "core" / "instructions" / "user-rules"
+SETTINGS_FRAGMENT = REPO_ROOT / "providers" / "claude" / "settings.hooks.json"
+INTEGRATIONS_SRC = REPO_ROOT / "integrations"
+
+# Valid exclude tokens for render_full_variant() — see its docstring.
+FULL_VARIANT_EXCLUDES = frozenset({"lean-ctx", "gitnexus", "shell-guard"})
+# exclude token -> MCP server name it drops (matches the server name keys the
+# fragments under integrations/ register — see merge-mcp.py's AGENTIC_MCP_EXCLUDE).
+_MCP_EXCLUDE_SERVERS = {"lean-ctx": "lean-ctx", "gitnexus": "gitnexus"}
+
+
+def _load_module(name: str, filename: str):
+    """Import a providers/shared/*.py helper by file path (hyphenated filenames,
+    not normal package imports) — same technique evals/selftest.py uses to load
+    run.py. Re-imported per call; the modules are tiny and this keeps
+    render_full_variant() free of import-time side effects on other tests."""
+    spec = importlib.util.spec_from_file_location(
+        name, REPO_ROOT / "providers" / "shared" / filename
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _load_merge_mcp():
+    return _load_module("agentic_merge_mcp", "merge-mcp.py")
+
+
+def _load_merge_settings():
+    return _load_module("agentic_merge_settings", "merge-settings.py")
+
 
 # Settings keys managed by this repo's install (hooks + the lean-ctx allow-list);
 # stripped from the control's settings.json so it enforces nothing repo-specific.
@@ -182,3 +218,150 @@ def prepare(case: dict, workdir: Path) -> dict:
         "strategy": mode,
         "confidence": confidence,
     }
+
+
+def _assemble_claude_md() -> str:
+    """Byte-for-byte the same assembly order as install.sh:install_claude_md:
+    stub (with __AGENTIC_ROOT__ resolved) + AGENTS.md + a Principles section
+    (each core/principles/*.md except README.md) + a User rules section (each
+    core/instructions/user-rules/*.md except cursor-rules-pointer.md, each
+    under a `### <basename>` header)."""
+    parts = [STUB_PATH.read_text().replace("__AGENTIC_ROOT__", str(REPO_ROOT))]
+    parts.append(AGENTS_MD_PATH.read_text())
+    parts.append("\n## Principles (always-on)\n")
+    for f in sorted(PRINCIPLES_SRC.glob("*.md")):
+        if f.name == "README.md":
+            continue
+        parts.append("\n" + f.read_text())
+    parts.append("\n## User rules\n")
+    for f in sorted(USER_RULES_SRC.glob("*.md")):
+        if f.name == "cursor-rules-pointer.md":
+            continue
+        parts.append(f"\n### {f.stem}\n" + f.read_text())
+    return "".join(parts)
+
+
+def _full_settings(exclude: frozenset[str]) -> dict:
+    """Merge the resolved hooks fragment onto the SAME preserved live-settings base
+    as `_bare_settings`, mirroring install.sh's merge-settings step: the live
+    settings.json auth/runtime keys (`env`, `apiKeyHelper`, `forceLoginMethod`,
+    `model`, ...) pass through untouched while the repo's hook groups and
+    `mcp__lean-ctx__*` allow entries are merged on top (via merge-settings.py's
+    own `merge_hooks`/`_merge_allow`, the single source of merge truth). Overwriting
+    with only the fragment would drop those auth keys and leave the full arm on a
+    different auth footing than the bare control.
+
+    Exclusions are applied to the fragment before the merge, mirroring install.sh's
+    AGENTIC_TIER=weak settings transform: "shell-guard" removes the `^Bash$` matcher
+    group; "lean-ctx" removes the `lean-ctx hook redirect` group and every
+    `mcp__lean-ctx__*` allow entry."""
+    resolved = SETTINGS_FRAGMENT.read_text().replace("__AGENTIC_ROOT__", str(REPO_ROOT))
+    fragment = json.loads(resolved)
+    if "shell-guard" in exclude:
+        pre = fragment.get("hooks", {}).get("PreToolUse", [])
+        fragment["hooks"]["PreToolUse"] = [g for g in pre if g.get("matcher") != "^Bash$"]
+    if "lean-ctx" in exclude:
+        pre = fragment.get("hooks", {}).get("PreToolUse", [])
+        fragment["hooks"]["PreToolUse"] = [
+            g for g in pre
+            if not any("lean-ctx hook redirect" in h.get("command", "") for h in g.get("hooks", []))
+        ]
+        allow = fragment.get("permissions", {}).get("allow", [])
+        fragment["permissions"]["allow"] = [a for a in allow if not a.startswith("mcp__lean-ctx__")]
+
+    merge_settings = _load_merge_settings()
+    src = REAL_CONFIG / "settings.json"
+    settings = json.loads(src.read_text()) if src.exists() else {}
+    schema = fragment.get("$schema")
+    if schema is not None:
+        settings.setdefault("$schema", schema)
+    if "hooks" in fragment:
+        settings["hooks"] = merge_settings.merge_hooks(settings.get("hooks") or {}, fragment["hooks"])
+    perms = settings.get("permissions") or {}
+    settings["permissions"] = perms
+    perms["allow"] = merge_settings._merge_allow(perms.get("allow", []) or [], fragment)
+    perms.setdefault("deny", [])
+    return settings
+
+
+def _full_mcp_config(dest: Path, exclude: frozenset[str]) -> str | None:
+    """Build a `claude --mcp-config`-compatible {"mcpServers": {...}} from this
+    repo's MCP fragments, minus excluded servers, and write it to
+    dest/mcp-config.json. Reuses providers/shared/merge-mcp.py's
+    collect_fragments/load_env/substitute (the same fragment discovery,
+    __AGENTIC_ROOT__/__PATH__-style placeholder resolution, and
+    Claude-Code-compatible key filtering the installer's merge path uses)
+    rather than re-implementing them. Returns None when every server is
+    excluded (nothing to load).
+
+    Exclusions are driven ONLY by the explicit `exclude` argument: ambient
+    AGENTIC_MCP_EXCLUDE (which `collect_fragments` honors internally, e.g.
+    inherited from a weak-tier install shell) is cleared for the collect so it
+    cannot silently drop servers and quietly make the 'full' arm not-full."""
+    merge_mcp = _load_merge_mcp()
+    exclude_servers = {_MCP_EXCLUDE_SERVERS[tok] for tok in exclude if tok in _MCP_EXCLUDE_SERVERS}
+    ambient_exclude = os.environ.pop("AGENTIC_MCP_EXCLUDE", None)
+    try:
+        all_servers = merge_mcp.collect_fragments(INTEGRATIONS_SRC).get("mcpServers", {})
+    finally:
+        if ambient_exclude is not None:
+            os.environ["AGENTIC_MCP_EXCLUDE"] = ambient_exclude
+    fragments = {
+        "mcpServers": {
+            name: cfg for name, cfg in all_servers.items()
+            if name not in exclude_servers
+        }
+    }
+    env = merge_mcp.load_env(REPO_ROOT)
+    resolved = merge_mcp.substitute(fragments, env)
+    servers = {
+        name: merge_mcp._claude_server_config(cfg)
+        for name, cfg in resolved.get("mcpServers", {}).items()
+    }
+    if not servers:
+        return None
+    out = dest / "mcp-config.json"
+    out.write_text(json.dumps({"mcpServers": servers}, indent=2))
+    return str(out)
+
+
+def render_full_variant(dest: Path, exclude: frozenset[str] = frozenset()) -> dict:
+    """Render TODAY'S complete config into an isolated CLAUDE_CONFIG_DIR, minus the
+    named exclusions. Returns {"config_dir": str, "mcp_config": str|None} — the
+    caller passes config_dir via CLAUDE_CONFIG_DIR and mcp_config via
+    `claude --mcp-config` (see swe_bench.py's arms axis). Valid exclude tokens:
+    "lean-ctx", "gitnexus", "shell-guard". Unknown tokens -> ValueError (fail
+    loud, not open: a typo'd/renamed exclude token must never silently render a
+    still-full arm and be mistaken for an ablated one).
+
+    Fidelity note: this isolated arm intentionally differs from the live
+    machine in exactly one way — MCP servers are loaded via `--mcp-config`
+    (this function's mcp_config output) rather than the live ~/.claude.json
+    user-scope registration the real installer uses. Everything else (CLAUDE.md
+    assembly, settings.json hooks/permissions, skills/agents) mirrors
+    providers/claude/install.sh's live-install behavior exactly, just written
+    into `dest` instead of ~/.claude.
+    """
+    unknown = exclude - FULL_VARIANT_EXCLUDES
+    if unknown:
+        raise ValueError(
+            f"render_full_variant: unknown exclude token(s) {sorted(unknown)}; "
+            f"valid tokens are {sorted(FULL_VARIANT_EXCLUDES)}"
+        )
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    (dest / "CLAUDE.md").write_text(_assemble_claude_md())
+    settings = _full_settings(exclude)
+    (dest / "settings.json").write_text(json.dumps(settings, indent=2))
+    (dest / "skills").symlink_to(SKILLS_SRC)
+    (dest / "agents").symlink_to(AGENTS_SRC)
+    for name in _AUTH_FILES:
+        src = REAL_CONFIG / name
+        if src.exists():
+            shutil.copy2(src, dest / name)
+    creds = dest / ".credentials.json"
+    if not creds.exists():
+        _write_credentials_from_keychain(creds)
+    mcp_config = _full_mcp_config(dest, exclude)
+    return {"config_dir": str(dest), "mcp_config": mcp_config}

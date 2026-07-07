@@ -35,6 +35,26 @@ _ROW_RE = re.compile(
     r"(?P<confidence>[^|]+?)\s*\|\s*$"
 )
 
+_MACHINE_HEADER = (
+    "| Case | Model | Verdict | Treatment wins | Flip-rate | Tool-call \u0394 | Confidence |"
+)
+
+
+def _machine_region(lines: list[str]) -> tuple[int, int]:
+    """Bounds of the machine-owned table: (header index, index just past the last
+    contiguous `|` row). The file may contain OTHER markdown tables below (the
+    hand-maintained impact dashboard); only this region belongs to report.py --
+    parsing or truncating by "any | line" would swallow the dashboard. Returns
+    (-1, -1) when the machine header is not present."""
+    try:
+        start = lines.index(_MACHINE_HEADER)
+    except ValueError:
+        return -1, -1
+    end = start
+    while end + 1 < len(lines) and lines[end + 1].startswith("|"):
+        end += 1
+    return start, end + 1
+
 
 def _latest_per_case_model() -> dict[tuple[str, str], dict]:
     """Keep the most recent artifact for each (id, model); filename starts with the date."""
@@ -64,7 +84,11 @@ def _existing_rows(path: Path) -> dict[tuple[str, str], dict]:
     if not path.exists():
         return {}
     rows: dict[tuple[str, str], dict] = {}
-    for line in path.read_text("utf-8").splitlines():
+    lines = path.read_text("utf-8").splitlines()
+    start, end = _machine_region(lines)
+    if start == -1:
+        return {}
+    for line in lines[start:end]:
         m = _ROW_RE.match(line)
         if not m or m["case"] in ("Case", "------"):
             continue
@@ -76,18 +100,24 @@ def _existing_rows(path: Path) -> dict[tuple[str, str], dict]:
 
 
 def _existing_notes(path: Path) -> str:
-    """Return hand-written prose that follows the machine-owned table so it
-    survives regeneration verbatim. The header and table are rebuilt by
-    render(); everything after the last table row (a line starting with '|') is
-    author-owned provenance and is carried forward untouched."""
+    """Return everything below the machine-owned table (anchored by its exact
+    header via _machine_region) so it survives regeneration verbatim -- including
+    the hand-maintained impact dashboard with its own markdown tables. The
+    machine header and its rows are rebuilt by render(); the rest is
+    author-owned and carried forward untouched."""
     if not path.exists():
         return ""
     lines = path.read_text("utf-8").splitlines()
-    last_row = max((i for i, line in enumerate(lines) if line.startswith("|")),
-                   default=-1)
-    if last_row == -1:
-        return ""
-    notes = lines[last_row + 1:]
+    start, end = _machine_region(lines)
+    if start == -1:
+        # No machine table yet (fresh or legacy file): preserve everything after
+        # the last | row, the pre-dashboard behavior.
+        end = max((i for i, line in enumerate(lines) if line.startswith("|")),
+                  default=-1)
+        if end == -1:
+            return ""
+        end += 1
+    notes = lines[end:]
     while notes and not notes[0].strip():
         notes.pop(0)
     while notes and not notes[-1].strip():
@@ -154,7 +184,7 @@ def render(rows: dict[tuple[str, str], dict[str, str]], notes: str = "") -> str:
         return "\n".join(lines)
 
     lines += [
-        "| Case | Model | Verdict | Treatment wins | Flip-rate | Tool-call Δ | Confidence |",
+        _MACHINE_HEADER,
         "|------|-------|---------|----------------|-----------|-------------|------------|",
     ]
     for (cid, model), row in sorted(rows.items()):
