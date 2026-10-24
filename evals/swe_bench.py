@@ -20,7 +20,7 @@ Two modes:
           PreToolUse shell-guard hook, which mechanically enforced the toolset's own
           behavior in the "OFF" arm and biased the ratio.
 
-  arms (`--arms bare,full,no-leanctx,no-gitnexus,no-shellguard`) — an N-way sweep,
+  arms (`--arms bare,full,no-leanctx,no-shellguard`) — an N-way sweep,
     each arm an isolated CLAUDE_CONFIG_DIR (see lib/render_config.render_full_variant),
     never the live ~/.claude. Reports absolute per-arm medians (no baked-in ratio),
     including duration_ms, so a reader can compare any two arms directly.
@@ -54,7 +54,7 @@ from lib import agent, render_config  # noqa: E402
 
 MODEL_ALIASES = {"haiku": "haiku", "sonnet": "sonnet", "opus": "opus"}  # claude CLI resolves these
 PERCALL_TIMEOUT = 600
-ARM_NAMES = ("bare", "full", "no-leanctx", "no-gitnexus", "no-shellguard")
+ARM_NAMES = ("bare", "full", "no-leanctx", "no-shellguard")
 
 
 def _git_init(d: str) -> None:
@@ -460,7 +460,6 @@ def _render_arm(name: str, workdir: Path) -> dict:
     exclude_map = {
         "full": frozenset(),
         "no-leanctx": frozenset({"lean-ctx"}),
-        "no-gitnexus": frozenset({"gitnexus"}),
         "no-shellguard": frozenset({"shell-guard"}),
     }
     rendered = render_config.render_full_variant(dest, exclude=exclude_map[name])
@@ -572,19 +571,19 @@ def selftest() -> int:
             "render_full_variant: agents symlink does not point into this repo"
         assert _result["mcp_config"], "render_full_variant: mcp_config missing for a non-excluded render"
         _mcp = json.loads(Path(_result["mcp_config"]).read_text())
-        assert "lean-ctx" in _mcp["mcpServers"] and "gitnexus" in _mcp["mcpServers"], \
-            f"render_full_variant: mcp-config missing lean-ctx/gitnexus: {sorted(_mcp['mcpServers'])}"
+        assert "lean-ctx" in _mcp["mcpServers"], \
+            f"render_full_variant: mcp-config missing lean-ctx: {sorted(_mcp['mcpServers'])}"
     print("  ok  render_full_variant() renders CLAUDE.md/settings.json/skills+agents/mcp-config into an isolated dir")
     # Ambient AGENTIC_MCP_EXCLUDE (e.g. inherited from a weak-tier shell) must NOT
     # silently drop servers from the 'full' arm — exclusions come only from the
     # explicit `exclude` argument, or the baseline would quietly be not-full.
     _saved_ambient = os.environ.get("AGENTIC_MCP_EXCLUDE")
-    os.environ["AGENTIC_MCP_EXCLUDE"] = "lean-ctx,gitnexus"
+    os.environ["AGENTIC_MCP_EXCLUDE"] = "lean-ctx"
     try:
         with tempfile.TemporaryDirectory(prefix="selftest-ambient-") as _tmp:
             _result = render_config.render_full_variant(Path(_tmp) / "full")
             _mcp = json.loads(Path(_result["mcp_config"]).read_text())
-            assert "lean-ctx" in _mcp["mcpServers"] and "gitnexus" in _mcp["mcpServers"], \
+            assert "lean-ctx" in _mcp["mcpServers"], \
                 f"ambient AGENTIC_MCP_EXCLUDE leaked into the full arm: {sorted(_mcp['mcpServers'])}"
     finally:
         if _saved_ambient is None:
@@ -594,7 +593,7 @@ def selftest() -> int:
     print("  ok  render_full_variant ignores ambient AGENTIC_MCP_EXCLUDE (explicit exclude only)")
     # exclude={"shell-guard"} drops only the ^Bash$ group; exclude={"lean-ctx"}
     # drops the redirect hook group + mcp__lean-ctx__* allow entries + the
-    # lean-ctx MCP server (gitnexus untouched); exclude={"gitnexus"} mirrors it.
+    # lean-ctx MCP server.
     with tempfile.TemporaryDirectory(prefix="selftest-nosg-") as _tmp:
         render_config.render_full_variant(Path(_tmp) / "d", exclude=frozenset({"shell-guard"}))
         _settings = json.loads((Path(_tmp) / "d" / "settings.json").read_text())
@@ -618,16 +617,9 @@ def selftest() -> int:
             "exclude={lean-ctx}: the ^Bash$ group should remain intact"
         assert not any(a.startswith("mcp__lean-ctx__") for a in _settings["permissions"]["allow"]), \
             "exclude={lean-ctx}: mcp__lean-ctx__* allow entries should be gone"
-        _mcp = json.loads(Path(_result["mcp_config"]).read_text())
-        assert "lean-ctx" not in _mcp["mcpServers"], "exclude={lean-ctx}: lean-ctx server should be gone"
-        assert "gitnexus" in _mcp["mcpServers"], "exclude={lean-ctx}: gitnexus server should remain"
+        # lean-ctx is the only managed MCP server, so excluding it leaves no mcp-config.
+        assert _result["mcp_config"] is None, "exclude={lean-ctx}: lean-ctx server should be gone"
     print("  ok  exclude={'lean-ctx'} drops the redirect group, allow entries, and the mcp server")
-    with tempfile.TemporaryDirectory(prefix="selftest-nogn-") as _tmp:
-        _result = render_config.render_full_variant(Path(_tmp) / "d", exclude=frozenset({"gitnexus"}))
-        _mcp = json.loads(Path(_result["mcp_config"]).read_text())
-        assert "gitnexus" not in _mcp["mcpServers"], "exclude={gitnexus}: gitnexus server should be gone"
-        assert "lean-ctx" in _mcp["mcpServers"], "exclude={gitnexus}: lean-ctx server should remain"
-    print("  ok  exclude={'gitnexus'} drops only the gitnexus mcp server (mirror image of no-leanctx)")
     # Fail loud, not open: a typo'd/unknown exclude token must raise, never
     # silently render a still-full arm that looks ablated.
     with tempfile.TemporaryDirectory(prefix="selftest-bad-") as _tmp:
@@ -824,7 +816,7 @@ def main(argv=None) -> int:
     ap.add_argument("--effort", default=None,
                     help="reasoning effort for `claude -p --effort` (e.g. low|medium|high); default = CLI default")
     ap.add_argument("--arms", default=None,
-                    help="comma-separated arm names (bare,full,no-leanctx,no-gitnexus,no-shellguard) — an "
+                    help="comma-separated arm names (bare,full,no-leanctx,no-shellguard) — an "
                          "N-way isolated-config sweep instead of the legacy ON/OFF pair; unset = legacy mode")
     ap.add_argument("--selftest", action="store_true", help="zero-token validation of the task checks")
     ap.add_argument("--json", action="store_true", help="emit raw JSON")

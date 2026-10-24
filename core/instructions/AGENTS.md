@@ -8,7 +8,7 @@ This repo is the source of truth for personal agent config. Run `bin/install.sh 
 
 ## Global defaults
 
-1. **Tool choice** — Right-size tooling to the task, then follow the precedence table below. See skills `gitnexus-navigation`, `ast-grep`.
+1. **Tool choice** — Right-size tooling to the task, then follow the precedence table below. See skills `codebase-memory`, `ast-grep`.
 2. **Shell on macOS** — Terminal commands run through the lean-ctx/rtk compression hook. Never strip or bypass it; if a command breaks under it, report and ask. Put complex logic in a script file and run `bash script.sh`. Prefix `rtk` yourself in copy-paste commands you show the user; omit `rtk` off macOS.
 3. **Git commits** — Only when the user explicitly asks; follow skill `git-safety`.
 4. **Pull requests** — Use `gh` per skill `create-pr`.
@@ -30,9 +30,9 @@ tool is absent (e.g. Cursor or a team repo without lean-ctx).
 
 | Action | 1st choice | 2nd choice | Last resort |
 |--------|-----------|------------|-------------|
-| Structural code nav (who calls / implements, impact) | GitNexus (`gitnexus-navigation`; strongest on Go/.NET) | lean-ctx `ctx_graph` | `ast-grep` pattern scan |
+| Structural code nav (who calls / implements, impact) | codebase-memory-mcp (`codebase-memory`) | lean-ctx `ctx_graph` | `ast-grep` pattern scan |
 | Syntactic code search (code matching a pattern) | `ast-grep` (`ast-grep`) | — | `grep` if no parser |
-| Text / concept search (non-code) | lean-ctx `ctx_search` | GitNexus needle query | `grep` (literals only) |
+| Text / concept search (non-code) | lean-ctx `ctx_search` | codebase-memory-mcp `search_code` | `grep` (literals only) |
 | Run a shell command | lean-ctx `ctx_shell` | native terminal **prefixed with `rtk`** | — |
 | Read a file | lean-ctx `ctx_read` | native read | — |
 
@@ -41,7 +41,7 @@ Rules:
 - **Do not double-wrap.** `rtk` is a native-terminal prefix; `ctx_shell` already
   compresses output — never nest one inside the other. When lean-ctx is
   connected, its `ctx_*` tools win; `rtk` applies only on the native terminal path.
-- GitNexus answers the **graph** question (structure, polymorphism, blast
+- codebase-memory-mcp answers the **graph** question (structure, polymorphism, blast
   radius); `ast-grep` finds **code shaped like a pattern**; `ctx_search`/`grep`
   are for **plain text** (logs, config, prose). Never regex-grep source code
   when `ast-grep` can parse the language.

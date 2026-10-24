@@ -47,7 +47,7 @@ matters more than prompt wording.
   conventions so you don't restate them every turn. This is exactly what this repo renders.
   Keep it short — a bloated file gets *ignored*, not obeyed (Anthropic, see below).
 - **Retrieve, don't stuff.** Pull the *relevant* code with structural/search tools
-  (GitNexus, `ast-grep`) instead of pasting whole files. Less context = cheaper, faster,
+  (codebase-memory-mcp, `ast-grep`) instead of pasting whole files. Less context = cheaper, faster,
   and *more accurate* (irrelevant context degrades output).
 - **Keep the stable prefix stable** so the prompt cache hits — reordering your system/
   instructions each turn silently re-bills the whole prefix (`prompt-caching-playbook`).

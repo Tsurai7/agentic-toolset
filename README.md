@@ -81,7 +81,7 @@ Copy [`secrets/.env.example`](secrets/.env.example) to `secrets/.env` (gitignore
 
 ```bash
 bin/doctor.sh            # verify symlinks, MCP, memory, binaries
-bin/doctor.sh --deep     # also validate generated MCP JSON + GitNexus pin
+bin/doctor.sh --deep     # also validate generated MCP JSON + MCP server start
 bin/ci-check.sh          # static checks (links, hooks self-tests, merge helpers, swe-bench selftest, memory seeds, prefix budget, Go fmt/vet/test/build)
 python3 evals/run.py --track all   # behavioral evals (dry by default; see evals/README.md)
 ```

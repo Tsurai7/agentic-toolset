@@ -84,7 +84,7 @@ ratcheted down behind it so it cannot silently regrow.
 
 The on-demand skill set grows week to week — `ls core/skills/` is the live list
 (a dozen at the time of writing): `answer-shapes`, `ast-grep`, `create-pr`,
-`git-safety`, `gitnexus-navigation`, `lean-ctx` (companion skill for the
+`git-safety`, `codebase-memory`, `lean-ctx` (companion skill for the
 context-runtime integration), `model-orchestration`, `no-mistakes`,
 `office-hours` (the vet-an-idea forcing questions, reconstructed in-repo after
 the gstack upstream went private), `prompt-caching-playbook`,
@@ -192,8 +192,6 @@ External runtime tools live in **their own repos** and are only *wired up* here:
 
 - [`integrations/lean-ctx`](../integrations/lean-ctx) — context-compression MCP
   server + hook delegate (`ctx_*` tools, the compression stack behind shell-guard).
-- [`integrations/gitnexus`](../integrations/gitnexus) — code-graph MCP server
-  (structural navigation: who-calls, impact).
 - [`integrations/no-mistakes`](../integrations/no-mistakes) — the local ship gate
   (see "Shipping a change" below).
 
@@ -251,7 +249,7 @@ Claude Code's per-project memory directories at install time (`sync.py`, gated b
 | Cost | Lever in this repo |
 |---|---|
 | Always-on prefix in every request | byte budget + diet (prefix-budget.sh); everything situational demoted to skills |
-| Orientation churn (agent re-reading files, verbose tool output) | lean-ctx compression + shell-guard rewrite; gitnexus for structural questions instead of grep-and-read |
+| Orientation churn (agent re-reading files, verbose tool output) | lean-ctx compression + shell-guard rewrite; codebase-memory-mcp for structural questions instead of grep-and-read |
 | Strong-model tokens on mechanical work | agent roles with cheap-tier pins + the delegation protocol |
 | Repeated boilerplate in delegation prompts | role bodies carry it once (pay-per-spawn) |
 | Cache misses | stable prefix ordering + `prompt-caching-playbook`; `agentic gain`/`cache` report the observed economics |
@@ -287,7 +285,7 @@ on tool-bound tasks) and retractions (W1).
 ## Why this is one repo (and where the real seam is)
 
 The natural boundary already exists and is already used: **runtime tools live in
-their own repos** (lean-ctx, gitnexus, rtk, no-mistakes are all external projects —
+their own repos** (lean-ctx, codebase-memory-mcp, rtk, no-mistakes are all external projects —
 this repo only wires them), and **plugins are cataloged, not vendored**. What
 remains inside is exactly the set of things that must move in lockstep:
 

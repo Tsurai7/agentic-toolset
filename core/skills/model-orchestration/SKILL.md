@@ -128,7 +128,7 @@ to orchestrate at all:
 - **Isolate context in subagents.** Hand a subagent only what its sub-task needs; return a
   short structured result, not the transcript.
 - **Retrieve, don't stuff.** Pull the relevant code via the structural/search tools
-  (`gitnexus-navigation`, `ast-grep`) instead of pasting whole files into context.
+  (`codebase-memory`, `ast-grep`) instead of pasting whole files into context.
 - **Structured hand-offs.** `answer-shapes` skeletons make a cheap model's output complete
   and an orchestrator's parsing trivial — fewer correction round-trips.
 - **Write less code.** The cheapest tokens are the ones never generated. The `ponytail`
@@ -142,7 +142,7 @@ to orchestrate at all:
 | `answer-shapes` | Parseable plan → execute hand-offs |
 | `prompt-caching-playbook` | Keeping the cache warm across the orchestration |
 | `verification-before-completion` | The gate that decides escalate-or-done |
-| `gitnexus-navigation` / `ast-grep` | Retrieval over context-stuffing |
+| `codebase-memory` / `ast-grep` | Retrieval over context-stuffing |
 
 ## Anti-patterns
 

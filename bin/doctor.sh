@@ -54,13 +54,7 @@ echo "MCP configs"
 # so that is the file to check for the Claude side.
 for f in "${HOME}/.cursor/mcp.json" "${HOME}/.claude.json"; do
   if [[ -f "$f" ]]; then
-  # Scoped to the mcpServers key specifically — a whole-file grep can match
-  # "gitnexus" appearing anywhere else in the file (a false OK).
-  if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if "gitnexus" in d.get("mcpServers", {}) else 1)' "$f" 2>/dev/null; then
-      ok "$f contains gitnexus"
-    else
-      fail "$f missing gitnexus server"
-    fi
+    ok "$f present"
   else
     fail "missing $f"
   fi
@@ -138,31 +132,14 @@ echo ""
 
 if [[ "$DEEP" -eq 1 ]]; then
   echo "Deep checks"
-  pinned="$(grep -o 'gitnexus@[^"]*' "${AGENTIC_ROOT}/integrations/gitnexus/mcp.stdio.json" 2>/dev/null || true)"
-  if [[ "$pinned" == *"@latest" ]]; then
-    warn "gitnexus is unpinned ($pinned) — pin a version for reproducible installs"
-  elif [[ -n "$pinned" ]]; then
-    ok "gitnexus pinned: $pinned"
-  fi
-  if node_version="$(command -v node >/dev/null 2>&1 && node --version)"; then
-    node_major="${node_version#v}"
-    node_major="${node_major%%.*}"
-    if [[ "$node_major" -ge 22 ]]; then
-      ok "node $node_version (>=22)"
+  if [[ -f "${HOME}/.claude.json" ]] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if "codebase-memory-mcp" in d.get("mcpServers", {}) else 1)' "${HOME}/.claude.json" 2>/dev/null; then
+    if start_out="$(python3 "${AGENTIC_ROOT}/bin/mcp-start-check.py" "${HOME}/.claude.json" codebase-memory-mcp 30 2>&1)"; then
+      ok "codebase-memory-mcp MCP server starts (${start_out})"
     else
-      fail "node $node_version — gitnexus requires Node >=22 (brew install node)"
+      fail "codebase-memory-mcp MCP server failed to start: ${start_out}"
     fi
   else
-    fail "node missing — gitnexus requires Node >=22 (brew install node)"
-  fi
-  if [[ -f "${HOME}/.claude.json" ]] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if "gitnexus" in d.get("mcpServers", {}) else 1)' "${HOME}/.claude.json" 2>/dev/null; then
-    if start_out="$(python3 "${AGENTIC_ROOT}/bin/mcp-start-check.py" "${HOME}/.claude.json" gitnexus 30 2>&1)"; then
-      ok "gitnexus MCP server starts (${start_out})"
-    else
-      fail "gitnexus MCP server failed to start: ${start_out}; re-run bin/install.sh; see integrations/gitnexus/README.md (version pin)"
-    fi
-  else
-    warn "no gitnexus entry in ${HOME}/.claude.json — skipping MCP start check"
+    warn "no codebase-memory-mcp entry in ${HOME}/.claude.json — graph code navigation unavailable"
   fi
   for f in "${HOME}/.cursor/mcp.json" "${HOME}/.claude.json"; do
     [[ -f "$f" ]] || continue

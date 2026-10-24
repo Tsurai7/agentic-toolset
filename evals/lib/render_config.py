@@ -45,10 +45,10 @@ SETTINGS_FRAGMENT = REPO_ROOT / "providers" / "claude" / "settings.hooks.json"
 INTEGRATIONS_SRC = REPO_ROOT / "integrations"
 
 # Valid exclude tokens for render_full_variant() — see its docstring.
-FULL_VARIANT_EXCLUDES = frozenset({"lean-ctx", "gitnexus", "shell-guard"})
+FULL_VARIANT_EXCLUDES = frozenset({"lean-ctx", "shell-guard"})
 # exclude token -> MCP server name it drops (matches the server name keys the
 # fragments under integrations/ register — see merge-mcp.py's AGENTIC_MCP_EXCLUDE).
-_MCP_EXCLUDE_SERVERS = {"lean-ctx": "lean-ctx", "gitnexus": "gitnexus"}
+_MCP_EXCLUDE_SERVERS = {"lean-ctx": "lean-ctx"}
 
 
 def _load_module(name: str, filename: str):
@@ -330,7 +330,7 @@ def render_full_variant(dest: Path, exclude: frozenset[str] = frozenset()) -> di
     named exclusions. Returns {"config_dir": str, "mcp_config": str|None} — the
     caller passes config_dir via CLAUDE_CONFIG_DIR and mcp_config via
     `claude --mcp-config` (see swe_bench.py's arms axis). Valid exclude tokens:
-    "lean-ctx", "gitnexus", "shell-guard". Unknown tokens -> ValueError (fail
+    "lean-ctx", "shell-guard". Unknown tokens -> ValueError (fail
     loud, not open: a typo'd/renamed exclude token must never silently render a
     still-full arm and be mistaken for an ablated one).
 

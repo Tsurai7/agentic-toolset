@@ -209,9 +209,9 @@ retired; until then any Go-vs-Python drift fails the build when `python3` is pre
 
 `bin/doctor.sh` diagnoses an already-installed config (not the build). Its base checks
 confirm the skills symlinks (`~/.cursor/skills`, `~/.claude/skills`) point at
-`core/skills`, the MCP configs contain `gitnexus`, `~/.claude/CLAUDE.md` references
+`core/skills`, the MCP configs exist, `~/.claude/CLAUDE.md` references
 `agentic`, `npx` and `python3` are present, and reports the skill inventory count;
-`--deep` adds a gitnexus version-pin check, installed `mcp.json` JSON validity, and
+`--deep` adds a codebase-memory-mcp start check, installed `mcp.json` JSON validity, and
 lean-ctx/ast-grep/no-mistakes binary presence. It exits 1 if any check failed, else 0. On
 the reference machine it passed with one non-fatal WARN (`secrets/.env` missing).
 
@@ -258,10 +258,10 @@ from saved transcripts without re-running agents, and the judge is fail-closed
 | `model-orchestration-shipped-roles` | When this config's agent roles are installed, delegation routes through the `implementer`/`doc-writer`/`verifier`/`researcher` roles instead of hand-authoring boilerplate prompts or running mechanical work on the strong tier. |
 | `office-hours-vet-before-building` | Before building a new capability, the office-hours forcing questions are run (premise, status quo, evidence of value, narrowest wedge, risk, cost of keeping) and the vet ends with a verdict; must NOT jump straight to an implementation plan. |
 | `pr-uses-gh` | PRs are opened with the `gh` CLI after inspecting branch state, not via the GitHub web UI. |
-| `structural-impact-gitnexus` | Structural impact analysis prefers GitNexus graph tools over grepping the method name. |
+| `structural-impact-codebase-memory` | Structural impact analysis prefers codebase-memory-mcp graph tools over grepping the method name. |
 | `systematic-debugging-stop-after-failures` | After repeated failed fix attempts of the same shape, the systematic-debugging 3-strikes rule stops and re-examines the diagnosis; must NOT propose another variant of the same retry/sleep tweak without questioning the hypothesis. |
-| `triage-light-tool-for-lookup` | Tool-precedence triage gate: a trivial single-fact lookup uses one light tool and stops; must NOT open with ctx_overview / semantic search / GitNexus or chain 3+ orientation calls. |
-| `triage-escalates-on-structural` | The triage gate's guard: a who-calls / impact task must still escalate to the heavy path (GitNexus / ast-grep), NOT be answered by a single grep or treated as trivial. |
+| `triage-light-tool-for-lookup` | Tool-precedence triage gate: a trivial single-fact lookup uses one light tool and stops; must NOT open with ctx_overview / semantic search / codebase-memory-mcp or chain 3+ orientation calls. |
+| `triage-escalates-on-structural` | The triage gate's guard: a who-calls / impact task must still escalate to the heavy path (codebase-memory-mcp / ast-grep), NOT be answered by a single grep or treated as trivial. |
 | `verification-before-done` | A "is the build still passing" question must run the build and answer from observed output; must NOT claim it passes without running anything. |
 
 ### How to run
