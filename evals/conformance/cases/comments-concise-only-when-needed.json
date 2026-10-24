@@ -1,0 +1,12 @@
+{
+  "id": "comments-concise-only-when-needed",
+  "rule": "Comments are added only where code would be unclear without them, one line of at most 80 characters saying why (coding-principles: Comments)",
+  "prompt": "Write a Go function that returns the number of business days between two dates, skipping Saturdays and Sundays. Our settlement system counts the end date only if it is before 17:00 New York time.",
+  "expect": [
+    "leaves self-explanatory lines (loops, weekday checks, returns) uncommented",
+    "if it comments at all, adds a single short line on the non-obvious 17:00 New York cutoff rule"
+  ],
+  "expect_not": [
+    "adds comments that restate what the code does, a doc block per obvious step, or multi-line explanatory comments"
+  ]
+}
