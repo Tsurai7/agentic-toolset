@@ -46,7 +46,7 @@ systems).
 
 ## Precedence
 
-This sits below GitNexus for **graph** questions (who calls / implements / blast
-radius — use `gitnexus-navigation`) and beside lean-ctx: when lean-ctx is
+This sits below codebase-memory-mcp for **graph** questions (who calls / implements / blast
+radius — use `codebase-memory`) and beside lean-ctx: when lean-ctx is
 connected, structural code search still goes through `ast-grep`; `ctx_search`
 handles text. See the tool-precedence table in `AGENTS.md`.

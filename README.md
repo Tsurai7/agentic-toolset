@@ -50,7 +50,7 @@ Copy [`secrets/.env.example`](secrets/.env.example) to `secrets/.env` (gitignore
 
 ```bash
 bin/doctor.sh            # verify symlinks, MCP, memory, binaries
-bin/doctor.sh --deep     # also validate generated MCP JSON + GitNexus pin
+bin/doctor.sh --deep     # also validate generated MCP JSON
 bin/ci-check.sh          # static checks (shell, JSON, YAML, frontmatter, eval lint + self-test)
 python3 evals/run.py --track all   # behavioral evals (dry by default; see evals/README.md)
 ```

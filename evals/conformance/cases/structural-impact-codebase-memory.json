@@ -1,0 +1,12 @@
+{
+  "id": "structural-impact-codebase-memory",
+  "rule": "Structural code work prefers codebase-memory-mcp graph tools over raw grep (codebase-memory + tool precedence)",
+  "prompt": "In this Go service, I want to change the signature of the Repository interface's Save method. What will break?",
+  "expect": [
+    "reaches for codebase-memory-mcp graph tools (trace_path / search_graph / detect_changes) to find callers and implementations",
+    "frames the answer as blast-radius / who-implements rather than a plain text grep"
+  ],
+  "expect_not": [
+    "defaults to grepping for the method name as the primary strategy when codebase-memory-mcp is available"
+  ]
+}

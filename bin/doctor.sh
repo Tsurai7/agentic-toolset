@@ -39,11 +39,7 @@ echo ""
 echo "MCP configs"
 for f in "${HOME}/.cursor/mcp.json" "${HOME}/.claude/.mcp.json"; do
   if [[ -f "$f" ]]; then
-  if grep -q '"gitnexus"' "$f" 2>/dev/null; then
-      ok "$f contains gitnexus"
-    else
-      fail "$f missing gitnexus server"
-    fi
+    ok "$f present"
   else
     fail "missing $f"
   fi
@@ -74,6 +70,11 @@ if command -v python3 >/dev/null 2>&1; then
 else
   fail "python3 required for merge-mcp.py"
 fi
+if command -v codebase-memory-mcp >/dev/null 2>&1; then
+  ok "codebase-memory-mcp available"
+else
+  warn "codebase-memory-mcp not found — graph code navigation unavailable"
+fi
 echo ""
 
 echo "Skills inventory"
@@ -99,12 +100,6 @@ echo ""
 
 if [[ "$DEEP" -eq 1 ]]; then
   echo "Deep checks"
-  pinned="$(grep -o 'gitnexus@[^"]*' "${AGENTIC_ROOT}/integrations/gitnexus/mcp.stdio.json" 2>/dev/null || true)"
-  if [[ "$pinned" == *"@latest" ]]; then
-    warn "gitnexus is unpinned ($pinned) — pin a version for reproducible installs"
-  elif [[ -n "$pinned" ]]; then
-    ok "gitnexus pinned: $pinned"
-  fi
   for f in "${HOME}/.cursor/mcp.json" "${HOME}/.claude/.mcp.json"; do
     [[ -f "$f" ]] || continue
     if python3 -m json.tool "$f" >/dev/null 2>&1; then

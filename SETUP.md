@@ -33,7 +33,7 @@ bin/bootstrap.sh                  # all providers
 # or: bin/bootstrap.sh --provider cursor
 ```
 
-That's the whole setup. GitNexus needs no install (it runs via `npx`).
+That's the whole setup. codebase-memory-mcp (graph code navigation) is installed and registered separately.
 
 <details>
 <summary>Manual path (if you don't want bootstrap to install deps)</summary>
@@ -86,7 +86,7 @@ in the project root (or add this repo as a submodule). Keep project-specific
 skills in the project's own `.cursor/skills` / `.claude/skills`; personal skills
 stay in `$HOME` via the symlink.
 
-GitNexus indexes per repo — run `npx gitnexus analyze` from a project root once.
+codebase-memory-mcp indexes per repo — run its `index_repository` tool from a project once.
 
 ## Notes
 
@@ -99,7 +99,7 @@ GitNexus indexes per repo — run `npx gitnexus analyze` from a project root onc
    commands; see the tool-precedence section in `AGENTS.md`.
 3. **`ANTHROPIC_BASE_URL`** and other machine-local `env` are intentionally not
    vendored — set them per machine in `~/.claude/settings.json`.
-4. **GitNexus** must be indexed per project (`npx gitnexus analyze`).
+4. **codebase-memory-mcp** must be indexed per project (`index_repository`).
 5. **CI workflow** (`.github/workflows/ci.yml`) is not pushed yet — it needs a
    gh token with the `workflow` scope (`gh auth refresh -h github.com -s workflow`).
 

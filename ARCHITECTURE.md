@@ -106,7 +106,7 @@ can live anywhere — no path is tied to a specific machine.
   secrets out of tracked files.
 - **The canonical path is `~/Documents/GitHub/personal/agentic-cfg`** — docs and
   the generated `CLAUDE.md` pointer assume it.
-- **Tool precedence** (GitNexus vs lean-ctx `ctx_*` vs `rtk`) is defined once in
+- **Tool precedence** (codebase-memory-mcp vs lean-ctx `ctx_*` vs `rtk`) is defined once in
   `AGENTS.md`; don't restate conflicting rules elsewhere.
 
 ## How to extend
