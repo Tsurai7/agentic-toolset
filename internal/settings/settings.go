@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -25,9 +26,118 @@ func Merge(fragmentPath, outPath string) error {
 		if err := json.Unmarshal(b, out); err != nil {
 			return fmt.Errorf("merge-settings: invalid JSON in %s: %w", outPath, err)
 		}
+	} else if !os.IsNotExist(err) {
+		// An existing-but-unreadable file (e.g. EACCES) is a hard error, not a
+		// silent "absent" that would replace the user's config with fragment-only
+		// content — mirroring Unmerge below, which already propagates non-ENOENT.
+		return fmt.Errorf("merge-settings: cannot read %s: %w", outPath, err)
 	}
 	mergeInto(out, frag)
+	if os.Getenv("DRY_RUN") == "1" {
+		data, err := jsonorder.Marshal(out)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("[dry-run] would write %s:\n%s", outPath, data)
+		return nil
+	}
 	return jsonorder.WriteFile(outPath, out)
+}
+
+// Unmerge removes the repo's managed hook groups and the fragment-owned permission
+// allow entries from outPath, preserving user-added hooks, machine-local env, the
+// deny list, and every other key. The inverse of Merge — used by `agentic eject`.
+// No-op if outPath is absent. (Caveat: an allow entry the user added independently
+// that also appears in the fragment is removed; this is documented behaviour.)
+func Unmerge(fragmentPath, outPath string) error {
+	frag, err := jsonorder.ReadFile(fragmentPath)
+	if err != nil {
+		return fmt.Errorf("unmerge-settings: invalid JSON in %s: %w", fragmentPath, err)
+	}
+	b, err := os.ReadFile(outPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	out := jsonorder.New()
+	if err := json.Unmarshal(b, out); err != nil {
+		return fmt.Errorf("unmerge-settings: invalid JSON in %s: %w", outPath, err)
+	}
+	unmergeHooks(out, frag)
+	unmergePermissions(out, frag)
+	return jsonorder.WriteFile(outPath, out)
+}
+
+func unmergeHooks(out, frag *jsonorder.Map) {
+	outHooksRaw, ok := out.GetRaw("hooks")
+	if !ok {
+		return
+	}
+	fragHooksRaw, ok := frag.GetRaw("hooks")
+	if !ok {
+		return
+	}
+	outHooks := jsonorder.New()
+	_ = json.Unmarshal(outHooksRaw, outHooks)
+	fragHooks := jsonorder.New()
+	_ = json.Unmarshal(fragHooksRaw, fragHooks)
+	managed := managedCommands(fragHooks)
+	for _, event := range fragHooks.Keys() {
+		r, ok := outHooks.GetRaw(event)
+		if !ok {
+			continue
+		}
+		var groups []json.RawMessage
+		_ = json.Unmarshal(r, &groups)
+		var kept []json.RawMessage
+		for _, g := range groups {
+			if !isManagedGroup(g, managed) {
+				kept = append(kept, g)
+			}
+		}
+		if len(kept) == 0 {
+			outHooks.Delete(event) // event held only managed groups
+		} else {
+			cb, _ := json.Marshal(kept)
+			outHooks.SetRaw(event, cb)
+		}
+	}
+	if len(outHooks.Keys()) == 0 {
+		out.Delete("hooks")
+	} else {
+		hb, _ := json.Marshal(outHooks)
+		out.SetRaw("hooks", hb)
+	}
+}
+
+func unmergePermissions(out, frag *jsonorder.Map) {
+	rawPerms, ok := out.GetRaw("permissions")
+	if !ok {
+		return
+	}
+	perms := jsonorder.New()
+	_ = json.Unmarshal(rawPerms, perms)
+	managedAllow := map[string]bool{}
+	if r, ok := frag.GetRaw("permissions"); ok {
+		fp := jsonorder.New()
+		_ = json.Unmarshal(r, fp)
+		for _, a := range permAllow(fp) {
+			managedAllow[a] = true
+		}
+	}
+	kept := []string{}
+	for _, a := range permAllow(perms) {
+		if !managedAllow[a] {
+			kept = append(kept, a)
+		}
+	}
+	sort.Strings(kept)
+	ab, _ := json.Marshal(kept)
+	perms.SetRaw("allow", ab)
+	pb, _ := json.Marshal(perms)
+	out.SetRaw("permissions", pb)
 }
 
 func mergeInto(out, frag *jsonorder.Map) {
@@ -121,32 +231,66 @@ func isManagedGroup(g json.RawMessage, managed map[string]bool) bool {
 		return false
 	}
 	for _, c := range cmds {
-		switch {
-		case managed[c]:
-		case strings.Contains(c, "/providers/claude/hooks/"):
-		case strings.HasPrefix(c, "lean-ctx hook "):
-		default:
+		if !managed[c] && !isManagedCommand(c) {
 			return false
 		}
 	}
 	return true
 }
 
+// isManagedCommand recognizes a repo-owned hook command by shape, independent of
+// the absolute path the command was installed at. Covers `<any path>/lean-ctx hook
+// <subcommand>` (e.g. `/opt/homebrew/bin/lean-ctx hook rewrite`) and our own
+// providers/claude/hooks/<name>.sh scripts even when their __AGENTIC_ROOT__ prefix
+// moved or is a stale clone path.
+func isManagedCommand(c string) bool {
+	if strings.Contains(c, "/providers/claude/hooks/") {
+		return true
+	}
+	fields := strings.Fields(c)
+	return len(fields) >= 2 && filepath.Base(fields[0]) == "lean-ctx" && fields[1] == "hook"
+}
+
+// managedAllowPrefix marks an allow entry as repo-owned (currently only the
+// lean-ctx MCP tools). Owned entries are a "managed set": on merge, an owned
+// entry not present in the incoming fragment is dropped (e.g. weak tier ships a
+// fragment with none of these, which then removes all 12 on merge instead of
+// merely not re-adding them) — never a user-added entry, which is anything not
+// matching this prefix.
+const managedAllowPrefix = "mcp__lean-ctx__"
+
+// mergePermissions unions the fragment's allow entries into the existing list,
+// but for the managed set (managedAllowPrefix) also drops any existing entry not
+// present in the fragment, so a fragment that dropped/shrank its managed
+// entries (weak tier) actually removes the stale ones instead of only skipping
+// new adds. User-added entries (outside the managed prefix) are never touched.
 func mergePermissions(out, frag *jsonorder.Map) {
 	perms := jsonorder.New()
 	if r, ok := out.GetRaw("permissions"); ok {
 		_ = json.Unmarshal(r, perms)
 	}
-	allow := map[string]bool{}
-	for _, a := range permAllow(perms) {
-		allow[a] = true
-	}
+	fragAllow := map[string]bool{}
+	fragHasPermissions := false
 	if r, ok := frag.GetRaw("permissions"); ok {
+		fragHasPermissions = true
 		fp := jsonorder.New()
 		_ = json.Unmarshal(r, fp)
 		for _, a := range permAllow(fp) {
-			allow[a] = true
+			fragAllow[a] = true
 		}
+	}
+	allow := map[string]bool{}
+	for _, a := range permAllow(perms) {
+		// Drop an owned entry only when the fragment actively declares a
+		// permissions block without it; a fragment that omits "permissions"
+		// entirely expresses no opinion and must not wipe the managed set.
+		if fragHasPermissions && strings.HasPrefix(a, managedAllowPrefix) && !fragAllow[a] {
+			continue
+		}
+		allow[a] = true
+	}
+	for a := range fragAllow {
+		allow[a] = true
 	}
 	list := make([]string, 0, len(allow))
 	for a := range allow {

@@ -1,0 +1,14 @@
+{
+  "id": "answer-shapes-structured-bugfix",
+  "rule": "When a task clearly fits a common deliverable shape, the answer-shapes skill's skeleton keeps the answer complete and parseable — a bug fix should state root cause, the fix, and a verification step.",
+  "prompt": "Bug: the Go function `func Add(a, b int) int { return a - b }` returns the wrong value. Briefly give the root cause, the fix, and how you would verify it.",
+  "expect": [
+    "identifies the root cause (it subtracts instead of adds)",
+    "gives the concrete fix (return a + b)",
+    "includes a verification step (a test or command and the expected/observed result), per the answer-shapes bug-fix skeleton"
+  ],
+  "expect_not": [
+    "omits the verification step",
+    "buries the fix in an unstructured blob with no clear root-cause / fix / verification structure"
+  ]
+}

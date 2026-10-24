@@ -1,7 +1,7 @@
 # Setup — using this config on a new machine
 
 How to install this agentic config on a fresh laptop for **Cursor** and/or
-**Claude** (Desktop + Code), and how to keep it updated.
+**Claude Code**, and how to keep it updated.
 
 ## 1. Authenticate (the repo is private)
 
@@ -39,7 +39,7 @@ That's the whole setup. codebase-memory-mcp (graph code navigation) is installed
 <summary>Manual path (if you don't want bootstrap to install deps)</summary>
 
 ```bash
-brew install python3 node gh rtk
+brew install python3 node gh rtk ast-grep go
 brew install yvgude/lean-ctx/lean-ctx     # optional
 cp secrets/.env.example secrets/.env       # only to override auto-detected paths
 bin/install.sh --provider all
@@ -52,7 +52,7 @@ What each provider gets:
 | Provider | Installed |
 |----------|-----------|
 | **Cursor** | `~/.cursor/skills` → symlink to `core/skills`; rule `core/rules/lean-ctx.mdc` → `~/.cursor/rules`; hooks → `~/.cursor/hooks.json`; MCP **merged into** `~/.cursor/mcp.json` (existing servers preserved) |
-| **Claude** | `~/.claude/skills` → symlink; `~/.claude/CLAUDE.md` generated from `AGENTS.md` + user-rules; MCP merged into `~/.claude/.mcp.json`; `settings.json` created from template if absent |
+| **Claude** | `~/.claude/skills` → symlink; `~/.claude/CLAUDE.md` generated from `AGENTS.md` + user-rules; MCP registered into `~/.claude.json` (user scope, via the `claude` CLI — PORT-03, *not* `~/.claude/.mcp.json`); hooks + permissions merged into `settings.json` |
 
 Restart Cursor / Claude afterwards.
 
@@ -72,7 +72,7 @@ into Cursor → Settings → Rules.
 ## 5. Keep it updated
 
 ```bash
-cd ~/Documents/GitHub/personal/agentic-cfg
+cd <your clone>
 git pull
 bin/install.sh --provider all      # idempotent; backs up what it replaces
 ```
@@ -88,6 +88,73 @@ stay in `$HOME` via the symlink.
 
 codebase-memory-mcp indexes per repo — run its `index_repository` tool from a project once.
 
+## Updating
+
+One-time setup already done above: `bin/install.sh --provider all` now automatically
+links `agentic` and `agentic-cfg` into `~/.local/bin`, so you have a PATH entry point.
+
+From then on, update from anywhere by running:
+
+```bash
+agentic-cfg update    # fast-forward pull, rebuild, re-apply to Claude and Cursor
+agentic-cfg version   # show what version you are on
+```
+
+**Note:** running Claude Code or Cursor sessions keep the prefix they started with.
+Restart the editor or open a new session to pick up the update.
+
+**Note:** `agentic-cfg update` works against the private origin with your existing git
+credentials — no public repo required.
+
+## The `agentic` CLI — install, apply to Claude, verify, remove
+
+`bin/bootstrap.sh` / `bin/install.sh` above sync the *config* (skills, CLAUDE.md, MCP,
+hooks). The `agentic` Go binary is a second, optional surface: one reversible command to
+inject/eject the agentic-cfg footprint in Claude, plus read-only token-economy metrics. It
+is gitignored and built fresh from the checkout.
+
+Build it and put it on PATH once:
+
+```bash
+make build            # builds ./bin/agentic (equivalently: go build -o bin/agentic ./cmd/agentic)
+./bin/agentic link    # symlinks `agentic` + `agentic-cfg` into ~/.local/bin (override with --dir)
+```
+
+Apply to local Claude — two equivalent entry points:
+
+```bash
+bin/install.sh --provider claude     # full sync: skills, CLAUDE.md, MCP, hooks + permissions
+# ...or the reversible, test-covered front door:
+agentic inject                       # skills symlink + CLAUDE.md @import + hooks/permissions + MCP
+agentic inject --dry-run             # preview; --skip-mcp to leave MCP alone; --home DIR to target
+```
+
+Both preserve your own CLAUDE.md text, your `settings.json` `env`/hooks, and any real
+`~/.claude/skills` you already have (a real skills dir is backed up, not clobbered). Restart
+Claude Code afterwards to pick up MCP and skills.
+
+Verify, and read the session token economy:
+
+```bash
+bin/doctor.sh                # health check — "Passed with N warning(s)" is honest; read the WARN lines
+agentic status               # is agentic-cfg injected? exit 0 = yes, 1 = no (--json for scripts)
+agentic gain                 # session token economy: cache hit rate + the ACTUAL input bill + cache-avoided
+agentic gain --adoption      # enforcement coverage: shell-guard wrap/deny/fail-open shares
+agentic cache                # cache-focused view (alias for `agentic gain --cache`)
+```
+
+`agentic gain` reports the *session's* prompt-cache economy, not a config-attributed saving:
+prompt caching is a Claude platform feature, so the "cache avoided" figure is what caching
+saves versus re-sending context uncached — it is shown next to the actual bill so it can't be
+read as money the config pocketed. To measure the *config's own* effect, use the A/B
+benchmark (`evals/swe_bench.py`), not this readout.
+
+Remove cleanly — the exact inverse of inject, leaving your own content untouched:
+
+```bash
+agentic eject
+```
+
 ## Notes
 
 1. **lean-ctx is portable on both sides.** Cursor gets the rule, MCP server, and
@@ -100,7 +167,7 @@ codebase-memory-mcp indexes per repo — run its `index_repository` tool from a 
 3. **`ANTHROPIC_BASE_URL`** and other machine-local `env` are intentionally not
    vendored — set them per machine in `~/.claude/settings.json`.
 4. **codebase-memory-mcp** must be indexed per project (`index_repository`).
-5. **CI workflow** (`.github/workflows/ci.yml`) is not pushed yet — it needs a
-   gh token with the `workflow` scope (`gh auth refresh -h github.com -s workflow`).
+5. **CI workflow** (`.github/workflows/ci.yml`) is live on master, running
+   `bin/ci-check.sh` and `golangci-lint` on every push and pull request.
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how the repo is wired internally.

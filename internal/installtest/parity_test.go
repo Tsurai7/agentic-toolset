@@ -107,6 +107,134 @@ func TestMcpParityWithPython(t *testing.T) {
 	}
 }
 
+// writeFragment writes a single-server integration fragment under
+// <agenticRoot>/integrations/<dir>/mcp.stdio.json.
+func writeFragment(t *testing.T, agenticRoot, dir, server, config string) {
+	t.Helper()
+	p := filepath.Join(agenticRoot, "integrations", dir, "mcp.stdio.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, p, `{"mcpServers":{"`+server+`":`+config+`}}`)
+}
+
+func sidecarServers(t *testing.T, mcpJSONPath string) []string {
+	t.Helper()
+	sidecar := filepath.Join(filepath.Dir(mcpJSONPath), ".agentic-managed.json")
+	b, err := os.ReadFile(sidecar)
+	if err != nil {
+		t.Fatalf("read sidecar %s: %v", sidecar, err)
+	}
+	var v struct {
+		Servers []string `json:"servers"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil {
+		t.Fatalf("sidecar not valid JSON: %v", err)
+	}
+	return v.Servers
+}
+
+// TestMcpSidecarParityWithPython extends the Go<->Python parity coverage to
+// plan 06 change 9's ported cursor sidecar behavior (originally Python-only
+// per plan 08): bootstrap (first run, no retro-claim), stale-managed-server
+// removal once a fragment is deleted, and a hand-added server surviving both.
+// Each independently-driven agentic-root fixture (own integrations/ dir) is
+// merged through both the Go and Python paths and the resulting mcp.json +
+// sidecar are compared byte-for-byte.
+func TestMcpSidecarParityWithPython(t *testing.T) {
+	needPython(t)
+	scriptRoot := repoRoot(t) // where providers/shared/merge-mcp.py itself lives
+
+	newFixtureRoot := func(t *testing.T) string {
+		t.Helper()
+		r := t.TempDir()
+		writeFragment(t, r, "gn", "gitnexus", `{"command":"gn"}`)
+		return r
+	}
+
+	t.Run("bootstrap_no_retro_claim", func(t *testing.T) {
+		goRoot, pyRoot := newFixtureRoot(t), newFixtureRoot(t)
+		goDir, pyDir := t.TempDir(), t.TempDir() // separate dirs: each gets its own sidecar
+		goF, pyF := filepath.Join(goDir, "mcp.json"), filepath.Join(pyDir, "mcp.json")
+		seed := `{"mcpServers":{"hand-added":{"command":"custom"}}}`
+		mustWrite(t, goF, seed)
+		mustWrite(t, pyF, seed)
+
+		if err := mcpmerge.MergeCursor(goRoot, goF); err != nil {
+			t.Fatal(err)
+		}
+		runPy(t, scriptRoot, "merge-mcp.py", pyRoot, pyF)
+
+		if !reflect.DeepEqual(parsed(t, goF), parsed(t, pyF)) {
+			t.Errorf("mcp.json parity mismatch (bootstrap)\nGO: %s\nPY: %s", readStr(t, goF), readStr(t, pyF))
+		}
+		goSidecar, pySidecar := sidecarServers(t, goF), sidecarServers(t, pyF)
+		if !reflect.DeepEqual(goSidecar, pySidecar) {
+			t.Errorf("sidecar parity mismatch (bootstrap): GO=%v PY=%v", goSidecar, pySidecar)
+		}
+		if len(goSidecar) != 1 || goSidecar[0] != "gitnexus" {
+			t.Errorf("bootstrap sidecar should record the managed set, got %v", goSidecar)
+		}
+	})
+
+	t.Run("stale_removal_and_hand_added_survival", func(t *testing.T) {
+		goRoot, pyRoot := newFixtureRoot(t), newFixtureRoot(t)
+		goDir, pyDir := t.TempDir(), t.TempDir() // separate dirs: each gets its own sidecar
+		goF, pyF := filepath.Join(goDir, "mcp.json"), filepath.Join(pyDir, "mcp.json")
+		mustWrite(t, goF, `{"mcpServers":{}}`)
+		mustWrite(t, pyF, `{"mcpServers":{}}`)
+
+		// First pass: bootstraps both sidecars with gitnexus managed.
+		if err := mcpmerge.MergeCursor(goRoot, goF); err != nil {
+			t.Fatal(err)
+		}
+		runPy(t, scriptRoot, "merge-mcp.py", pyRoot, pyF)
+
+		// Hand-add a server directly to each output between runs.
+		for _, f := range []string{goF, pyF} {
+			m := parsed(t, f).(map[string]any)
+			servers, _ := m["mcpServers"].(map[string]any)
+			servers["hand-added"] = map[string]any{"command": "custom"}
+			b, err := json.Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mustWrite(t, f, string(b))
+		}
+
+		// Delete the gitnexus fragment from each fixture root: no longer managed.
+		if err := os.RemoveAll(filepath.Join(goRoot, "integrations", "gn")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.RemoveAll(filepath.Join(pyRoot, "integrations", "gn")); err != nil {
+			t.Fatal(err)
+		}
+
+		// Second pass: gitnexus (stale, sidecar-tracked) must be removed;
+		// hand-added (never tracked) must survive.
+		if err := mcpmerge.MergeCursor(goRoot, goF); err != nil {
+			t.Fatal(err)
+		}
+		runPy(t, scriptRoot, "merge-mcp.py", pyRoot, pyF)
+
+		if !reflect.DeepEqual(parsed(t, goF), parsed(t, pyF)) {
+			t.Errorf("mcp.json parity mismatch (stale removal)\nGO: %s\nPY: %s", readStr(t, goF), readStr(t, pyF))
+		}
+		goSidecar, pySidecar := sidecarServers(t, goF), sidecarServers(t, pyF)
+		if !reflect.DeepEqual(goSidecar, pySidecar) {
+			t.Errorf("sidecar parity mismatch (stale removal): GO=%v PY=%v", goSidecar, pySidecar)
+		}
+
+		goServers, _ := parsed(t, goF).(map[string]any)["mcpServers"].(map[string]any)
+		if _, ok := goServers["gitnexus"]; ok {
+			t.Error("Go path did not remove the stale managed server")
+		}
+		if _, ok := goServers["hand-added"]; !ok {
+			t.Error("Go path removed the hand-added server (should survive)")
+		}
+	})
+}
+
 func TestClaudeMdParityWithPython(t *testing.T) {
 	needPython(t)
 	root := repoRoot(t)

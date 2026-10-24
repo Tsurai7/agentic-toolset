@@ -7,7 +7,49 @@ subagent split, and tool-call distribution.
 
 Read-only on the transcripts. Stdlib only — no dependencies, no network.
 
-## Usage
+## Built-in readout: `agentic gain`
+
+The fastest way to see what this config is buying you is the built-in command in
+the `agentic` binary — no Python, no flags to remember:
+
+```bash
+agentic gain                       # last 20 sessions
+agentic gain --last 50 --project agentic-cfg
+agentic gain --json                # machine-readable
+agentic gain --by-model            # per-model token share — is the cheap tier carrying the bulk?
+agentic gain --adoption            # enforcement coverage: shell-guard wrap/deny/fail-open shares
+agentic gain --gate                # regression gate: exit 1 if hit rate < 80% (CI-friendly)
+```
+
+```
+agentic-cfg gain — session token economy over 20 session(s)
+  input (fresh)      : 205k
+  cache read         : 239.0M
+  cache write        : 6.9M
+  output             : 1.5M
+  cache hit rate     : 97.1%   (cache_read / total input) — healthy (≥ 80% floor)
+  subagent share     : 23.7%   (context isolated off the main thread)
+  input bill (actual): $278.83  (input + cache — what you actually paid)
+  cache avoided      : $1549.31  (85% — vs re-sending the same context uncached)
+  est. total cost    : $331.93  (incl. output; approximate — verify rates)
+  note: prompt caching is a Claude platform feature; agentic-cfg's lever is cache
+        hygiene (a warm, byte-stable prefix), not the avoided figure itself.
+```
+
+It mirrors `report.py`'s parsing (and agrees with it on the hit rate), but leads
+with the **gain**: the token-weighted cache-hit rate and the input-token cost the
+cache is avoiding — a write-heavy session that never reuses its cache correctly
+shows a *negative* saving. Use `report.py` below for the richer per-session table,
+tool breakdown, and cost detail. Implementation: `internal/gain/` (Go,
+unit-tested), wired in `cmd/agentic/main.go`.
+
+`--adoption` complements — it does not replace — the cache metrics above: it
+measures whether the *enforcement layer* is actually covering the traffic
+(shell-guard wrap/deny/fail-open shares, deny events observed in transcripts,
+and ast-grep/lean-ctx/GitNexus/native-tool call counts), rather than the token
+economy of the traffic that does get wrapped.
+
+## Usage (`report.py`)
 
 ```bash
 python3 telemetry/report.py                # last 10 sessions

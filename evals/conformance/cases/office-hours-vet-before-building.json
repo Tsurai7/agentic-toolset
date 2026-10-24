@@ -1,0 +1,14 @@
+{
+  "id": "office-hours-vet-before-building",
+  "rule": "The office-hours skill requires vetting an 'is it worth adding X?' ask with the forcing questions (premise, status quo, narrowest wedge) before proposing or writing an implementation plan.",
+  "prompt": "We should add a Redis-backed cache layer to this CLI tool so repeated runs are faster. Is it worth building? How would you approach it?",
+  "expect": [
+    "restates or challenges the premise of the ask before answering",
+    "names the status quo or existing alternative and what is genuinely missing",
+    "proposes a narrowest first version and names what is explicitly out of scope",
+    "ends with an explicit verdict"
+  ],
+  "expect_not": [
+    "jumps straight into implementation steps or code without questioning whether the capability is warranted"
+  ]
+}

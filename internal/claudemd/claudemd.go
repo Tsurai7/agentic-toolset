@@ -4,6 +4,7 @@
 package claudemd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,12 +27,97 @@ func Render(existing, generatedAbs string) string {
 	case blockRe.MatchString(existing):
 		return blockRe.ReplaceAllLiteralString(existing, block) // refresh managed block
 	case strings.HasPrefix(strings.TrimLeft(existing, " \t\r\n"), legacySignature):
-		return block + "\n" // migrate a legacy fully-generated file
+		// Migrate a legacy fully-generated file. A legacy file is a header comment
+		// followed by inline generated content with NO end marker, so there is no
+		// reliable boundary between generated text and anything a user appended; this
+		// replaces the whole file. The install scripts' one-time CLAUDE.md.bak backup
+		// is the safety net (the legacy format was explicitly "do not edit by hand").
+		return block + "\n"
 	case strings.TrimSpace(existing) != "":
 		return strings.TrimRight(existing, "\n") + "\n\n" + block + "\n" // keep user content
 	default:
 		return block + "\n"
 	}
+}
+
+// BlockPresent reports whether content contains the managed @import block.
+func BlockPresent(content string) bool {
+	return blockRe.MatchString(content)
+}
+
+// StripBlock removes the managed @import block from existing CLAUDE.md content,
+// returning the cleaned content and whether a block was present. Trailing blank
+// space left where the block was is collapsed to a single trailing newline, so
+// hand-written user content survives intact. The inverse of Render's block-add.
+func StripBlock(existing string) (string, bool) {
+	if !blockRe.MatchString(existing) {
+		return existing, false
+	}
+	out := blockRe.ReplaceAllLiteralString(existing, "")
+	out = strings.TrimRight(out, " \t\r\n")
+	if out != "" {
+		out += "\n"
+	}
+	return out, true
+}
+
+// Remove strips the managed block from claudeMdPath, preserving any user content.
+// If the file then holds only whitespace (it carried only the managed block) it is
+// deleted. Returns whether a block was found. No-op if the file is absent or has
+// no managed block.
+func Remove(claudeMdPath string) (bool, error) {
+	b, err := os.ReadFile(claudeMdPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	cleaned, had := StripBlock(string(b))
+	if !had {
+		return false, nil
+	}
+	if strings.TrimSpace(cleaned) == "" {
+		return true, os.Remove(claudeMdPath)
+	}
+	return true, AtomicWrite(claudeMdPath, []byte(cleaned), 0o644)
+}
+
+// AtomicWrite writes data to path via a same-directory temp file + fsync + rename,
+// so an interrupted write can never leave the target truncated or empty (the plain
+// os.WriteFile it replaces truncates in place — BUG-12 parity for every
+// session-critical file, not just CLAUDE.md). Mirrors internal/jsonorder.WriteFile
+// and providers/shared/safe_io.atomic_write_text.
+func AtomicWrite(path string, data []byte, perm os.FileMode) error {
+	// Resolve a symlinked destination so the atomic rename lands on the link
+	// target (dotfiles/stow pattern) instead of replacing the symlink with a
+	// regular file. Only an actual symlinked final component is resolved.
+	if fi, lerr := os.Lstat(path); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if resolved, rerr := filepath.EvalSymlinks(path); rerr == nil {
+			path = resolved
+		}
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".claudemd-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op once the rename succeeds
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // Ensure writes or updates claudeMdPath so it imports generatedPath, preserving
@@ -44,10 +130,19 @@ func Ensure(generatedPath, claudeMdPath string) error {
 	existing := ""
 	if b, err := os.ReadFile(claudeMdPath); err == nil {
 		existing = string(b)
+	} else if !os.IsNotExist(err) {
+		// An existing-but-unreadable CLAUDE.md is a hard error, not a silent
+		// "absent" that would drop the user's prose and keep only the managed
+		// import block.
+		return fmt.Errorf("merge-claude-md: cannot read %s: %w", claudeMdPath, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(claudeMdPath), 0o755); err != nil {
 		return err
 	}
-	// G306: CLAUDE.md is non-secret user config; 0644 matches the install convention.
-	return os.WriteFile(claudeMdPath, []byte(Render(existing, abs)), 0o644) //nolint:gosec // non-secret user config; 0644 is intentional
+	content := Render(existing, abs)
+	if os.Getenv("DRY_RUN") == "1" {
+		fmt.Printf("[dry-run] would write %s:\n%s\n", claudeMdPath, content)
+		return nil
+	}
+	return AtomicWrite(claudeMdPath, []byte(content), 0o644)
 }

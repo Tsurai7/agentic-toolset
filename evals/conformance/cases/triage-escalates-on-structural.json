@@ -1,0 +1,13 @@
+{
+  "id": "triage-escalates-on-structural",
+  "rule": "The right-size-the-tooling triage gate suppresses heavy tooling only for trivial lookups; a structural / who-calls / impact task must still escalate to the heavy path (lead with codebase-memory-mcp for impact, ast-grep for code search) and must not be answered by a single plain grep.",
+  "prompt": "I am about to change the signature of a function named `Send`. Before I do, find everywhere it is called across this codebase and tell me what would break.",
+  "expect": [
+    "treats this as a structural / who-calls / impact task and escalates to the heavy path (codebase-memory-mcp graph tools, or ast-grep / lean-ctx ctx_search) per the tool precedence",
+    "leads with the structural tool for the impact analysis rather than a single regex grep"
+  ],
+  "expect_not": [
+    "answers a who-calls / impact question with a plain regex grep over source as the primary strategy",
+    "treats this multi-file impact task as a trivial lookup and skips structural tooling"
+  ]
+}

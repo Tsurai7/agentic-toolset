@@ -121,7 +121,7 @@ preserving `command`/`args`/`env`. The dead `~/.claude/.mcp.json` is left untouc
 2. The rtk fallback **passes through untouched** any command with a leading `VAR=`
    assignment, instead of prefixing a naive `rtk`.
 
-Also updated [issues/shell-hook-breaks-shell-variables.md](../issues/shell-hook-breaks-shell-variables.md)
+Also updated [issues/shell-hook-breaks-shell-variables.md](../archive/shell-hook-breaks-shell-variables.md)
 to `status: fixed` with the diagnosis.
 
 **Why:** Characterized with an evidence probe against the live hook:

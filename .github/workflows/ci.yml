@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install check deps (shellcheck, PyYAML)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          python -m pip install --quiet pyyaml
+
+      - name: Static checks (shell, JSON, YAML, frontmatter, links, evals, prefix budget, Go)
+        run: bash bin/ci-check.sh
+
+      - name: golangci-lint (strict gate, .golangci.yml)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11.3

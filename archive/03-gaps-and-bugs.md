@@ -13,14 +13,14 @@ marked **Observed**; everything else is marked **Inferred** with a confidence le
 
 What this document defers to its siblings (referenced, not duplicated):
 
-- **Go-rewrite design** → [`01-go-rewrite.md`](01-go-rewrite.md). The remediation table
+- **Go-rewrite design** → [`01-go-rewrite.md`](../plans/01-go-rewrite.md). The remediation table
   cross-references which bugs disappear for free under a real JSON parser + structured
   exec, versus which need a shell fix *now* because the rewrite is not landed.
-- **Strategy / maturity** → [`02-maturity-review.md`](02-maturity-review.md).
-- **Portability as a strategy** → [`04-portability-review.md`](04-portability-review.md). I
+- **Strategy / maturity** → [`02-maturity-review.md`](../plans/02-maturity-review.md).
+- **Portability as a strategy** → [`04-portability-review.md`](../plans/04-portability-review.md). I
   *report* portability bugs I found (BSD vs GNU `sed`, bash 3.2) and cross-link, but the
   compat strategy is theirs.
-- **Test-coverage gaps** ("what is untested") → [`05-test-coverage.md`](05-test-coverage.md).
+- **Test-coverage gaps** ("what is untested") → [`05-test-coverage.md`](../plans/05-test-coverage.md).
   I own *bugs in the harness code*; I defer the coverage assessment.
 
 ### Severity summary
@@ -32,6 +32,11 @@ What this document defers to its siblings (referenced, not duplicated):
 | Medium   | 9 | BUG-09 … BUG-17 |
 | Low      | 6 | BUG-18 … BUG-23 |
 | **Total** | **23** | |
+
+> **✅ Resolved — ALL 23/23 (improvement-loop, 2026-06-30):** BUG-01–08 (hook cluster),
+> BUG-10–23 fixed, BUG-09 closed as won't-fix-by-design. Both Criticals, all six Highs, and
+> every Medium/Low are now addressed. See `plans/IMPROVEMENT-LOOP.md` for the per-iteration log
+> and the bench backing each fix.
 
 The dominant theme: `shell-guard.sh` parses a structured JSON protocol with
 `grep`/`sed`/`case` glob matching. That approach is wrong in kind, not in detail — it
@@ -53,6 +58,23 @@ tool is present.
 ## Area 1 — `shell-guard.sh` (the hook)
 
 File: `providers/claude/hooks/shell-guard.sh`.
+
+> **✅ RESOLVED — BUG-01…BUG-08 cluster (improvement loop, 2026-06-30).** The whole cluster is
+> closed on the primary path. `shell-guard.sh` now `exec`s the Go hook (`bin/agentic hook
+> shell-guard`, `internal/hook/hook.go`) when the binary is built — the default, since
+> `bootstrap.sh` builds it. The Go hook parses the hook JSON with a real decoder (eliminating
+> the grep/sed string-munging → BUG-01/05/08) and **fails open** on any command a wrapper would
+> mangle: `<<`/heredocs, embedded newlines, `$(…)`/backticks, `cd` chains (BUG-02/04 by design —
+> never mangle, accepting that e.g. a bit-shift goes uncompressed). The ast-grep deny strips
+> quoted substrings before the code-extension test (BUG-03); the wrapped-check strips leading
+> `VAR=` assignments (BUG-06); Go returns 0 on any internal error, so a parse miss degrades to
+> pass-through, never a spurious deny (BUG-07). The shell fallback below was hardened the same
+> way for machines without the Go binary. Defended by `internal/hook/hook_test.go` (quoted-pattern
+> grep not denied, code-file deny, env-prefix no-double-wrap, heredoc/multiline/bit-shift/
+> command-subst fail-open, unparseable-input fail-open). Residual edge (not a regression): a
+> non-code file whose name embeds a code extension mid-token (e.g. `report.go.txt`) can still
+> trip the deny — rare, and grep there is uncommon. Per-bug headings keep their original
+> severity for history.
 
 ### BUG-01 — Multiline / escaped-whitespace commands are silently corrupted — Critical — **Observed**
 
@@ -252,7 +274,7 @@ for this script (it's a small filter) or, better, replace the grep/sed parsing w
 (BUG-01). Ensure the hook **always** exits 0 on its own internal errors so a parse failure
 degrades to "pass through" rather than "deny". Cross-ref doc 01.
 
-### BUG-08 — Hook re-escape uses BSD/GNU-divergent `sed`; portability of the emitted JSON — High → Medium — **Inferred (medium confidence)**, cross-ref [doc 04](04-portability-review.md)
+### BUG-08 — Hook re-escape uses BSD/GNU-divergent `sed`; portability of the emitted JSON — High → Medium — **Inferred (medium confidence)**, cross-ref [doc 04](../plans/04-portability-review.md)
 
 `shell-guard.sh:26`, `:57`, `:76`.
 
@@ -274,7 +296,15 @@ fix. Full BSD-vs-GNU treatment is doc 04's; flagged here because it is the reaso
 **Fix.** Use `python3`/`jq` for all JSON in/out (also fixes BUG-01/05), or the Go rewrite
 (doc 01), which sidesteps `sed` entirely.
 
-### BUG-09 — `rtk`/`lean-ctx` absent ⇒ hook silently disables itself for non-grep commands — Medium — **Observed**
+### BUG-09 — `rtk`/`lean-ctx` absent ⇒ hook silently disables itself for non-grep commands — Medium — **Observed** — ✅ RESOLVED (won't-fix by design, 2026-06-30)
+
+**✅ Resolved — won't-fix (by design).** Re-evaluated: the ast-grep deny is not a
+*compression* mechanism, it is a **code-search-quality** redirect (grep → `sg`), and `ast-grep`
+is a required dependency installed by `bootstrap.sh` independently of `rtk`/`lean-ctx`. So on a
+machine without the compression layer the deny is still correct and actionable (it points at a
+tool that *is* present), not "punitive with no benefit." Gating it on `rtk`/`lean-ctx`
+availability would wrongly couple search quality to compression. The graceful pass-through for
+non-grep commands when no wrapper exists is the intended degradation. No change.
 
 `shell-guard.sh:65-71` (lean-ctx branch), `:74` (`command -v rtk … || exit 0`).
 
@@ -298,7 +328,7 @@ outcome that cuts against the north-star goal of helping weak setups.
 
 ## Area 2 — merge scripts (`providers/shared/merge-*.py`)
 
-### BUG-10 — `merge-settings.py` writes `"$schema": null` when neither side has a schema — Medium — **Observed**
+### BUG-10 — `merge-settings.py` writes `"$schema": null` when neither side has a schema — Medium — **Observed** — ✅ FIXED (already guarded; verified 2026-06-30)
 
 `providers/shared/merge-settings.py:31`.
 
@@ -328,7 +358,18 @@ simply wrong. (The leads doc flagged exactly this.)
 `if v := fragment.get("$schema"): result.setdefault("$schema", v)` (or check the existing
 result first and skip entirely when both are absent).
 
-### BUG-11 — ARCHITECTURE.md claims "all destructive writes back up" but the merge scripts do not — Medium (doc-vs-behavior) — **Observed**
+**✅ Resolved.** `merge-settings.py` already guards with `schema = fragment.get("$schema"); if
+schema is not None: result.setdefault("$schema", schema)` (verified 2026-06-30). The Go path
+(`internal/settings`) emits the same output — `internal/installtest/parity_test.go` asserts
+Go and Python match byte-for-byte, so neither writes a `null` schema.
+
+### BUG-11 — ARCHITECTURE.md claims "all destructive writes back up" but the merge scripts do not — Medium (doc-vs-behavior) — **Observed** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved (doc).** `ARCHITECTURE.md` now states accurately: the **install scripts** back up
+each target (timestamped) before invoking the merge tools; the merge tools themselves write
+**atomically** (temp + rename) but create no backups, so an interrupted merge never corrupts
+the live config (cross-ref BUG-12). The misleading "all destructive writes back up" claim is
+gone.
 
 `ARCHITECTURE.md:79-81` vs `merge-settings.py:42` / `merge-mcp.py:105`.
 
@@ -353,7 +394,7 @@ regardless of caller, or (b) soften the doc to "the install scripts back up befo
 the merge tools; the merge tools themselves overwrite in place." Option (a) is better
 because it also covers BUG-12.
 
-### BUG-12 — Non-atomic `write_text` can corrupt `mcp.json` / `settings.json` on interruption — Medium — **Inferred (high confidence)**
+### BUG-12 — Non-atomic `write_text` can corrupt `mcp.json` / `settings.json` on interruption — Medium — **Inferred (high confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
 
 `merge-mcp.py:105`, `merge-settings.py:42`.
 
@@ -372,7 +413,26 @@ of truncate-in-place writes, which is well established. High confidence.
 the same filesystem). The Go rewrite (doc 01) should do the same. Combine with BUG-11's
 backup-in-writer.
 
-### BUG-13 — Missing `npx`/`npm` produces a "successful" install with an unrunnable MCP server — Medium — **Observed**
+**✅ Resolved (improvement loop, 2026-06-30).** New `providers/shared/safe_io.py`
+`atomic_write_text()` writes to a same-dir temp file, `fsync`s, then `os.replace()`s over
+the target (removing the temp and leaving the original intact on any failure).
+`merge-settings.py` and `merge-mcp.py` now use it. The Go path was already atomic
+(`internal/jsonorder.WriteFile` — temp + rename), so this brings the Python fallback to
+parity. Bench: `providers/shared/selftest.py::test_failed_write_leaves_original_intact`
+(monkeypatches `os.replace` to fail mid-write and asserts the live file survives byte-for-byte
+with no temp leak), wired into `bin/ci-check.sh`; `internal/installtest/parity_test.go` still
+matches Go vs Python byte-for-byte.
+
+### BUG-13 — Missing `npx`/`npm` produces a "successful" install with an unrunnable MCP server — Medium — **Observed** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Both `mcpmerge` (Go) and `merge-mcp.py` (Python) now emit a loud stderr
+WARNING when `npx` can't be resolved on PATH ("managed MCP servers that use it … will not
+launch until you install Node/npx"), so a green install no longer silently hides a dead
+server. Bench: `internal/mcpmerge/launcher_test.go::TestUnresolvedLauncherWarning` (pure
+logic: bare-fallback/empty → warn; resolved/explicit-path → quiet); verified by running both
+implementations under `PATH=/usr/bin`. The parity test is unaffected (it compares output
+files, not stderr). **Residual (cosmetic):** an empty `NODE_PATH` is still written rather than
+omitted — left alone to avoid a Go/Python output-parity change; harmless at runtime.
 
 `merge-mcp.py:14-27`, `:34`, `:36`.
 
@@ -401,7 +461,15 @@ env.NODE_PATH = ''
 returned `None`), either emit a loud warning naming the missing tool, or refuse to write
 that server. At minimum, don't write `"NODE_PATH": ""` — omit empty env values.
 
-### BUG-14 — `.env` is parsed twice by two different parsers with divergent semantics — Medium — **Observed**
+### BUG-14 — `.env` is parsed twice by two different parsers with divergent semantics — Medium — **Observed** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** `bin/install.sh` no longer `source`s `secrets/.env`. The merge tools
+(`internal/mcpmerge.LoadEnv` / `merge-mcp.py:load_env`) read the file directly and are now the
+**single** parser, so install-driven and standalone merges resolve `.env` identically — the
+order/parser-dependent divergence is gone. Verified nothing else in the install flow consumes
+those vars, and that a `.env` override (`NPX=…`) is still applied after the change. The
+supported format is documented in `secrets/.env.example` (literal `KEY=value`, `~` for home,
+no shell expansion).
 
 `bin/install.sh:45-50` (bash `source`) vs `merge-mcp.py:41-49` (python `partition`).
 
@@ -426,7 +494,16 @@ either parser alone.
 read **only** from `os.environ` (drop the second file parse), or vice-versa. Don't parse the
 same file two ways. Cross-ref doc 01 (the Go rewrite should pick one).
 
-### BUG-15 — `substitute()` does naive global `__KEY__` replacement; value-injected placeholders double-substitute — Medium → Low — **Inferred (medium confidence)**
+### BUG-15 — `substitute()` does naive global `__KEY__` replacement; value-injected placeholders double-substitute — Medium → Low — **Inferred (medium confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Both implementations now substitute in a **single regex pass** over
+`__([A-Z0-9_]+)__`, resolving each placeholder exactly once from the original text (Go:
+`placeholderRe.ReplaceAllStringFunc`; Python: `re.compile(...).sub`). A resolved value that
+itself contains a `__TOKEN__` is no longer re-substituted, a prefix key
+(`__LEAN_CTX__` vs `__LEAN_CTX_DATA_DIR__`) cannot clobber the longer one, and unknown
+placeholders are left untouched. Bench: `internal/mcpmerge/substitute_test.go::TestSubstituteSinglePass`
+(double-substitution, prefix-collision, unknown, nested map/slice). Output is unchanged for the
+current key set, so `parity_test.go` still matches Go vs Python.
 
 `merge-mcp.py:52-61`.
 
@@ -444,7 +521,13 @@ Low.
 **Fix.** Substitute in a single pass with a regex over `__([A-Z0-9_]+)__` and a lookup, so
 each placeholder is resolved exactly once from the original text.
 
-### BUG-16 — `data.get("mcpServers", data)` silently treats a malformed fragment as a server map — Low — **Observed**
+### BUG-16 — `data.get("mcpServers", data)` silently treats a malformed fragment as a server map — Low — **Observed** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Both `collectFragments` (Go) and `collect_fragments` (Python) now **require**
+the `mcpServers` wrapper: a fragment lacking it (a typo'd key like `mcpServer`, or some other
+JSON) is **warned about (named) and skipped**, instead of having its top-level keys injected
+as junk servers. All shipped fragments use the wrapper, so output is unchanged (parity holds).
+Bench: `internal/mcpmerge/collect_test.go::TestCollectFragmentsRequiresWrapper`.
 
 `merge-mcp.py:77`.
 
@@ -465,7 +548,16 @@ fragments.
 
 ## Area 3 — installers (`bin/*.sh`, `providers/*/install.sh`)
 
-### BUG-17 — Every install run leaves a new timestamped `.bak`; unbounded backup proliferation — Medium — **Inferred (high confidence)**
+### BUG-17 — Every install run leaves a new timestamped `.bak`; unbounded backup proliferation — Medium — **Inferred (high confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Both installers now use a shared `backup_once()` that copies a target to
+`<file>.bak` **only when no `.bak` already exists** — so the user's original config is
+preserved exactly once and repeated installs (run after every pull) never accrete
+`*.bak.<timestamp>` files in `$HOME`. Applied to `CLAUDE.md` + `settings.json` (Claude) and
+`mcp.json` + `hooks.json` (Cursor). Bench: extracted-function harness — run twice with the
+file changing between runs; the `.bak` retains the ORIGINAL and exactly one backup exists.
+(The one-time skills-dir backup was already non-proliferating — it only triggers for a real
+dir, after which the target is a symlink.)
 
 `providers/claude/install.sh:42,71,91`; `providers/cursor/install.sh:36,52`; and the
 `link_skills` dir-backup at `claude:26` / `cursor:26`.
@@ -487,7 +579,12 @@ not run against `$HOME` per the task rules.
 `.bak` (overwrite, or rotate with a cap), or write to a dedicated `~/.claude/.agentic-backups/`
 with pruning. Cross-ref doc 01 — a Go installer should diff-then-backup.
 
-### BUG-18 — `bin/bootstrap.sh` ignores `--dry-run` and any second flag; can trigger a real install when a preview was intended — Low — **Observed**
+### BUG-18 — `bin/bootstrap.sh` ignores `--dry-run` and any second flag; can trigger a real install when a preview was intended — Low — **Observed** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** `bootstrap.sh` now parses a full arg loop (`--provider`, `--dry-run`, `--help`,
+unknown→warn); under `--dry-run` it skips all dependency installs + the agentic build and runs
+`install.sh --provider … --dry-run` (read-only doctor still runs). Verified: `bin/bootstrap.sh
+--dry-run` makes no machine changes and previews the install.
 
 `bin/bootstrap.sh:13`.
 
@@ -504,7 +601,18 @@ invoked at line 86 with only `--provider "$PROVIDER"`.
 **Fix.** Parse `--dry-run` in bootstrap and forward it (and `export DRY_RUN`), or document
 that bootstrap has no dry-run and direct users to `bin/install.sh --dry-run`.
 
-### BUG-19 — `--dry-run` does not preview merge *output*; the most consequential step is opaque — Low — **Inferred (high confidence)**
+### BUG-19 — `--dry-run` does not preview merge *output*; the most consequential step is opaque — Low — **Inferred (high confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** The merge tools now honor `DRY_RUN=1` by **printing the would-be output** (the
+full merged JSON / CLAUDE.md) to stdout and writing nothing — in both Go (`settings.Merge`,
+`mcpmerge.MergeCursor`, `claudemd.Ensure`, via the new `jsonorder.Marshal`) and Python
+(`merge-settings.py`, `merge-mcp.py`, `merge-claude-md.py`). The installers were rewired so
+`--dry-run` actually invokes the merge in preview mode for `settings.json` (Claude) and
+`mcp.json` (Cursor) instead of just logging "[dry-run] merge → …", so
+`bin/install.sh --dry-run` now shows exactly what *would* change. Bench:
+`internal/settings/dryrun_test.go::TestMergeDryRunDoesNotWrite` (file is not created under
+DRY_RUN); behavioral checks confirmed Go + Python print the preview and write nothing.
+`agentic inject --dry-run` already previewed the steps; this adds the content.
 
 `providers/claude/install.sh:73-78,86-89`; `providers/cursor/install.sh:39-43`.
 
@@ -522,7 +630,12 @@ mode to call.
 to stdout (and resolved tool paths) without writing, and have the installer call it. Cross-
 ref doc 01.
 
-### BUG-20 — `doctor.sh` `check_link` second branch silently misclassifies a non-symlink, non-dir path; `readlink` under `set -e` — Low — **Inferred (medium confidence)**
+### BUG-20 — `doctor.sh` `check_link` second branch silently misclassifies a non-symlink, non-dir path; `readlink` under `set -e` — Low — **Inferred (medium confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Added the explicit `elif [[ -e "$path" ]]; then warn "exists but is not a
+symlink"` branch. Verified against a scratch target: a regular file now warns "exists but is
+not a symlink" instead of "missing"; the missing-path and correct-symlink branches are
+unchanged.
 
 `bin/doctor.sh:14-29`.
 
@@ -538,7 +651,11 @@ Minor robustness, not a wrong-result-on-happy-path.
 **Fix.** Add an explicit `elif [[ -e "$path" ]]; then warn "$path exists but is not a
 symlink"`.
 
-### BUG-21 — `ci-check.sh` YAML discovery uses `find … -o …  | grep -v '.git/'` (precedence + grep filter) inconsistent with the `-not -path` filter used elsewhere — Low — **Observed**, partly [doc 05](05-test-coverage.md)
+### BUG-21 — `ci-check.sh` YAML discovery uses `find … -o …  | grep -v '.git/'` (precedence + grep filter) inconsistent with the `-not -path` filter used elsewhere — Low — **Observed**, partly [doc 05](../plans/05-test-coverage.md) — ✅ FIXED (improvement loop, 2026-06-30)
+
+**✅ Resolved.** Now `find . \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*'`,
+matching the shell/JSON loops. Verified `bin/ci-check.sh` still finds and validates
+`catalog/plugins.yaml`.
 
 `bin/ci-check.sh:43` vs `:16`/`:32`.
 
@@ -558,9 +675,9 @@ loops. Coverage of *what ci-check validates* is doc 05's scope.
 
 ---
 
-## Area 4 — eval harness (`evals/*.py`) — bugs in the code (coverage gaps → [doc 05](05-test-coverage.md))
+## Area 4 — eval harness (`evals/*.py`) — bugs in the code (coverage gaps → [doc 05](../plans/05-test-coverage.md))
 
-### BUG-22 — `cases.load()` / `report.py` / `bench.py` crash hard on a single malformed JSON file — Medium — **Inferred (high confidence)**
+### BUG-22 — `cases.load()` / `report.py` / `bench.py` crash hard on a single malformed JSON file — Medium — **Inferred (high confidence)** — ✅ FIXED (improvement loop, 2026-06-30)
 
 `evals/lib/cases.py:23-31` (`json.loads(p.read_text(...))` with no try/except);
 `evals/bench.py:127` (`[json.loads(...) for p in …]`); cross-ref `merge-*.py` which *do*
@@ -583,7 +700,23 @@ with an opaque traceback instead of a "case X: invalid JSON" message.
 (mirroring `merge-mcp.load_json`). This is a harness-code bug; the question of *which cases
 should exist* is doc 05.
 
-### BUG-23 — `report.py` / `bench.py` assume result-record shape; a partial or older artifact KeyErrors the rollup — Low — **Inferred (medium confidence)**
+**✅ Resolved (improvement loop, 2026-06-30).** `evals/lib/cases.py` gained `_read_case()`
+(raises `CaseLoadError("{path}: invalid JSON: …")`, also rejecting a non-object top level)
+and `load_reporting()`; `evals/lint.py` now uses the latter, so a malformed case file is
+reported **by filename with a reason** and the well-formed cases still validate — instead of
+an opaque traceback that aborts the whole CI lint. Bench: `evals/selftest.py::test_cases_loader_names_bad_file`
+(runs in `bin/ci-check.sh`). The other two surfaces named here are already closed:
+`report.py`'s result-loader has a `try/except (JSONDecodeError, IndexError)` at its
+`json.loads` (`report.py:28-31`), and `bench.py` no longer exists in the tree.
+
+### BUG-23 — `report.py` / `bench.py` assume result-record shape; a partial or older artifact KeyErrors the rollup — Low — **Inferred (medium confidence)** — ✅ RESOLVED (moot; verified 2026-06-30)
+
+**✅ Resolved (moot).** Re-checked the current code: `bench.py` and `_render_bench` no longer
+exist, and `report.py`'s `render()` now reads every field with `.get()` defaults
+(`rec.get("verdict","?")`, `rec.get("wins",{})`, …) while `_eff_delta` is guarded by
+`if "treatment" in r and "control" in r`. The loader wraps `json.loads` in
+`try/except (JSONDecodeError, IndexError)`. So the partial/old-artifact KeyError path the
+finding described is gone — no change needed.
 
 `evals/report.py:44-49` (`r["treatment"]["tool_calls"]`), `:85-90` (`b["baseline"]`,
 `b["kind"]`); `evals/bench.py:115` (`int(m[1])` only guarded by the `if m else` branch).
@@ -610,11 +743,11 @@ keys. Medium confidence.
 
 | # | Doc claim | Reality | Finding |
 |---|-----------|---------|---------|
-| 1 | ARCHITECTURE.md:79-81 "All destructive writes back up the previous file" | Backups are done by the shell installers, not the merge scripts; standalone merge runs overwrite with no backup | BUG-11 |
-| 2 | shell-guard.sh:13-14 "Exactly one of these fires per command, so there is no double-wrapping" | `FOO=1 rtk …` double-wraps to `rtk FOO=1 rtk …` | BUG-06 |
-| 3 | ARCHITECTURE.md:128 "always check the `--dry-run`" | dry-run never previews merge output (the consequential step) | BUG-19 |
-| 4 | shell-guard.sh header "rtk fallback — prefix `rtk` so no native command escapes token compression" | bit-shift / multiline / decorated commands escape compression entirely | BUG-01, BUG-02, BUG-06 |
-| 5 | ARCHITECTURE.md:95 "Fails with the offending file path on malformed JSON" (merge) — true for merge, but the *eval* loader does not | `cases.load`/`bench.py` crash with a bare traceback | BUG-22 |
+| 1 ✅ | ARCHITECTURE.md:79-81 "All destructive writes back up the previous file" | Backups are done by the shell installers, not the merge scripts; merge tools now write atomically (temp+rename). **Doc corrected 2026-06-30.** | BUG-11 |
+| 2 ✅ | shell-guard.sh:13-14 "Exactly one of these fires per command, so there is no double-wrapping" | Env-prefixed wrapped commands now recognized (strip leading `VAR=`). **Fixed.** | BUG-06 |
+| 3 ✅ | ARCHITECTURE.md:128 "always check the `--dry-run`" | dry-run now prints the would-be merge output. **Fixed.** | BUG-19 |
+| 4 ✅ | shell-guard.sh header "rtk fallback — prefix `rtk` so no native command escapes token compression" | bit-shift/multiline/decorated commands now fail open (run untouched, never mangled). **Fixed.** | BUG-01, BUG-02, BUG-06 |
+| 5 ✅ | ARCHITECTURE.md:95 "Fails with the offending file path on malformed JSON" (merge) — true for merge, but the *eval* loader did not | the eval loader now names the bad file too. **Fixed.** | BUG-22 |
 
 No instruction was found that references a flag or file that does not exist (the
 `integrations/gitnexus/mcp.stdio.json` path in `doctor.sh:102` is correct; the
@@ -627,41 +760,42 @@ hooks.
 ## Prioritized remediation backlog
 
 Effort: S ≈ <1h, M ≈ a few hours, L ≈ a day+. "Go-fixes?" = does the planned Go rewrite
-([doc 01](01-go-rewrite.md)) eliminate this defect for free (a real JSON parser +
+([doc 01](../plans/01-go-rewrite.md)) eliminate this defect for free (a real JSON parser +
 structured command handling + atomic writes), or is a shell/Python fix needed *now*?
 
 | ID | Title | Sev | Effort | Depends-on | Go-fixes? |
 |----|-------|-----|--------|------------|-----------|
-| BUG-01 | Multiline/`\n`/`\t` commands silently corrupted (string-munged JSON) | Critical | M | — | **Yes** — `encoding/json` round-trips correctly |
-| BUG-02 | `*'<<'*` glob skips wrapping for bit-shift / any `<<` substring | Critical | S | — | **Yes** — token-aware command parsing |
-| BUG-03 | ast-grep deny false-positives on any code-ext substring | High | M | — | **Yes** — inspect file args only after shell-split |
-| BUG-04 | ast-grep deny false-negative in `$(grep …)` / non-leading position | High | S | BUG-03 | **Yes** — same shell-split |
-| BUG-06 | Double-wrap guard misses env-prefixed wrapped commands | High | S | — | **Yes** — inspect first command word |
-| BUG-05 | `extract()` breaks if protocol JSON spans lines | High | S | BUG-01 | **Yes** — whole-stdin JSON parse |
-| BUG-07 | `set -e`/`pipefail` control-flow fragility; hook can abort→deny | High | S | BUG-01 | **Yes** — Go won't use `-e` parsing; ensure exit 0 on internal error |
-| BUG-08 | JSON escaping via BSD/GNU-divergent `sed` blocks the real fix | High | S | BUG-01 | **Yes** — no `sed`; cross-ref [doc 04](04-portability-review.md) |
-| BUG-12 | Non-atomic `write_text` can corrupt live config on interruption | Med | S | — | **Yes** if Go uses temp+rename; else Python `os.replace` now |
-| BUG-10 | `merge-settings.py` writes `"$schema": null` | Med | S | — | Partial — fix logic regardless; Go should also guard |
-| BUG-11 | Doc claims merge scripts back up; they don't (standalone) | Med | S | BUG-12 | No — doc + move-backup-into-writer fix now |
-| BUG-13 | Missing `npx`/`npm` ⇒ green install, dead MCP server | Med | S | — | Partial — Go must still warn on unresolved launcher |
-| BUG-14 | `.env` parsed twice (bash `source` vs python) with divergent semantics | Med | M | — | Partial — Go must pick one parser |
-| BUG-17 | Unbounded `.bak` proliferation in `$HOME` on every run | Med | S | — | Partial — Go installer should diff-then-backup |
-| BUG-22 | Eval loaders crash hard on one malformed JSON (opaque CI failure) | Med | S | — | No — Python fix now (mirror `merge.load_json`) |
-| BUG-09 | No `rtk`/`lean-ctx` ⇒ denies still fire but no compression (worst of both) | Med | S | BUG-03 | Partial — Go should gate deny on availability |
-| BUG-15 | `substitute()` naive global replace; placeholder double-substitution | Med→Low | S | — | **Yes** — single-pass regex substitution |
-| BUG-16 | `data.get("mcpServers", data)` accepts malformed fragments silently | Low | S | — | Partial — Go should validate fragment shape |
-| BUG-18 | `bootstrap.sh` ignores `--dry-run`; can trigger real install | Low | S | — | No — arg-parsing fix now |
-| BUG-19 | `--dry-run` never previews merge output | Low | M | BUG-13 | Partial — Go dry-run should print resolved JSON |
-| BUG-20 | `doctor.sh check_link` misclassifies a regular-file target | Low | S | — | No — shell fix now |
-| BUG-21 | `ci-check.sh` YAML find uses inconsistent git-prune | Low | S | — | No — shell fix now; cross-ref [doc 05](05-test-coverage.md) |
-| BUG-23 | `report.py` KeyErrors on partial/old result artifacts | Low | S | — | No — Python `.get` fix now |
+| BUG-01 ✅ | Multiline/`\n`/`\t` commands silently corrupted (string-munged JSON) | Critical | M | — | **FIXED** — Go hook real JSON parse + fail-open on newline |
+| BUG-02 ✅ | `*'<<'*` glob skips wrapping for bit-shift / any `<<` substring | Critical | S | — | **FIXED** — deliberate fail-open on `<<` (no mangle) |
+| BUG-03 ✅ | ast-grep deny false-positives on any code-ext substring | High | M | — | **FIXED** — strips quoted substrings before the ext test |
+| BUG-04 ✅ | ast-grep deny false-negative in `$(grep …)` / non-leading position | High | S | BUG-03 | **FIXED** (by design) — `$(` fails open, no in-substitution analysis |
+| BUG-06 ✅ | Double-wrap guard misses env-prefixed wrapped commands | High | S | — | **FIXED** — strips leading `VAR=` before the wrapped-check |
+| BUG-05 ✅ | `extract()` breaks if protocol JSON spans lines | High | S | BUG-01 | **FIXED** — whole-stdin JSON parse |
+| BUG-07 ✅ | `set -e`/`pipefail` control-flow fragility; hook can abort→deny | High | S | BUG-01 | **FIXED** — Go returns 0 on any internal error |
+| BUG-08 ✅ | JSON escaping via BSD/GNU-divergent `sed` blocks the real fix | High | S | BUG-01 | **FIXED** — no `sed`; real JSON encoder |
+| BUG-12 ✅ | Non-atomic `write_text` can corrupt live config on interruption | Med | S | — | **FIXED** 2026-06-30 (loop) — `safe_io.atomic_write_text` (Python); Go already atomic |
+| BUG-10 ✅ | `merge-settings.py` writes `"$schema": null` | Med | S | — | **FIXED** (guarded in Python; Go matches via parity test) |
+| BUG-11 ✅ | Doc claims merge scripts back up; they don't (standalone) | Med | S | BUG-12 | **FIXED** 2026-06-30 (loop) — ARCHITECTURE.md corrected (atomic write, installer backs up) |
+| BUG-13 ✅ | Missing `npx`/`npm` ⇒ green install, dead MCP server | Med | S | — | **FIXED** 2026-06-30 (loop) — loud npx warning (Go + Python); empty NODE_PATH residual |
+| BUG-14 ✅ | `.env` parsed twice (bash `source` vs python) with divergent semantics | Med | M | — | **FIXED** 2026-06-30 (loop) — merge tools are the single `.env` parser (install no longer sources it) |
+| BUG-17 ✅ | Unbounded `.bak` proliferation in `$HOME` on every run | Med | S | — | **FIXED** 2026-06-30 (loop) — `backup_once` (single `.bak`, both installers) |
+| BUG-22 ✅ | Eval loaders crash hard on one malformed JSON (opaque CI failure) | Med | S | — | **FIXED** 2026-06-30 (loop) — Python fix landed (mirrors `merge.load_json`) |
+| BUG-09 ✅ | No `rtk`/`lean-ctx` ⇒ denies still fire but no compression (worst of both) | Med | S | BUG-03 | **WON'T FIX** 2026-06-30 (by design — deny is search-quality, not compression) |
+| BUG-15 ✅ | `substitute()` naive global replace; placeholder double-substitution | Med→Low | S | — | **FIXED** 2026-06-30 (loop) — single-pass regex (Go + Python) |
+| BUG-16 ✅ | `data.get("mcpServers", data)` accepts malformed fragments silently | Low | S | — | **FIXED** 2026-06-30 (loop) — require mcpServers wrapper; warn+skip (Go + Python) |
+| BUG-18 ✅ | `bootstrap.sh` ignores `--dry-run`; can trigger real install | Low | S | — | **FIXED** 2026-06-30 (loop) — arg loop + dry-run gating |
+| BUG-19 ✅ | `--dry-run` never previews merge output | Low | M | BUG-13 | **FIXED** 2026-06-30 (loop) — merge tools print would-be JSON under DRY_RUN (Go + Python); installers wired |
+| BUG-20 ✅ | `doctor.sh check_link` misclassifies a regular-file target | Low | S | — | **FIXED** 2026-06-30 (loop) — added regular-file `elif` branch |
+| BUG-21 ✅ | `ci-check.sh` YAML find uses inconsistent git-prune | Low | S | — | **FIXED** 2026-06-30 (loop) — `\( … \) -not -path` |
+| BUG-23 ✅ | `report.py` KeyErrors on partial/old result artifacts | Low | S | — | **RESOLVED** (moot — `_render_bench`/bench.py gone; report.py uses `.get()`) |
 
 ### Recommended sequencing
 
-1. **Hook correctness cluster (BUG-01, 02, 05, 06, 03, 04, 07, 08).** These are the
+1. **Hook correctness cluster (BUG-01, 02, 05, 06, 03, 04, 07, 08) — ✅ DONE (Go hook port +
+   shell hardening, 2026-06-30; see the banner at the top of Area 1).** These are the
    Critical/High mass and they share a single root cause: parsing a structured protocol and
    a shell command with `grep`/`sed`/glob. The highest-leverage move is the Go rewrite
-   ([doc 01](01-go-rewrite.md)), which deletes the entire class. If the rewrite is not
+   ([doc 01](../plans/01-go-rewrite.md)), which deletes the entire class. If the rewrite is not
    imminent, the cheapest interim shell mitigations are: route all JSON in/out through
    `python3 -c` (kills BUG-01/05/08), tighten the `<<` test (BUG-02), and tighten the grep
    token/file detection (BUG-03/04/06). Ensure the hook **always exits 0 on internal error**
@@ -669,7 +803,7 @@ structured command handling + atomic writes), or is a shell/Python fix needed *n
 2. **Merge-script robustness now (BUG-10, 11, 12, 13).** Small, independent, and they
    protect the user's live config; do them in Python immediately rather than waiting on Go.
 3. **Harness hardening (BUG-22, 23).** Cheap; they make CI failures legible. Coordinate the
-   *coverage* story with [doc 05](05-test-coverage.md).
+   *coverage* story with [doc 05](../plans/05-test-coverage.md).
 4. **Installer ergonomics (BUG-17, 18, 19, 20, 21).** Low severity; batch them.
 
 ### Verification notes (honesty)

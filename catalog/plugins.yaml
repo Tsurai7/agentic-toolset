@@ -1,5 +1,6 @@
 # Marketplace plugins — catalog only (install via each provider's marketplace).
 # Do not vendor plugin skill trees into this repo.
+# This catalog is documentation; only YAML validity is machine-checked.
 
 version: 1
 
@@ -22,7 +23,7 @@ plugins:
     required_env:
       - MDB_MCP_CONNECTION_STRING  # or Atlas API / local Docker per plugin docs
     setup_doc_url: https://www.mongodb.com/docs/cursor/
-    notes: Use mongodb-mcp-setup skill after enabling.
+    notes: The MongoDB plugin includes its own setup skill; enable via marketplace then run that skill.
 
   - id: atlassian
     name: Atlassian
@@ -125,6 +126,27 @@ plugins:
     setup_doc_url: https://github.com/obra/superpowers
     notes: Core workflow skills (TDD, debugging, brainstorming).
 
+  - id: ponytail
+    name: Ponytail (code minimalism)
+    cursor:
+      marketplace: github:DietrichGebert/ponytail
+      plugin: ponytail
+    claude:
+      marketplace: github:DietrichGebert/ponytail
+      plugin: ponytail
+    mcp: false
+    required_env: []
+    setup_doc_url: https://github.com/DietrichGebert/ponytail
+    notes: >-
+      Token-economy plugin: injects a do-less decision ladder
+      (need it? → reuse → stdlib → native → dep → one-liner → minimal code)
+      before implementing, plus /ponytail-review and /ponytail-audit for
+      over-engineering. Reinforces the model-orchestration "write less code"
+      lever (the cheapest tokens are the ones never generated). Multi-host
+      (Claude Code, Cursor, Codex, +). Add via each host's marketplace from the
+      GitHub repo, e.g. Claude Code: `/plugin marketplace add DietrichGebert/ponytail`
+      then `/plugin install ponytail`. Intensity: lite / full / ultra / off.
+
   - id: continual-learning
     name: Continual Learning
     cursor:
@@ -148,3 +170,20 @@ plugins:
       - cursor-app-control
       - cursor-backend-control
     notes: IDE control; Cursor only, not portable to Claude.
+
+  - id: gstack
+    name: gstack
+    cursor:
+      plugin: null
+    claude:
+      plugin: null
+    mcp: false
+    required_env: []
+    setup_doc_url: null
+    enabled: false
+    notes: >-
+      Local checkout at /Users/tsurai/Documents/GitHub/gstack; ~60 skills. Not
+      enabled because each skill invocation runs a ~180-line preamble
+      (telemetry/config/gbrain) and the core review/ship/QA flows overlap Claude
+      Code built-ins. Method-level distillations live in core/skills/office-hours
+      and core/skills/systematic-debugging.

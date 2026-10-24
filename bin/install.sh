@@ -41,12 +41,25 @@ done
 export DRY_RUN
 export AGENTIC_ROOT
 
-# Load secrets if present
-if [[ -f "${AGENTIC_ROOT}/secrets/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "${AGENTIC_ROOT}/secrets/.env"
-  set +a
+# secrets/.env is parsed by exactly one parser — the merge tools (internal/mcpmerge
+# LoadEnv / providers/shared/merge-mcp.py load_env), which read it directly. We no
+# longer `source` it here: a second (bash) parser disagreed with the merge parser on
+# shell-special values, so which one "won" was order-dependent (BUG-14). Nothing in
+# the install flow reads those vars except the merge tools. If you need a var in this
+# script's own environment, export it in your shell before running install.
+
+# Build bin/agentic from this checkout before dispatching to providers, so a fresh
+# machine gets the real JSON-parsing hook (not the shell fallback) and a pulled fix
+# never sits behind a stale, previously-built binary (every install rebuilds).
+echo ""
+if command -v go >/dev/null 2>&1; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[dry-run] would run: go build -o bin/agentic ./cmd/agentic"
+  elif ! (cd "$AGENTIC_ROOT" && go build -o bin/agentic ./cmd/agentic); then
+    echo "WARN: go build failed — hooks will use the shell fallback" >&2
+  fi
+else
+  echo "WARN: go not found — skipping bin/agentic build; hooks will use the shell fallback" >&2
 fi
 
 install_cursor() {
@@ -69,6 +82,16 @@ case "$PROVIDER" in
     exit 1
     ;;
 esac
+
+# Link agentic + agentic-cfg onto PATH (~/.local/bin) for convenient access.
+echo ""
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "[dry-run] would run: bin/agentic link"
+elif [[ -x "${AGENTIC_ROOT}/bin/agentic" ]]; then
+  "${AGENTIC_ROOT}/bin/agentic" link
+else
+  echo "WARN: bin/agentic missing — skipping PATH link (go build failed?)" >&2
+fi
 
 # Distribute cross-project memory seeds into active projects (merge-by-name,
 # never clobbers local facts). Honors --dry-run.

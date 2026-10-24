@@ -170,19 +170,45 @@ func ReadFile(path string) (*Map, error) {
 	return m, nil
 }
 
-// WriteFile writes m as indented JSON (2 spaces, no HTML escaping, trailing
-// newline) atomically via a temp file + rename.
-func WriteFile(path string, m *Map) error {
+// Marshal returns m as indented JSON (2 spaces, no HTML escaping, trailing
+// newline) — the exact bytes WriteFile persists. Useful for previewing a
+// would-be write (e.g. a --dry-run) without touching the filesystem.
+func Marshal(m *Map) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(m); err != nil { // Encode appends a trailing newline
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// WriteFile writes m as indented JSON (2 spaces, no HTML escaping, trailing
+// newline) atomically via a temp file + fsync + rename, preserving the target's
+// prior file mode (or 0644 for a newly-created file) so a merge never silently
+// chmods the user's live config to the temp file's restrictive 0600 default.
+func WriteFile(path string, m *Map) error {
+	data, err := Marshal(m)
+	if err != nil {
 		return err
+	}
+	// If the destination is a symlink (dotfiles/stow pattern), resolve it so the
+	// temp+rename lands on the link target and the symlink survives, instead of
+	// replacing the user's symlink with a regular file. Only an actual symlinked
+	// final component is resolved; regular and not-yet-existing files are left as-is.
+	if fi, lerr := os.Lstat(path); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if resolved, rerr := filepath.EvalSymlinks(path); rerr == nil {
+			path = resolved
+		}
 	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
+	}
+	perm := os.FileMode(0o644)
+	if fi, err := os.Stat(path); err == nil {
+		perm = fi.Mode().Perm()
 	}
 	tmp, err := os.CreateTemp(dir, ".agentic-*.tmp")
 	if err != nil {
@@ -190,11 +216,18 @@ func WriteFile(path string, m *Map) error {
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
-	if _, err := tmp.Write(buf.Bytes()); err != nil {
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
 		tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
 		return err
 	}
 	return os.Rename(tmpName, path)

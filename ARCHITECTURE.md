@@ -36,7 +36,7 @@ flowchart LR
   CUR --> MM[merge-mcp.py]
   CLA --> MM
   CUR --> CURT[(~/.cursor: skills, rules, hooks.json, mcp.json)]
-  CLA --> CLAT[(~/.claude: skills, CLAUDE.md, .mcp.json, settings.json)]
+  CLA --> CLAT[(~/.claude: skills, CLAUDE.md, settings.json); ~/.claude.json (MCP)]
   MM --> CURT
   MM --> CLAT
 ```
@@ -46,6 +46,7 @@ flowchart LR
 | Path | Role |
 |------|------|
 | `core/skills/<name>/SKILL.md` | Personal skills. Symlinked to `~/.cursor/skills` and `~/.claude/skills`. |
+| `core/agents/<name>.md` | Subagent role definitions with pinned model tiers. Symlinked to `~/.claude/agents/` by `providers/claude/install.sh` (Claude-only; Cursor has no subagent equivalent). |
 | `core/rules/*.mdc` | Cursor rules (with `description` / `alwaysApply` frontmatter). Symlinked to `~/.cursor/rules`. |
 | `core/instructions/AGENTS.md` | Portable agent instructions (the [agents.md](https://agents.md) convention). Inlined into the generated `~/.claude/CLAUDE.md`. |
 | `core/principles/*.md` | Always-on behavioral principles. Concatenated into `CLAUDE.md`; rendered to `alwaysApply` Cursor rules. Principle vs skill: see `core/principles/README.md`. |
@@ -55,10 +56,17 @@ flowchart LR
 | `integrations/<name>/README.md` | Per-integration setup notes (binaries, env). |
 | `catalog/plugins.yaml` | Marketplace plugins — **catalogued, never vendored**. |
 | `providers/<p>/install.sh` | Renders the source into provider paths. |
-| `providers/shared/merge-mcp.py` | Builds provider `mcp.json` from fragments + overlay (merges into existing). |
+| `providers/shared/merge-mcp.py` | Builds provider `mcp.json` from fragments; managed-server sidecar removes stale entries. |
 | `providers/shared/merge-settings.py` | Merges Claude hooks + permissions into `~/.claude/settings.json`, preserving machine-local `env`. |
 | `providers/claude/CLAUDE.md.stub`, `settings.hooks.json` | Claude scaffolding (`__AGENTIC_ROOT__` injected at install; lean-ctx hooks fragment). |
-| `bin/bootstrap.sh` | One-command: install deps (Homebrew, git, python3, node, gh, rtk, lean-ctx) then run the installer. |
+| `providers/claude/hooks/` | Shell hooks: `shell-guard.sh` (PreToolUse), `edit-lint.sh` (PostToolUse). |
+| `cmd/` | Go CLI: `agentic` binary dispatcher (hook, merges, inject/eject/status/link, gain/cache). |
+| `internal/` | Go packages: `hook`, `settings`, `mcpmerge`, `claudemd`, `jsonorder`, `installtest`. |
+| `telemetry/` | Session token-economy metrics and cache-hit-rate gates. |
+| `providers/shared/merge-claude-md.py` | Renders `~/.claude/CLAUDE.md` from stub + imports, managing the agentic-managed block. |
+| `bin/prefix-budget.sh` | Enforces byte budget on always-on prefix (stub + AGENTS.md + principles + user-rules). |
+| `bin/check-links.py` | Validates relative markdown links across documentation. |
+| `bin/bootstrap.sh` | One-command: install deps (Homebrew, git, python3, node, gh, ast-grep, go) then run the installer. |
 | `secrets/.env` | Machine-local values (gitignored). Only `.env.example` is tracked. |
 | `evals/` | Behavioral eval harness — two tracks (conformance + value A/B), LLM-judge runner, per-model `results/` → `BENCHMARKS.md`. The loop for adding cases is [`evals/PLAYBOOK.md`](evals/PLAYBOOK.md). |
 | `bin/install.sh` | Entry point. `--provider cursor\|claude\|all`, `--dry-run`. |
@@ -76,14 +84,17 @@ location), sources `secrets/.env`, and dispatches to provider installers.
   (stub with `__AGENTIC_ROOT__` injected + `AGENTS.md` + user-rules) →
   `install_mcp` → `install_settings` (merge lean-ctx hooks/permissions).
 
-Both call `merge-mcp.py`; Claude also calls `merge-settings.py`. All destructive
-writes back up the previous file with a timestamp suffix; `DRY_RUN=1` makes every
-step print-only. `AGENTIC_ROOT` is resolved from the script location, so the repo
-can live anywhere — no path is tied to a specific machine.
+Both call `merge-mcp.py`; Claude also calls `merge-settings.py`. The **install
+scripts** back up each target file with a timestamp suffix before invoking the merge
+tools; the merge tools themselves write **atomically** (temp file + rename, via
+`internal/jsonorder.WriteFile` / `providers/shared/safe_io.py`) but do not create
+their own backups, so an interrupted merge never corrupts the live config (BUG-12).
+`DRY_RUN=1` makes every step print-only. `AGENTIC_ROOT` is resolved from the script
+location, so the repo can live anywhere — no path is tied to a specific machine.
 
 ## merge-mcp behavior (important invariants)
 
-- Collects every `integrations/**/mcp*.json` fragment plus the Cursor overlay.
+- Collects every `integrations/**/mcp*.json` fragment and merges into provider `mcp.json`.
 - **Merges into** the existing target `mcp.json` — repo-managed servers overwrite
   same-named entries, but servers added by hand (e.g. work-only `dora`,
   `grafana-*`) are **preserved**. Never blindly overwrite the target.
@@ -104,8 +115,8 @@ can live anywhere — no path is tied to a specific machine.
 - **No secrets in the repo.** Real values live in `secrets/.env` (gitignored);
   fragments use `__PLACEHOLDER__` tokens. The repo is private, but still keep
   secrets out of tracked files.
-- **The canonical path is `~/Documents/GitHub/personal/agentic-cfg`** — docs and
-  the generated `CLAUDE.md` pointer assume it.
+- **The repo can live anywhere** — docs refer to `<your clone>` consistently; no
+  path is tied to a specific machine.
 - **Tool precedence** (codebase-memory-mcp vs lean-ctx `ctx_*` vs `rtk`) is defined once in
   `AGENTS.md`; don't restate conflicting rules elsewhere.
 
@@ -113,6 +124,8 @@ can live anywhere — no path is tied to a specific machine.
 
 | Goal | Do this |
 |------|---------|
+| Bootstrap dependencies | `bin/bootstrap.sh` installs: git, python3, node, gh, ast-grep, go, lean-ctx, rtk. |
+| Build the binary | `make build` or `go build -o bin/agentic ./cmd/agentic` compiles the Go CLI. |
 | Add a skill | Create `core/skills/<name>/SKILL.md` with frontmatter. It auto-syncs via the symlink — no install code change. |
 | Add an always-on principle | Drop `core/principles/<name>.md`; it is concatenated into `CLAUDE.md` and rendered to a Cursor `alwaysApply` rule. Keep it short. |
 | Add a Cursor rule | Drop `core/rules/<name>.mdc`; `install_rules` links it. |
@@ -131,7 +144,7 @@ After any change: `bin/ci-check.sh`, then `bin/install.sh --dry-run` to preview.
   commands on machines where it runs.
 - Machine-local Claude `env` (e.g. `ANTHROPIC_BASE_URL`) is intentionally not in
   the repo; `merge-settings.py` preserves it.
-- `.github/workflows/ci.yml` exists locally but is untracked until a gh token has
-  the `workflow` scope.
+- `.github/workflows/ci.yml` runs `bin/ci-check.sh` on every push to `master` and on
+  pull requests, plus `golangci-lint` for Go static analysis (installs Go from `go.mod`, Python, shellcheck + PyYAML).
 - Pushing uses repo-local git identity (`Tsurai7`) and a credential-helper /
   `insteadOf` workaround — see the project memory if `git push` misbehaves.

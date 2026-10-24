@@ -29,12 +29,18 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-# USD per 1M tokens. Approximate, user-editable. cache_read ~= 0.1x input,
-# cache_write_5m ~= 1.25x input, cache_write_1h ~= 2x input, per Anthropic's
-# published multipliers. Keyed by a substring of the model id. VERIFY before
+# USD per 1M tokens. Approximate, user-editable. cache_read = 0.1x input,
+# cache_write_5m = 1.25x input, cache_write_1h = 2x input, per Anthropic's
+# published multipliers. Keyed by a substring of the model id (checked in
+# insertion order — fable/mythos before opus). Rates cached from platform docs
+# 2026-06-24 via the claude-api reference; keep in sync with
+# internal/gain/gain.go's `pricing` table. Sonnet has introductory pricing
+# ($2/$10) through 2026-08-31; the sticker $3/$15 is used here. VERIFY before
 # trusting the dollar figures — these are for relative comparison, not invoices.
 PRICING = {
-    "opus":   {"in": 15.0, "cache_read": 1.5,  "cache_5m": 18.75, "cache_1h": 30.0, "out": 75.0},
+    "fable":  {"in": 10.0, "cache_read": 1.0,  "cache_5m": 12.5,  "cache_1h": 20.0, "out": 50.0},
+    "mythos": {"in": 10.0, "cache_read": 1.0,  "cache_5m": 12.5,  "cache_1h": 20.0, "out": 50.0},
+    "opus":   {"in": 5.0,  "cache_read": 0.5,  "cache_5m": 6.25,  "cache_1h": 10.0, "out": 25.0},
     "sonnet": {"in": 3.0,  "cache_read": 0.3,  "cache_5m": 3.75,  "cache_1h": 6.0,  "out": 15.0},
     "haiku":  {"in": 1.0,  "cache_read": 0.1,  "cache_5m": 1.25,  "cache_1h": 2.0,  "out": 5.0},
 }
@@ -68,16 +74,20 @@ class SessionStats:
         }
         self.cost = 0.0
         self.tools: Counter = Counter()
-        self._seen_msgs: set[str] = set()
+        self._seen_msgs: dict[str, dict] = {}
 
     def add_assistant(self, rec: dict) -> None:
         msg = rec.get("message") or {}
 
         # Claude Code writes one transcript record per content block (thinking,
         # text, each tool_use) and repeats the full message-level usage on every
-        # one. Tool-use blocks are distinct per record, so count them on every
-        # record; but usage must be counted ONCE per message.id or tokens and
-        # cost inflate by the number of blocks.
+        # one, with output_tokens growing to its final value on the last record
+        # while input-side fields stay byte-identical across repeats. Tool-use
+        # blocks are distinct per record, so count them on every record; usage
+        # is reconciled last-wins per message.id: first sight counts the turn
+        # and adds the full snapshot, a repeat adds only the per-field delta
+        # against the stored snapshot (so totals converge on the last record's
+        # values without re-incrementing turn/model counts).
         content = msg.get("content")
         if isinstance(content, list):
             for block in content:
@@ -88,25 +98,39 @@ class SessionStats:
         if not usage:
             return
         mid = msg.get("id")
+        prev = self._seen_msgs.get(mid) if mid else None
+        is_repeat = prev is not None
+        prev = prev or {}
         if mid:
-            if mid in self._seen_msgs:
-                return
-            self._seen_msgs.add(mid)
-        self.assistant_turns += 1
+            self._seen_msgs[mid] = usage
         model = msg.get("model") or ""
-        if model:
-            self.models[model] += 1
+        if not is_repeat:
+            self.assistant_turns += 1
+            if model:
+                self.models[model] += 1
         bucket = self.tokens["sub" if rec.get("isSidechain") else "main"]
 
-        inp = int(usage.get("input_tokens", 0) or 0)
-        out = int(usage.get("output_tokens", 0) or 0)
-        cr = int(usage.get("cache_read_input_tokens", 0) or 0)
-        cw = int(usage.get("cache_creation_input_tokens", 0) or 0)
-        cc = usage.get("cache_creation") or {}
-        cw_1h = int(cc.get("ephemeral_1h_input_tokens", 0) or 0)
-        cw_5m = int(cc.get("ephemeral_5m_input_tokens", 0) or 0)
-        if cw_1h + cw_5m == 0 and cw:  # older records without the breakdown
-            cw_5m = cw
+        def field(d: dict, key: str) -> int:
+            return int(d.get(key, 0) or 0)
+
+        def cache_write_split(d: dict) -> tuple[int, int]:
+            cc = d.get("cache_creation") or {}
+            cw_1h = int(cc.get("ephemeral_1h_input_tokens", 0) or 0)
+            cw_5m = int(cc.get("ephemeral_5m_input_tokens", 0) or 0)
+            cw = field(d, "cache_creation_input_tokens")
+            if cw_1h + cw_5m == 0 and cw:  # older records without the breakdown
+                cw_5m = cw
+            return cw_1h, cw_5m
+
+        prev_1h, prev_5m = cache_write_split(prev)
+        cw_1h, cw_5m = cache_write_split(usage)
+
+        inp = field(usage, "input_tokens") - field(prev, "input_tokens")
+        out = field(usage, "output_tokens") - field(prev, "output_tokens")
+        cr = field(usage, "cache_read_input_tokens") - field(prev, "cache_read_input_tokens")
+        cw = field(usage, "cache_creation_input_tokens") - field(prev, "cache_creation_input_tokens")
+        cw_1h -= prev_1h
+        cw_5m -= prev_5m
 
         bucket["input"] += inp
         bucket["output"] += out
@@ -157,7 +181,7 @@ class SessionStats:
 def parse_file(path: Path) -> SessionStats | None:
     st = SessionStats(path)
     try:
-        with path.open("r", errors="replace") as fh:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:

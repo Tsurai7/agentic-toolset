@@ -23,6 +23,7 @@ Detail plans live in [`impl-overhead/`](impl-overhead/):
 | W2 | Prefix economy | De-dup the always-on layer; defer/trim MCP schemas; weak-tier byte budget | [02-prefix-economy.md](impl-overhead/02-prefix-economy.md) |
 | W3 | Overhead KPI & gate | The missing instrument: measure & gate the ON-vs-OFF ratio | [03-overhead-kpi-and-gate.md](impl-overhead/03-overhead-kpi-and-gate.md) |
 | W4 | Cheap uplift | Token-cheap weak-model uplift; reprioritize ADR-0006 by token cost | [04-cheap-uplift.md](impl-overhead/04-cheap-uplift.md) |
+| W5 | Minimal-tier profile | The environmental ≤1.5× lever — drop the turn-inducing custom layer for the weak tier (opened after W1 was measured insufficient) | [05-minimal-tier-profile.md](impl-overhead/05-minimal-tier-profile.md) |
 
 ---
 
@@ -156,7 +157,37 @@ its behavioural scaffolds for W4, so the gate exists before any prefix-growing c
 
 ## 7. Status
 
-Planning only. No behavioural change has been made this turn. The decomposed
-measurement, its script, and these plans are the deliverable. Implementation is gated on
-owner approval of the roadmap and (for W3's A/B re-runs) the same bounded-LLM-spend nod
-already given for the P2 sample.
+**W3, W2, W4, and W1 are implemented and merged to `master`** ([PR #8](https://github.com/Tsurai7/agentic-cfg/pull/8), commits `02d35a7`/`71f55e4`/`b0310e8`/`d243140`/`34145c5`), each validated (deterministic + adversarial) and the docs kept in sync ([TESTING.md](../TESTING.md)).
+
+A live before/after on Haiku then **falsified W1's prompt-only approach**: the triage gate
+did not move the model off over-tooling (easy 5.33×→4.11×, still ~3–4× the OFF arm; both
+FAIL the ≤1.5× gate that W3 now enforces). The diagnosis — the custom tool environment
+(`lean-ctx hook redirect` + MCP), not the prompt, drives the over-tooling; the OFF arm
+(no custom tools) already runs at ~1× — opened **[W5 — minimal-tier profile](impl-overhead/05-minimal-tier-profile.md)**
+as the real environmental lever. W5 is measurement-first (do not rebuild on an untested
+hypothesis) and its live validation is gated on safe `~/.claude` access (no concurrent
+session) or an `ANTHROPIC_API_KEY`.
+
+Net: W3 (the instrument/gate) and W2 (prefix hygiene) are durable wins; W3 is what let us
+*falsify* W1 instead of shipping a plausible-but-ineffective change.
+
+**W5 is implemented, but the n=3 + Opus confirmation corrected the earlier n=1 claim: the
+≤1.5× target is NOT yet met.** The single ablation that showed the weak profile at easy
+0.59× was a high-variance fluke. Re-run at n=3 medians (raw:
+[data/overhead-n3-2026-06-26.json](data/overhead-n3-2026-06-26.json), all arms 100% correct):
+
+| model / config | easy | hard | hard2 |
+|----------------|---:|---:|---:|
+| Haiku, full | 3.15× FAIL | 0.65× | 1.00× |
+| Haiku, weak | 2.27× FAIL | 0.93× | 1.00× |
+| Opus 4.8, full | 1.00× | 0.99× | 1.34× |
+
+The over-tooling is **weak-model + trivial-task specific**: Opus 4.8 never exceeds 1.34×
+(no problem on the default/strong tier), and hard tasks are fine for everyone. The
+`AGENTIC_TIER=weak` profile *reduces* Haiku's easy-task overhead (3.15× → 2.27×) and is
+harmless to hard tasks and to Opus, but it does **not** reliably reach ≤1.5× — the
+remaining layer (gitnexus MCP + the tool-pushing prefix + rtk) still triggers variable
+orientation. Reaching the bar would need a more aggressive minimal/near-vanilla weak
+profile; and since the custom layer is merely *neutral* for weak models on hard tasks, its
+value for weak models is an open question. Detail:
+[05-minimal-tier-profile.md](impl-overhead/05-minimal-tier-profile.md).

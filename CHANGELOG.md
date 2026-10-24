@@ -2,6 +2,159 @@
 
 All notable changes to this config are recorded here. Newest first.
 
+## [0.16.0] — 2026-07-02
+
+### Fixed
+- Audit-fixes wave (`plans/audit-fixes-2026-07`): a 31-agent adversarial repository
+  audit found 21 independently-verified bug/risk defects, fixed here with a
+  regression test per fix.
+  - hook: `Classify()` evaluated the ast-grep deny *before* the complex-command
+    fail-open, diverging from the design doc and the shell fallback (false-positive
+    denials on heredoc/multiline/`cd`-chain/`$()` grep-on-code commands). Restored
+    fail-open-first; mirrored the shell fallback's normalization (leading `VAR=`
+    assignments + whitespace) and moved its equals-guard ahead of the lean-ctx
+    delegate so the Go and shell paths give identical verdicts; `codeExtRe` no
+    longer denies suffixed text files (`main.go.orig`); `hook.Main` recovers from
+    panics (fail open, not a blocking exit 2).
+  - gain/telemetry: first-wins usage dedup undercounted output tokens (Claude Code
+    grows `output_tokens` across per-content-block records) — switched to last-wins
+    per-field delta reconciliation in `gain.go` and `report.py` in lockstep. The
+    deny counter now matches the reason exactly (was ~3x inflated by Read-dumps of
+    the guard's own source); the grep adoption tally counts self-wrapped `rtk grep`.
+  - install: an unreadable existing config is a hard error (was silently replaced
+    with fragment-only content); `inject|eject --home <sandbox>` no longer drives
+    the real global `claude` CLI; the atomic writers preserve symlinked configs
+    (dotfiles/stow); fresh-machine `sync.py` no longer aborts the install at exit 2;
+    a malformed cursor `hooks.json` is a hard error; the Python JSON writers preserve
+    non-ASCII; `install.sh` backs up to the `.pre-agentic` name `eject` restores.
+  - evals: `cases.validate()` rejects unknown keys (a typo'd `expects` was silently
+    ignored); `rejudge()` guards an empty results file.
+
+### Note
+- The prior gain-enforcement-fixes wave (PR #13 — shell-guard deny-ordering, the rtk
+  `=`-word guard, `agentic gain --adoption`, Claude 5 pricing rows, and the
+  office-hours + systematic-debugging skills) shipped without its own CHANGELOG
+  entry; this wave audits and hardens it.
+
+## [0.15.1] — 2026-07-02
+
+### Changed
+- Distilled the six upstream GitNexus-generated skill files (`impact`,
+  `detect_changes`, `rename`, `cypher` guidance) into `gitnexus-navigation`, so
+  this repo's skill stays the single source of truth instead of a second copy
+  regenerated on every `analyze`.
+- Canonical `gitnexus analyze` invocation now carries `--skip-agents-md
+  --skip-skills`, suppressing upstream's per-repo `AGENTS.md`/`CLAUDE.md`
+  section and generated `.claude/skills/gitnexus/` (~700 tokens/session whose
+  MUST-directives conflicted with the tool-precedence gate).
+
+## [0.15.0] — 2026-07-02
+
+### Added
+- `agentic update` and `agentic version` subcommands (`internal/selfupdate/`): one-command
+  update workflow (fast-forward pull + rebuild + re-apply to all providers) and version
+  visibility (git describe + commit date + repo root).
+- `bin/install.sh` auto-links `agentic` and `agentic-cfg` into `~/.local/bin` after
+  provider dispatch, idempotent and honoring `--dry-run`.
+- `bin/doctor.sh` PATH entry-point check: verifies `agentic-cfg` symlink resolves to the
+  correct checkout binary.
+- `SETUP.md` "Updating" section: documents one-time link setup and ongoing update flow.
+- Git versioning via tags starting `v0.15.0` (applied post-merge by orchestrator).
+
+## [0.14.1] — 2026-07-02
+
+### Fixed
+- Root-caused the gitnexus MCP outage to two layers: the advisory
+  `engines.node >=22` mismatch, and the actual trigger — a corrupt npx cache
+  (`~/.npm/_npx/<hash>`) resolving `commander` without its named exports on
+  Node 20 *and* Node 26 alike. Resolution: pin to the latest stable
+  `gitnexus@1.6.8`, raise the machine's Node baseline to ≥22 via Homebrew
+  (`brew install node`, resolving ahead of any older Node on PATH), and clear
+  the offending npx cache directory.
+
+### Added
+- MCP start/handshake check (`bin/mcp-start-check.py`) wired into
+  `doctor.sh --deep`, so a registered-but-dead stdio MCP server fails the
+  health check instead of passing a JSON-validity-only grep.
+- `doctor.sh --deep` Node floor check: fails if `node` is missing or below
+  major version 22, ahead of the gitnexus MCP start check.
+
+## [0.14.0] — 2026-07-02
+
+### Added
+- `core/agents/`: four subagent role definitions (`implementer`, `doc-writer`, `verifier`,
+  `researcher`), each pinned to a model tier; rendered to `~/.claude/agents/` by the Claude
+  installer and covered by `agentic inject`/`eject`/`status`.
+- `model-orchestration` skill: "Delegation protocol" section pointing plan-then-delegate
+  hand-offs at the shipped agent roles.
+- `bin/ci-check.sh`: agents section.
+- `plans/orchestration-agents/`: office-hours session #2 design doc (adversarially
+  spec-reviewed, two iterations) + the two implementation plans behind this entry.
+
+### Changed
+- `docs/research/ai-native-agentic-engineering.md`: July 2026 re-verification and
+  extension pass — at least six load-bearing claims re-checked against current vendor
+  docs, one moved link fixed, new "What changed since the June snapshot" section
+  (Fable 5 / effort `xhigh`, Claude Code Agent Teams, GPT-5.4/5.5 + Codex Remote,
+  Gemini CLI → Antigravity CLI cutover, Cursor Composer 2.5).
+- `docs/guides/ai-for-software-engineering.md`, `docs/guides/ai-in-daily-life.md`:
+  named-practitioner advice woven in with fetched sources (Karpathy, Willison, Mollick,
+  Hashimoto, Ronacher, Anthropic/OpenAI/Google guidance) + "What the professionals
+  converge on" sections; one stale quote figure corrected against its source.
+
+## [0.13.0] — 2026-07-02
+
+### Added
+- Edit-lint hook syntax-checks shell-script edits (#11).
+- `agentic` Go CLI with `inject`, `eject`, `status`, `link` subcommands for reversible 
+  Claude config management, plus `gain` and `cache` for token-economy metrics.
+- CI workflow (`.github/workflows/ci.yml`) running `bin/ci-check.sh` and `golangci-lint` 
+  on every push and pull request.
+- `bin/prefix-budget.sh` gate enforcing byte budget on always-on prompt prefix.
+- `model-orchestration` and `no-mistakes` skills.
+- Eval harness hardening: metric track in `--track all`, persistent transcripts under 
+  `results/<model>/transcripts/`, `--rejudge` support, fail-closed judge.
+- `AGENTIC_TIER=weak` truly removes lean-ctx server and its allow entries.
+- Cursor install now merges `hooks.json` (never clobbers) and manages stale entries via 
+  `~/.cursor/.agentic-managed.json` sidecar; added `--eject` support.
+
+### Changed
+- Hook matchers anchored (`^Bash$`, `^(Read|Grep|Glob)$`, `^(Edit|Write|MultiEdit)$`) so
+  substring tool names (`WebSearch`, `preview_click`, `read_clipboard`) no longer match;
+  the redirect hook's force-allow is thereby confined to read-only tools.
+- Settings merge recognizes managed hook groups by command basename, making merge/eject
+  idempotent against path-qualified variants (`/opt/homebrew/bin/lean-ctx hook …`);
+  Go/Python parity tests added.
+- Edit-lint's Python check uses `ast.parse` (no `__pycache__` litter in user repos).
+- Always-on prefix diet: source trimmed 11,232 → 8,754 bytes (~600–800 tokens per
+  session, plus retired skill descriptions); terminal-rtk skill folded into AGENTS.md
+  Global default 2 (hook-enforced); dead links, phantom `ctx_semantic_search` /
+  `ctx_compose` references, and `.mdc` contradictions removed; `no-mistakes` /
+  `model-orchestration` trigger descriptions narrowed.
+- MCP registration restores the prior server on add failure and continues past
+  per-server errors (exit nonzero at the end); merge-mcp stripped of the Cursor
+  overlay concept.
+- Eval control/OFF arms run under a genuinely bare `CLAUDE_CONFIG_DIR` (no hooks, no
+  CLAUDE.md import, no MCP); rows recorded under the old leaky control carry a
+  caveat in BENCHMARKS.md.
+- Docs: all hardcoded counts replaced with "run the command" phrasing; `~/.claude.json` 
+  (user-scope MCP) documented; canonical-path claim removed (path-independent now).
+- Non-atomic `agentic-cfg.generated.md` writes now atomic; `doctor` no longer false-OKs.
+
+### Fixed
+- Shell-guard fallback corruption on multi-line commands; grep-token regex false-positives.
+- `bin/agentic` build gap (Go now available, build happens at install).
+- Merge-settings null crash; JSON key order preservation via `internal/jsonorder`.
+- CI output discarding; `--track all` now includes metric track.
+- `report.py` now refuses to shrink BENCHMARKS.md without `--force`.
+
+### Note
+- Review wave (`plans/review-fixes/`): plans 01–08 (shell-guard, evals control-arm,
+  hook-matchers, settings-merge, evals-harness, cursor-parity, always-on-diet,
+  install-hardening) and 09 (docs sweep) shipped 2026-07-01..02; plan 10
+  (machine apply + external-hook cleanup) applied on this machine only.
+- Prefix budget now 9054 bytes (source: 8754 bytes currently).
+
 ## [0.12.1] — 2026-06-25
 
 ### Fixed
