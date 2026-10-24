@@ -46,7 +46,7 @@ unit-tested), wired in `cmd/agentic/main.go`.
 `--adoption` complements — it does not replace — the cache metrics above: it
 measures whether the *enforcement layer* is actually covering the traffic
 (shell-guard wrap/deny/fail-open shares, deny events observed in transcripts,
-and ast-grep/lean-ctx/GitNexus/native-tool call counts), rather than the token
+and ast-grep/GitNexus/native-tool call counts), rather than the token
 economy of the traffic that does get wrapped.
 
 ## Usage (`report.py`)

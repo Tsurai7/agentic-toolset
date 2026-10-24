@@ -4,13 +4,6 @@ set -euo pipefail
 
 AGENTIC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DRY_RUN="${DRY_RUN:-0}"
-# Tier selects how much of the orientation layer to install. "strong" (default) is the
-# full toolset. "weak" removes the lean-ctx Read/Grep redirect hook, the lean-ctx MCP
-# server (including a previously-registered one), and its `mcp__lean-ctx__*` allow
-# entries — measured to cut a weak model's per-task overhead from ~5x to <=1x by
-# stopping the orientation dance on trivial tasks
-# (plans/impl-overhead/05-minimal-tier-profile.md).
-AGENTIC_TIER="${AGENTIC_TIER:-strong}"
 
 log() { printf '[claude] %s\n' "$*"; }
 run() {
@@ -154,21 +147,7 @@ install_mcp() {
   # The `claude` CLI rewrites ~/.claude.json in place; back it up once first, matching
   # the CLAUDE.md / settings.json backups (this file was previously mutated with none).
   if [[ "$DRY_RUN" != "1" ]]; then backup_once "${HOME}/.claude.json"; fi
-  # Weak tier: don't register the lean-ctx MCP server (its ctx_* tools + "always use
-  # lean-ctx" instructions drive the orientation dance that over-tools weak models).
-  # Excluding it from the merge only skips *adding* it — a server registered by a
-  # prior strong-tier install would otherwise survive untouched, so also remove it
-  # outright when present.
-  local exclude=""
-  if [[ "$AGENTIC_TIER" == "weak" ]]; then
-    exclude="lean-ctx"
-    if [[ "$DRY_RUN" == "1" ]]; then
-      log "[dry-run] claude mcp remove lean-ctx --scope user (weak tier)"
-    elif command -v claude >/dev/null 2>&1; then
-      claude mcp remove lean-ctx --scope user >/dev/null 2>&1 || true
-    fi
-  fi
-  DRY_RUN="$DRY_RUN" AGENTIC_MCP_EXCLUDE="$exclude" run_tool merge-mcp "$AGENTIC_ROOT" --register-claude-user
+  run_tool merge-mcp "$AGENTIC_ROOT" --register-claude-user
 }
 
 install_settings() {
@@ -186,26 +165,6 @@ install_settings() {
   # explicit rm at the end is unreachable on early exit).
   trap 'rm -f "$resolved"' RETURN
   resolve_root "$fragment" >"$resolved"
-  # Weak tier: drop the lean-ctx Read/Grep redirect hook (the turn-multiplier on
-  # trivial tasks) and the mcp__lean-ctx__* allow entries. shell-guard, edit-lint,
-  # and the observe hooks stay. Dropping the allow entries from the fragment lets
-  # the managed-allow-set merge below remove any already-installed entries too,
-  # instead of merely not adding new ones.
-  if [[ "$AGENTIC_TIER" == "weak" ]]; then
-    python3 - "$resolved" <<'PY'
-import json, sys
-p = sys.argv[1]
-s = json.load(open(p))
-pre = s.get("hooks", {}).get("PreToolUse", [])
-s["hooks"]["PreToolUse"] = [
-    g for g in pre
-    if not any("lean-ctx hook redirect" in h.get("command", "") for h in g.get("hooks", []))
-]
-allow = s.get("permissions", {}).get("allow", [])
-s["permissions"]["allow"] = [a for a in allow if not a.startswith("mcp__lean-ctx__")]
-json.dump(s, open(p, "w"), indent=2)
-PY
-  fi
   run_tool merge-settings "$resolved" "$out"
   rm -f "$resolved"
 }
@@ -215,4 +174,4 @@ link_agents
 install_claude_md
 install_mcp
 install_settings
-log "done (tier: ${AGENTIC_TIER})"
+log "done"

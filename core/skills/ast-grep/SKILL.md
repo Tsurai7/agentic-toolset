@@ -8,17 +8,17 @@ description: >-
 
 # ast-grep over grep
 
-For **source code**, search by syntax tree with `ast-grep`, not by regex.
+For **structural** code questions, search by syntax tree with `ast-grep`, not by regex.
 Regex matches text; `ast-grep` matches code structure, so it ignores comments,
 strings, and formatting differences, and won't produce false hits.
 
 ## Default
 
-- **Searching code → `ast-grep`.** This is the default for any query about a code
-  construct (function calls, definitions, signatures, JSX elements, imports,
-  `catch` blocks, decorators, etc.).
-- **`grep` / `ctx_search` only for non-code text** — log lines, config keys,
-  plain strings, prose, or a language `ast-grep` does not support.
+- **Code structure → `ast-grep`.** Use it for any query about a code construct
+  (function calls, definitions, signatures, JSX elements, imports, `catch`
+  blocks, decorators, etc.).
+- **Text → Grep.** A literal string, identifier, log line, config key, or prose —
+  in code files or not — is a text question; use the native Grep tool.
 
 ## Usage
 

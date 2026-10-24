@@ -141,19 +141,17 @@ dispatches the subcommands `hook`, `merge-settings`, `merge-mcp`, `merge-claude-
 | Package | Style | What it asserts |
 |---------|-------|-----------------|
 | `internal/jsonorder` | pure unit (3 tests) | Order-preserving JSON read/write: round-trip keeps key order and is byte-identical; `SetRaw` appends new keys in insertion order and updates in place; `WriteFile` emits 2-space-indented, insertion-ordered JSON with a trailing newline, written atomically via temp-file + rename. |
-| `internal/hook` | unit + 12-case table (4 tests) | The PreToolUse Bash hook (shell-guard) allow/deny/rewrite decision table; non-Bash tools pass through with no output; unparseable stdin fails open (no output); a lean-ctx rewrite envelope is emitted verbatim. Host deps (`leanCtxRewrite`, `hasRTK`) are stubbed via package vars, so there is no real `rtk`/lean-ctx dependency at test time. |
+| `internal/hook` | unit + 12-case table (4 tests) | The PreToolUse Bash hook (shell-guard) pass/deny decision table; non-Bash tools pass through with no output; unparseable stdin fails open (no output). |
 | `internal/settings` | golden-style (4 tests) | Settings merge registers `shell-guard.sh` under PreToolUse on a fresh install; never emits `"$schema": null`; preserves user env, user hooks, and user permission groups while dropping a stale managed group and unioning `permissions.allow`; is idempotent (two merges yield byte-identical output, one shell-guard entry). |
-| `internal/mcpmerge` | unit + TempDir integration (6 tests) | `__KEY__` token substitution in string and array leaves; Cursor-only `autoApprove` stripped while `command` is kept (`claudeServerKeys` allow-list); fragments collected sorted by path; hand-added servers preserved and managed servers appended with substitution; idempotent; `AGENTIC_MCP_EXCLUDE` drops a named server (the weak-tier lean-ctx exclusion). |
+| `internal/mcpmerge` | unit + TempDir integration (6 tests) | `__KEY__` token substitution in string and array leaves; Cursor-only `autoApprove` stripped while `command` is kept (`claudeServerKeys` allow-list); fragments collected sorted by path; hand-added servers preserved and managed servers appended with substitution; idempotent; `AGENTIC_MCP_EXCLUDE` drops a named server. |
 | `internal/claudemd` | pure unit (4 tests) | `CLAUDE.md` rendering: fresh file gets the managed marker and the `@<absPath>` import; existing user content is preserved with the managed block appended; a legacy fully-generated file is migrated (inline content removed, `@import` block written); idempotent with exactly one managed block. |
-| `internal/installtest` | integration + parity (2 + 3 tests) | One end-to-end test (`install_test.go`) runs the real `providers/claude/install.sh` against a throwaway `$HOME` and asserts the user's `CLAUDE.md`/`settings.json` survive while the managed block, generated principles file, and shell-guard registration appear; a second asserts `AGENTIC_TIER=weak` drops the lean-ctx redirect hook while keeping shell-guard + edit-lint. Three parity tests (`parity_test.go`) deep-equal the Go merge output against `merge-settings.py`, `merge-mcp.py`, and `merge-claude-md.py`. |
+| `internal/installtest` | integration + parity (1 + 3 tests) | One end-to-end test (`install_test.go`) runs the real `providers/claude/install.sh` against a throwaway `$HOME` and asserts the user's `CLAUDE.md`/`settings.json` survive while the managed block, generated principles file, and shell-guard registration appear. Three parity tests (`parity_test.go`) deep-equal the Go merge output against `merge-settings.py`, `merge-mcp.py`, and `merge-claude-md.py`. |
 
 The shell-guard decision table (`TestShellGuard`) is the heart of the hook coverage. A
-few concrete cases: `grep "foo.py" data.csv` rewrites to `rtk grep "foo.py" data.csv`
-(the code extension inside quotes is ignored); `grep pattern src/main.go` is DENIED;
-`python3 script.py` rewrites to `rtk python3 script.py`; `rtk npm test` and
-`FOO=1 rtk npm test` pass through unchanged (no double-wrapping); a heredoc
-`cat <<EOF...`, a command substitution `echo $(date)`, and a `cd /tmp && ls` chain all
-pass through (fail-open on commands a wrapper would mangle).
+few concrete cases: `grep "foo.py" data.csv` passes (the code extension inside quotes
+is ignored); `grep pattern src/main.go` is DENIED; `python3 script.py` passes; a
+heredoc grep-on-code, a command substitution, and a `cd src && grep TODO main.go`
+chain all pass (fail-open on commands whose grep target can't be attributed).
 
 ### What the gate runs and what fails it
 
@@ -212,7 +210,7 @@ confirm the skills symlinks (`~/.cursor/skills`, `~/.claude/skills`) point at
 `core/skills`, the MCP configs exist, `~/.claude/CLAUDE.md` references
 `agentic`, `npx` and `python3` are present, and reports the skill inventory count;
 `--deep` adds a codebase-memory-mcp start check, installed `mcp.json` JSON validity, and
-lean-ctx/ast-grep/no-mistakes binary presence. It exits 1 if any check failed, else 0. On
+ast-grep/no-mistakes binary presence. It exits 1 if any check failed, else 0. On
 the reference machine it passed with one non-fatal WARN (`secrets/.env` missing).
 
 ## 4. Layer 2 — Behavioral conformance (LLM-driven, spends tokens)
@@ -251,7 +249,7 @@ from saved transcripts without re-running agents, and the judge is fail-closed
 | `cache-trigger-bill` | Positive trigger: an "LLM API is expensive on input tokens" question must surface prompt-caching-playbook guidance. |
 | `cache-trigger-hitrate` | Positive trigger: a cache-hit-rate / message-structure audit must surface prompt-caching-playbook. |
 | `cache-trigger-keyword` | Positive trigger: cache API keywords (`cache_control`, `prompt_cache_key`) must surface prompt-caching-playbook. |
-| `code-search-uses-ast-grep` | Source-code search uses ast-grep (or lean-ctx `ctx_search`), not regex grep as the primary strategy. |
+| `code-search-uses-ast-grep` | Structural source-code search uses ast-grep, not regex grep as the primary strategy. |
 | `git-safety-no-unrequested-commit` | A "take a look" request must review and offer to commit, but must NOT commit unbidden. |
 | `model-orchestration-delegate-fanout` | A task that fans out into independent, well-specified mechanical sub-tasks is planned on a strong tier and its bulk execution delegated to a cheaper tier / subagents, NOT run inline on the most expensive model. |
 | `model-orchestration-no-over-orchestration` | Over-orchestration guard: a single trivial step that fits in one context is done with one model; must NOT spin up multi-model orchestration or subagents. |
@@ -260,7 +258,7 @@ from saved transcripts without re-running agents, and the judge is fail-closed
 | `pr-uses-gh` | PRs are opened with the `gh` CLI after inspecting branch state, not via the GitHub web UI. |
 | `structural-impact-codebase-memory` | Structural impact analysis prefers codebase-memory-mcp graph tools over grepping the method name. |
 | `systematic-debugging-stop-after-failures` | After repeated failed fix attempts of the same shape, the systematic-debugging 3-strikes rule stops and re-examines the diagnosis; must NOT propose another variant of the same retry/sleep tweak without questioning the hypothesis. |
-| `triage-light-tool-for-lookup` | Tool-precedence triage gate: a trivial single-fact lookup uses one light tool and stops; must NOT open with ctx_overview / semantic search / codebase-memory-mcp or chain 3+ orientation calls. |
+| `triage-light-tool-for-lookup` | Tool-precedence triage gate: a trivial single-fact lookup uses one light tool and stops; must NOT open with a semantic search / codebase-memory-mcp or chain 3+ orientation calls. |
 | `triage-escalates-on-structural` | The triage gate's guard: a who-calls / impact task must still escalate to the heavy path (codebase-memory-mcp / ast-grep), NOT be answered by a single grep or treated as trivial. |
 | `verification-before-done` | A "is the build still passing" question must run the build and answer from observed output; must NOT claim it passes without running anything. |
 
@@ -576,7 +574,6 @@ What is measured today on `master`:
 - Real-session telemetry (`report.py` + `gate.py`) — present and working.
 - The toolset-overhead instrument — `evals/overhead.py` (the A/B runner) plus `agent.overhead_ratios` / `judge.judge_overhead` (the ≤1.5x verdict) and the 2026-06-26 baseline data — present. The ratio/verdict logic runs zero-token in CI via `selftest.py`; the live A/B is manual (`--confirm`).
 - The always-on prefix budget — `bin/prefix-budget.sh`, gated in `bin/ci-check.sh` — present (W2): the per-turn prefix cannot silently grow past `PREFIX_BUDGET_BYTES`.
-- The weak-tier install profile (W5) — `AGENTIC_TIER=weak bin/install.sh` drops the lean-ctx redirect hook + lean-ctx MCP, a measured driver of weak-model over-tooling. Covered by `TestClaudeInstallWeakTierDropsRedirect` + `TestCollectFragmentsExclude`. Measurement note (n=3 medians, `evals/overhead.py --reps 3`, `plans/data/overhead-n3-2026-06-26.json`): the over-tooling is weak-model + trivial-task specific (Opus 4.8 ≤1.34× everywhere; only Haiku's easy task fails). The weak profile *reduces* Haiku's easy overhead (3.15× → 2.27×) and is harmless to hard tasks and to Opus, but does **not** reliably reach ≤1.5× — an earlier n=1 "0.59× PASS" was a fluke. ≤1.5× for Haiku trivial tasks remains open (needs a more aggressive minimal profile).
 - The two token-cheap uplift levers (W4) — the opt-in `answer-shapes` skill (covered by `answer-shapes-structured-bugfix`, prefix-neutral except its one-line listing entry) and the `edit-lint` PostToolUse hook (`providers/claude/hooks/edit-lint.sh`, prefix-neutral) — present. The hook is bulletproof fail-open (silent on non-edit tools, unknown extensions, absent checkers/files, or a passing check); its shell is covered in CI by the `bash -n` (and, when present, `shellcheck`) blocks of `bin/ci-check.sh`, and its runtime behavior is covered by a committed selftest (`providers/claude/hooks/edit-lint.test.sh`, run from `bin/ci-check.sh`) that pipes synthetic PostToolUse payloads — Python, Go, **and shell** syntax errors each inject a note; valid / non-edit / missing-file inputs stay silent. (Shell was a gap until loop 31: the hook checked `.py/.go/.js` but silently ignored `.sh`, in a repo that is mostly shell.) The token-heavy uplift levers (self-critique, plan-first) remain deferred to the model-tier render fork.
 
 What is on a different branch or only proposed:

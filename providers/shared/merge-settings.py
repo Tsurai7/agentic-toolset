@@ -38,8 +38,9 @@ def _managed_commands(fragment_hooks: dict) -> set:
 
 def _is_managed_command(cmd: str) -> bool:
     """Recognize a repo-owned hook command by shape, independent of the absolute
-    path the command was installed at. Covers `<any path>/lean-ctx hook
-    <subcommand>` (e.g. `/opt/homebrew/bin/lean-ctx hook rewrite`) and our own
+    path the command was installed at. Covers legacy `<any path>/lean-ctx hook
+    <subcommand>` groups from installs that predate lean-ctx's removal (so a
+    re-install drops them) and our own
     providers/claude/hooks/<name>.sh scripts even when their prefix moved or is a
     stale clone path."""
     if "/providers/claude/hooks/" in cmd:
@@ -48,12 +49,10 @@ def _is_managed_command(cmd: str) -> bool:
     return len(fields) >= 2 and os.path.basename(fields[0]) == "lean-ctx" and fields[1] == "hook"
 
 
-# Marks an allow entry as repo-owned (currently only the lean-ctx MCP tools).
+# Marks an allow entry as repo-owned (the legacy lean-ctx MCP tools).
 # Owned entries form a "managed set": on merge, an owned entry not present in
-# the incoming fragment is dropped (e.g. weak tier ships a fragment with none
-# of these, which then removes all 12 on merge instead of merely not
-# re-adding them) — never a user-added entry, which is anything not matching
-# this prefix.
+# the incoming fragment's permissions block is dropped — never a user-added
+# entry, which is anything not matching this prefix.
 MANAGED_ALLOW_PREFIX = "mcp__lean-ctx__"
 
 

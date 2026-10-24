@@ -239,8 +239,9 @@ func isManagedGroup(g json.RawMessage, managed map[string]bool) bool {
 }
 
 // isManagedCommand recognizes a repo-owned hook command by shape, independent of
-// the absolute path the command was installed at. Covers `<any path>/lean-ctx hook
-// <subcommand>` (e.g. `/opt/homebrew/bin/lean-ctx hook rewrite`) and our own
+// the absolute path the command was installed at. Covers legacy `<any path>/lean-ctx
+// hook <subcommand>` groups from installs that predate lean-ctx's removal (so a
+// re-install drops them) and our own
 // providers/claude/hooks/<name>.sh scripts even when their __AGENTIC_ROOT__ prefix
 // moved or is a stale clone path.
 func isManagedCommand(c string) bool {
@@ -251,18 +252,16 @@ func isManagedCommand(c string) bool {
 	return len(fields) >= 2 && filepath.Base(fields[0]) == "lean-ctx" && fields[1] == "hook"
 }
 
-// managedAllowPrefix marks an allow entry as repo-owned (currently only the
-// lean-ctx MCP tools). Owned entries are a "managed set": on merge, an owned
-// entry not present in the incoming fragment is dropped (e.g. weak tier ships a
-// fragment with none of these, which then removes all 12 on merge instead of
-// merely not re-adding them) — never a user-added entry, which is anything not
-// matching this prefix.
+// managedAllowPrefix marks an allow entry as repo-owned (the legacy lean-ctx MCP
+// tools). Owned entries are a "managed set": on merge, an owned entry not present
+// in the incoming fragment's permissions block is dropped — never a user-added
+// entry, which is anything not matching this prefix.
 const managedAllowPrefix = "mcp__lean-ctx__"
 
 // mergePermissions unions the fragment's allow entries into the existing list,
 // but for the managed set (managedAllowPrefix) also drops any existing entry not
 // present in the fragment, so a fragment that dropped/shrank its managed
-// entries (weak tier) actually removes the stale ones instead of only skipping
+// entries actually removes the stale ones instead of only skipping
 // new adds. User-added entries (outside the managed prefix) are never touched.
 func mergePermissions(out, frag *jsonorder.Map) {
 	perms := jsonorder.New()

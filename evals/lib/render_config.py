@@ -45,10 +45,7 @@ SETTINGS_FRAGMENT = REPO_ROOT / "providers" / "claude" / "settings.hooks.json"
 INTEGRATIONS_SRC = REPO_ROOT / "integrations"
 
 # Valid exclude tokens for render_full_variant() — see its docstring.
-FULL_VARIANT_EXCLUDES = frozenset({"lean-ctx", "shell-guard"})
-# exclude token -> MCP server name it drops (matches the server name keys the
-# fragments under integrations/ register — see merge-mcp.py's AGENTIC_MCP_EXCLUDE).
-_MCP_EXCLUDE_SERVERS = {"lean-ctx": "lean-ctx"}
+FULL_VARIANT_EXCLUDES = frozenset({"shell-guard"})
 
 
 def _load_module(name: str, filename: str):
@@ -245,29 +242,19 @@ def _full_settings(exclude: frozenset[str]) -> dict:
     """Merge the resolved hooks fragment onto the SAME preserved live-settings base
     as `_bare_settings`, mirroring install.sh's merge-settings step: the live
     settings.json auth/runtime keys (`env`, `apiKeyHelper`, `forceLoginMethod`,
-    `model`, ...) pass through untouched while the repo's hook groups and
-    `mcp__lean-ctx__*` allow entries are merged on top (via merge-settings.py's
+    `model`, ...) pass through untouched while the repo's hook groups are merged
+    on top (via merge-settings.py's
     own `merge_hooks`/`_merge_allow`, the single source of merge truth). Overwriting
     with only the fragment would drop those auth keys and leave the full arm on a
     different auth footing than the bare control.
 
-    Exclusions are applied to the fragment before the merge, mirroring install.sh's
-    AGENTIC_TIER=weak settings transform: "shell-guard" removes the `^Bash$` matcher
-    group; "lean-ctx" removes the `lean-ctx hook redirect` group and every
-    `mcp__lean-ctx__*` allow entry."""
+    Exclusions are applied to the fragment before the merge: "shell-guard"
+    removes the `^Bash$` matcher group."""
     resolved = SETTINGS_FRAGMENT.read_text().replace("__AGENTIC_ROOT__", str(REPO_ROOT))
     fragment = json.loads(resolved)
     if "shell-guard" in exclude:
         pre = fragment.get("hooks", {}).get("PreToolUse", [])
         fragment["hooks"]["PreToolUse"] = [g for g in pre if g.get("matcher") != "^Bash$"]
-    if "lean-ctx" in exclude:
-        pre = fragment.get("hooks", {}).get("PreToolUse", [])
-        fragment["hooks"]["PreToolUse"] = [
-            g for g in pre
-            if not any("lean-ctx hook redirect" in h.get("command", "") for h in g.get("hooks", []))
-        ]
-        allow = fragment.get("permissions", {}).get("allow", [])
-        fragment["permissions"]["allow"] = [a for a in allow if not a.startswith("mcp__lean-ctx__")]
 
     merge_settings = _load_merge_settings()
     src = REAL_CONFIG / "settings.json"
@@ -284,34 +271,27 @@ def _full_settings(exclude: frozenset[str]) -> dict:
     return settings
 
 
-def _full_mcp_config(dest: Path, exclude: frozenset[str]) -> str | None:
+def _full_mcp_config(dest: Path) -> str | None:
     """Build a `claude --mcp-config`-compatible {"mcpServers": {...}} from this
-    repo's MCP fragments, minus excluded servers, and write it to
+    repo's MCP fragments and write it to
     dest/mcp-config.json. Reuses providers/shared/merge-mcp.py's
     collect_fragments/load_env/substitute (the same fragment discovery,
     __AGENTIC_ROOT__/__PATH__-style placeholder resolution, and
     Claude-Code-compatible key filtering the installer's merge path uses)
-    rather than re-implementing them. Returns None when every server is
-    excluded (nothing to load).
+    rather than re-implementing them. Returns None when there are no servers
+    (nothing to load).
 
-    Exclusions are driven ONLY by the explicit `exclude` argument: ambient
-    AGENTIC_MCP_EXCLUDE (which `collect_fragments` honors internally, e.g.
-    inherited from a weak-tier install shell) is cleared for the collect so it
-    cannot silently drop servers and quietly make the 'full' arm not-full."""
+    Ambient AGENTIC_MCP_EXCLUDE (which `collect_fragments` honors internally) is
+    cleared for the collect so it cannot silently drop servers and quietly make
+    the 'full' arm not-full."""
     merge_mcp = _load_merge_mcp()
-    exclude_servers = {_MCP_EXCLUDE_SERVERS[tok] for tok in exclude if tok in _MCP_EXCLUDE_SERVERS}
     ambient_exclude = os.environ.pop("AGENTIC_MCP_EXCLUDE", None)
     try:
         all_servers = merge_mcp.collect_fragments(INTEGRATIONS_SRC).get("mcpServers", {})
     finally:
         if ambient_exclude is not None:
             os.environ["AGENTIC_MCP_EXCLUDE"] = ambient_exclude
-    fragments = {
-        "mcpServers": {
-            name: cfg for name, cfg in all_servers.items()
-            if name not in exclude_servers
-        }
-    }
+    fragments = {"mcpServers": all_servers}
     env = merge_mcp.load_env(REPO_ROOT)
     resolved = merge_mcp.substitute(fragments, env)
     servers = {
@@ -330,7 +310,7 @@ def render_full_variant(dest: Path, exclude: frozenset[str] = frozenset()) -> di
     named exclusions. Returns {"config_dir": str, "mcp_config": str|None} — the
     caller passes config_dir via CLAUDE_CONFIG_DIR and mcp_config via
     `claude --mcp-config` (see swe_bench.py's arms axis). Valid exclude tokens:
-    "lean-ctx", "shell-guard". Unknown tokens -> ValueError (fail
+    "shell-guard". Unknown tokens -> ValueError (fail
     loud, not open: a typo'd/renamed exclude token must never silently render a
     still-full arm and be mistaken for an ablated one).
 
@@ -363,5 +343,5 @@ def render_full_variant(dest: Path, exclude: frozenset[str] = frozenset()) -> di
     creds = dest / ".credentials.json"
     if not creds.exists():
         _write_credentials_from_keychain(creds)
-    mcp_config = _full_mcp_config(dest, exclude)
+    mcp_config = _full_mcp_config(dest)
     return {"config_dir": str(dest), "mcp_config": mcp_config}

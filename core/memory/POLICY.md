@@ -9,11 +9,10 @@ fragmented across two independent systems with no policy tying them together.
 | Store | What it is | Role |
 |-------|-----------|------|
 | Native file memory (`~/.claude/projects/<proj>/memory/`) | `MEMORY.md` index + `*.md` fact files with frontmatter | **Authoritative** for user/feedback/project/reference facts. Index loads at session start; bodies read on demand. |
-| lean-ctx store (`~/.lean-ctx/`) | lean-ctx's own context engine (context IR, archives, semantic index) | **Operational only.** Managed by lean-ctx. We do not write user facts here or mirror facts into it. Off-limits. |
 | Global `CLAUDE.md` (generated) | Static instructions from `core/` | **Config, not memory.** Durable behavior rules, not episodic facts. |
 
 The core decision: native file memory is the one place user-facing facts live.
-lean-ctx is left to manage its own store. We did **not** add mem0/byterover/a
+We did **not** add mem0/byterover/a
 vector DB — that is operational weight and extra tool-schema tax the current
 fact volume does not justify.
 

@@ -5,49 +5,16 @@
       {
         "matcher": "^Bash$",
         "hooks": [{ "type": "command", "command": "__AGENTIC_ROOT__/providers/claude/hooks/shell-guard.sh" }]
-      },
-      {
-        "matcher": "^(Read|Grep|Glob)$",
-        "hooks": [{ "type": "command", "command": "lean-ctx hook redirect" }]
       }
     ],
     "PostToolUse": [
-      { "matcher": ".*", "hooks": [{ "type": "command", "command": "lean-ctx hook observe" }] },
       {
         "matcher": "^(Edit|Write|MultiEdit)$",
         "hooks": [{ "type": "command", "command": "__AGENTIC_ROOT__/providers/claude/hooks/edit-lint.sh" }]
       }
-    ],
-    "PreCompact": [
-      { "matcher": ".*", "hooks": [{ "type": "command", "command": "lean-ctx hook observe" }] }
-    ],
-    "SessionStart": [
-      { "matcher": ".*", "hooks": [{ "type": "command", "command": "lean-ctx hook observe" }] }
-    ],
-    "SessionEnd": [
-      { "matcher": ".*", "hooks": [{ "type": "command", "command": "lean-ctx hook observe" }] }
-    ],
-    "Stop": [
-      { "matcher": ".*", "hooks": [{ "type": "command", "command": "lean-ctx hook observe" }] }
-    ],
-    "UserPromptSubmit": [
-      { "matcher": ".*", "hooks": [{ "type": "command", "command": "lean-ctx hook observe" }] }
     ]
   },
   "permissions": {
-    "allow": [
-      "mcp__lean-ctx__ctx_read",
-      "mcp__lean-ctx__ctx_search",
-      "mcp__lean-ctx__ctx_tree",
-      "mcp__lean-ctx__ctx_overview",
-      "mcp__lean-ctx__ctx_plan",
-      "mcp__lean-ctx__ctx_metrics",
-      "mcp__lean-ctx__ctx_compress",
-      "mcp__lean-ctx__ctx_session",
-      "mcp__lean-ctx__ctx_knowledge",
-      "mcp__lean-ctx__ctx_graph",
-      "mcp__lean-ctx__ctx_retrieve",
-      "mcp__lean-ctx__ctx_provider"
-    ]
+    "allow": []
   }
 }

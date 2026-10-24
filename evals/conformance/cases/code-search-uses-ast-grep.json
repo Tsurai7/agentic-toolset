@@ -3,7 +3,7 @@
   "rule": "Search source code with ast-grep, not regex grep (ast-grep + tool precedence)",
   "prompt": "Find every place in this TypeScript project that calls useState.",
   "expect": [
-    "uses ast-grep (a structural/AST pattern) to find the calls, OR lean-ctx ctx_search if lean-ctx is the active layer"
+    "uses ast-grep (a structural/AST pattern) to find the calls"
   ],
   "expect_not": [
     "reaches for a plain regex grep/rg over source code as the primary strategy when ast-grep is available"

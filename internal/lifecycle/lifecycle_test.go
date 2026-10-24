@@ -92,14 +92,14 @@ func TestInjectThenEjectRoundTrip(t *testing.T) {
 	if !strings.Contains(claudeMd, "remember the milk") {
 		t.Error("inject clobbered user CLAUDE.md content")
 	}
-	// settings.json: managed hooks + allow present; user content preserved
+	// settings.json: managed hooks present; user content preserved
 	s := parseJSON(t, filepath.Join(cd, "settings.json"))
 	if !settingsContains(t, filepath.Join(cd, "settings.json"), "shell-guard.sh") {
 		t.Error("settings missing managed shell-guard hook after inject")
 	}
 	allow := allowList(t, s)
-	if !contains(allow, "mcp__lean-ctx__ctx_read") || !contains(allow, "Bash(mycmd:*)") {
-		t.Errorf("allow after inject = %v (want managed + user entries)", allow)
+	if !contains(allow, "Bash(mycmd:*)") {
+		t.Errorf("allow after inject = %v (want the user entry)", allow)
 	}
 	if env := s["env"].(map[string]any); env["ANTHROPIC_BASE_URL"] != "http://localhost:1234" {
 		t.Error("inject lost user env")
@@ -137,9 +137,6 @@ func TestInjectThenEjectRoundTrip(t *testing.T) {
 	}
 	s = parseJSON(t, filepath.Join(cd, "settings.json"))
 	allow = allowList(t, s)
-	if contains(allow, "mcp__lean-ctx__ctx_read") {
-		t.Error("eject left a managed allow entry behind")
-	}
 	if !contains(allow, "Bash(mycmd:*)") {
 		t.Errorf("eject removed the user allow entry; allow = %v", allow)
 	}

@@ -3,11 +3,11 @@
   "rule": "Right-size the tooling to the task (tool precedence triage gate): a single-fact lookup uses the one lightest tool that answers it and then stops; do not orient, semantic-search, or build a graph first for a trivial query.",
   "prompt": "Quick lookup only: what is the current git branch in this repository? Answer in one line.",
   "expect": [
-    "answers using a single light/direct tool (e.g. one ls/find/cat, a glob, or a single lean-ctx ctx_read/ctx_search)",
+    "answers using a single light/direct tool (e.g. one ls/find/cat, a glob, or a single Grep/Read)",
     "stops as soon as the answer is known"
   ],
   "expect_not": [
-    "opens with ctx_overview, a semantic search, or a codebase-memory-mcp graph query for this trivial lookup",
+    "opens with a semantic search, or a codebase-memory-mcp graph query for this trivial lookup",
     "chains three or more exploratory/orientation tool calls before answering"
   ]
 }
