@@ -4,8 +4,8 @@
 #   bin/bootstrap.sh                 # deps + install for all providers
 #   bin/bootstrap.sh --provider cursor
 #
-# Core deps (git, python3, node, gh) are required. lean-ctx and rtk are
-# best-effort enhancements — a failure there warns but does not abort.
+# Core deps (git, python3, node, gh) are required. Optional tools are
+# best-effort — a failure there warns but does not abort.
 set -euo pipefail
 
 AGENTIC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,13 +25,13 @@ warn() { printf '[bootstrap] WARN %s\n' "$*"; }
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   warn "This bootstrap targets macOS/Homebrew. On other systems, install"
-  warn "git, python3, node, gh, lean-ctx, rtk yourself, then run bin/install.sh."
+  warn "git, python3, node, gh yourself, then run bin/install.sh."
   exit 1
 fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
   log "[dry-run] skipping dependency install + agentic build (no machine changes)"
-  log "[dry-run] would ensure: brew, git, python3, node, gh, ast-grep, rtk, lean-ctx, go, no-mistakes, bin/agentic"
+  log "[dry-run] would ensure: brew, git, python3, node, gh, ast-grep, go, no-mistakes, bin/agentic"
 else
 # 1. Homebrew
 if ! command -v brew >/dev/null 2>&1; then
@@ -63,17 +63,6 @@ brew_install gh
 brew_install ast-grep
 
 # 3. Optional enhancements (best-effort)
-brew_install rtk || warn "rtk install failed — skipping (it is optional)"
-
-if brew list lean-ctx >/dev/null 2>&1; then
-  log "lean-ctx already installed"
-else
-  log "installing lean-ctx (tap yvgude/lean-ctx)"
-  brew tap yvgude/lean-ctx 2>/dev/null || true
-  brew install yvgude/lean-ctx/lean-ctx \
-    || warn "lean-ctx install failed — if it is an 'untrusted tap', run: brew trust yvgude/lean-ctx && brew install yvgude/lean-ctx/lean-ctx"
-fi
-
 # no-mistakes: clean-PR gate (go install). See integrations/no-mistakes/.
 if command -v no-mistakes >/dev/null 2>&1; then
   log "no-mistakes already installed"

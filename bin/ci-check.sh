@@ -118,26 +118,16 @@ if bash providers/claude/hooks/edit-lint.test.sh >/dev/null 2>&1; then ok "edit-
 echo ""
 
 echo "== shell-guard fallback self-test (SHELL_GUARD_NO_GO=1) =="
-# Deterministic across environments: stub rtk (the rewrite needs one on PATH — the
-# hook exits envelope-less without it, by design) and lean-ctx (so the delegate
-# branch never rewrites), pinning these checks to the fallback path under test.
-sg_stub="$(mktemp -d)"
-trap 'rm -rf "$sg_stub"' EXIT
-printf '#!/bin/sh\nexit 0\n' >"${sg_stub}/rtk"
-printf '#!/bin/sh\nexit 0\n' >"${sg_stub}/lean-ctx"
-chmod +x "${sg_stub}/rtk" "${sg_stub}/lean-ctx"
-sg_out() { SHELL_GUARD_NO_GO=1 PATH="${sg_stub}:${PATH}" bash providers/claude/hooks/shell-guard.sh <<<"$1"; }
-if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"echo hi"}}') \
-   && [[ "$out" == *'"command":"rtk echo hi"'* ]]; then
-  ok "single-line command rewritten with rtk"
+sg_out() { SHELL_GUARD_NO_GO=1 bash providers/claude/hooks/shell-guard.sh <<<"$1"; }
+if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"echo hi"}}') && [[ -z "$out" ]]; then
+  ok "plain command passes through untouched"
 else
-  err "shell-guard fallback: single-line command not rewritten as expected"
+  err "shell-guard fallback: plain command produced output: $out"
 fi
-if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"echo a\necho b"}}') \
-   && [[ "$out" != *updatedInput* ]]; then
-  ok "multi-line command fails open (no updatedInput)"
+if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"echo a\necho b"}}') && [[ -z "$out" ]]; then
+  ok "multi-line command fails open"
 else
-  err "shell-guard fallback: multi-line command was rewritten instead of failing open"
+  err "shell-guard fallback: multi-line command produced output: $out"
 fi
 if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"git grep TODO main.py"}}') \
    && [[ "$out" != *'"permissionDecision":"deny"'* ]]; then
@@ -157,18 +147,6 @@ if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"rtk grep -r foo sr
 else
   err "shell-guard fallback: rtk grep -r foo src/main.go was not denied"
 fi
-if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"rtk ls"}}') \
-   && [[ "$out" != *updatedInput* ]]; then
-  ok "rtk ls not rewritten (already-wrapped)"
-else
-  err "shell-guard fallback: rtk ls was rewritten"
-fi
-if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"echo ==="}}') \
-   && [[ "$out" != *updatedInput* ]]; then
-  ok "echo === not rewritten (equals-token pass-through)"
-else
-  err "shell-guard fallback: echo === was rewritten"
-fi
 # A1: complex-command fail-open must win over the ast-grep deny for a
 # grep-on-code command wrapped in a cd-chain.
 if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"cd src && grep TODO main.go"}}') \
@@ -178,19 +156,12 @@ else
   err "shell-guard fallback: cd src && grep TODO main.go was denied"
 fi
 # A2/A4: the shell fallback must normalize like Go — a leading VAR= assignment
-# in front of an rtk-wrapped grep-on-code command must still deny, and leading
-# whitespace on an already-wrapped command must not double-wrap.
+# in front of an rtk-wrapped grep-on-code command must still deny.
 if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"FOO=1 rtk grep TODO cmd/agentic/main.go"}}') \
    && [[ "$out" == *'"permissionDecision":"deny"'* ]]; then
   ok "FOO=1 rtk grep TODO cmd/agentic/main.go denied (assignment-normalized)"
 else
   err "shell-guard fallback: FOO=1 rtk grep TODO cmd/agentic/main.go was not denied"
-fi
-if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"  rtk ls"}}') \
-   && [[ "$out" != *updatedInput* ]]; then
-  ok "  rtk ls (leading whitespace) not double-wrapped"
-else
-  err "shell-guard fallback:   rtk ls was rewritten (double-wrap)"
 fi
 # A3: a code extension mid-filename (backup/suffixed text file) must not deny.
 if out=$(sg_out '{"tool_name":"Bash","tool_input":{"command":"grep foo main.go.orig"}}') \

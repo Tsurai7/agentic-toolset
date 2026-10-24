@@ -149,12 +149,6 @@ if [[ "$DEEP" -eq 1 ]]; then
       fail "$f is invalid JSON"
     fi
   done
-  LEAN_CTX="${LEAN_CTX:-/opt/homebrew/bin/lean-ctx}"
-  if [[ -x "$LEAN_CTX" ]] || command -v lean-ctx >/dev/null 2>&1; then
-    ok "lean-ctx binary available"
-  else
-    warn "lean-ctx not found — brew install yvgude/lean-ctx/lean-ctx"
-  fi
   if command -v ast-grep >/dev/null 2>&1; then
     ok "ast-grep binary available"
   else

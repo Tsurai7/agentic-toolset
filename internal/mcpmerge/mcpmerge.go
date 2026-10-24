@@ -29,11 +29,9 @@ import (
 // then applies secrets/.env overrides (with ~ expansion). Mirrors load_env().
 func LoadEnv(root string) map[string]string {
 	env := map[string]string{
-		"NPX":               firstNonEmpty(os.Getenv("NPX"), which("npx", "npx")),
-		"PATH":              firstNonEmpty(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"),
-		"NODE_PATH":         firstNonEmpty(os.Getenv("NODE_PATH"), nodePath()),
-		"LEAN_CTX":          firstNonEmpty(os.Getenv("LEAN_CTX"), which("lean-ctx", "lean-ctx")),
-		"LEAN_CTX_DATA_DIR": firstNonEmpty(os.Getenv("LEAN_CTX_DATA_DIR"), expandHome("~/.lean-ctx")),
+		"NPX":       firstNonEmpty(os.Getenv("NPX"), which("npx", "npx")),
+		"PATH":      firstNonEmpty(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"),
+		"NODE_PATH": firstNonEmpty(os.Getenv("NODE_PATH"), nodePath()),
 	}
 	if b, err := os.ReadFile(filepath.Join(root, "secrets", ".env")); err == nil {
 		for _, line := range strings.Split(string(b), "\n") {
@@ -113,7 +111,7 @@ var placeholderRe = regexp.MustCompile(`__([A-Z0-9_]+)__`)
 // the Python substitute(). Object keys are left untouched. A single regex pass
 // resolves each placeholder exactly once from the original text, so a resolved
 // value that itself contains a __TOKEN__ is never re-substituted and a key that
-// is a prefix of another (__LEAN_CTX__ vs __LEAN_CTX_DATA_DIR__) cannot clobber
+// is a prefix of another (__FOO__ vs __FOO_BAR__) cannot clobber
 // it (BUG-15). Unknown placeholders are left untouched.
 func substitute(v any, env map[string]string) any {
 	switch t := v.(type) {
@@ -138,8 +136,7 @@ func substitute(v any, env map[string]string) any {
 	return v
 }
 
-// excludedServers reads AGENTIC_MCP_EXCLUDE (comma-separated server names). The weak
-// install tier sets this to omit the orientation-inducing layer (e.g. lean-ctx).
+// excludedServers reads AGENTIC_MCP_EXCLUDE (comma-separated server names).
 func excludedServers() map[string]bool {
 	m := map[string]bool{}
 	for _, n := range strings.Split(os.Getenv("AGENTIC_MCP_EXCLUDE"), ",") {

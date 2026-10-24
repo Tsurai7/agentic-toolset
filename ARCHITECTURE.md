@@ -58,7 +58,7 @@ flowchart LR
 | `providers/<p>/install.sh` | Renders the source into provider paths. |
 | `providers/shared/merge-mcp.py` | Builds provider `mcp.json` from fragments; managed-server sidecar removes stale entries. |
 | `providers/shared/merge-settings.py` | Merges Claude hooks + permissions into `~/.claude/settings.json`, preserving machine-local `env`. |
-| `providers/claude/CLAUDE.md.stub`, `settings.hooks.json` | Claude scaffolding (`__AGENTIC_ROOT__` injected at install; lean-ctx hooks fragment). |
+| `providers/claude/CLAUDE.md.stub`, `settings.hooks.json` | Claude scaffolding (`__AGENTIC_ROOT__` injected at install; shell-guard + edit-lint hooks fragment). |
 | `providers/claude/hooks/` | Shell hooks: `shell-guard.sh` (PreToolUse), `edit-lint.sh` (PostToolUse). |
 | `cmd/` | Go CLI: `agentic` binary dispatcher (hook, merges, inject/eject/status/link, gain/cache). |
 | `internal/` | Go packages: `hook`, `settings`, `mcpmerge`, `claudemd`, `jsonorder`, `installtest`. |
@@ -82,7 +82,7 @@ location), sources `secrets/.env`, and dispatches to provider installers.
   `install_rules` → `install_hooks`.
 - **Claude** (`providers/claude/install.sh`): `link_skills` → `install_claude_md`
   (stub with `__AGENTIC_ROOT__` injected + `AGENTS.md` + user-rules) →
-  `install_mcp` → `install_settings` (merge lean-ctx hooks/permissions).
+  `install_mcp` → `install_settings` (merge repo hooks).
 
 Both call `merge-mcp.py`; Claude also calls `merge-settings.py`. The **install
 scripts** back up each target file with a timestamp suffix before invoking the merge
@@ -98,10 +98,9 @@ location, so the repo can live anywhere — no path is tied to a specific machin
 - **Merges into** the existing target `mcp.json` — repo-managed servers overwrite
   same-named entries, but servers added by hand (e.g. work-only `dora`,
   `grafana-*`) are **preserved**. Never blindly overwrite the target.
-- Resolves tool locations **per machine** (`which npx`, `which lean-ctx`,
-  `npm root -g`) rather than hardcoding Homebrew paths.
+- Resolves tool locations **per machine** (`which npx`, `npm root -g`) rather than hardcoding Homebrew paths.
 - Substitutes any `__KEY__` placeholder from the resolved environment / `.env`
-  (`__NPX__`, `__LEAN_CTX__`, `__LEAN_CTX_DATA_DIR__`, …); `~` in `.env` values
+  (`__NPX__`, `__PATH__`, …); `~` in `.env` values
   is expanded. `secrets/.env` overrides any auto-detected value.
 - Fails with the offending file path on malformed JSON.
 
@@ -117,14 +116,14 @@ location, so the repo can live anywhere — no path is tied to a specific machin
   secrets out of tracked files.
 - **The repo can live anywhere** — docs refer to `<your clone>` consistently; no
   path is tied to a specific machine.
-- **Tool precedence** (codebase-memory-mcp vs lean-ctx `ctx_*` vs `rtk`) is defined once in
+- **Tool precedence** (codebase-memory-mcp vs `ast-grep` vs Grep) is defined once in
   `AGENTS.md`; don't restate conflicting rules elsewhere.
 
 ## How to extend
 
 | Goal | Do this |
 |------|---------|
-| Bootstrap dependencies | `bin/bootstrap.sh` installs: git, python3, node, gh, ast-grep, go, lean-ctx, rtk. |
+| Bootstrap dependencies | `bin/bootstrap.sh` installs: git, python3, node, gh, ast-grep, go. |
 | Build the binary | `make build` or `go build -o bin/agentic ./cmd/agentic` compiles the Go CLI. |
 | Add a skill | Create `core/skills/<name>/SKILL.md` with frontmatter. It auto-syncs via the symlink — no install code change. |
 | Add an always-on principle | Drop `core/principles/<name>.md`; it is concatenated into `CLAUDE.md` and rendered to a Cursor `alwaysApply` rule. Keep it short. |
@@ -139,9 +138,6 @@ After any change: `bin/ci-check.sh`, then `bin/install.sh --dry-run` to preview.
 
 - Re-running the full installer regenerates `mcp.json` — safe now (it merges),
   but always check the `--dry-run` if you changed `merge-mcp.py`.
-- `rtk` and the `lean-ctx` binary are installed by `bin/bootstrap.sh`, not
-  vendored. There is no separate rtk hook — lean-ctx's rewrite hook wraps shell
-  commands on machines where it runs.
 - Machine-local Claude `env` (e.g. `ANTHROPIC_BASE_URL`) is intentionally not in
   the repo; `merge-settings.py` preserves it.
 - `.github/workflows/ci.yml` runs `bin/ci-check.sh` on every push to `master` and on

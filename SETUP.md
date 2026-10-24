@@ -25,7 +25,7 @@ cd agentic-cfg
 ## 3. One command: deps + install
 
 `bin/bootstrap.sh` installs every dependency (Homebrew if missing, git, python3,
-node, gh, plus the optional `rtk` and `lean-ctx`), then runs the installer and a
+node, gh), then runs the installer and a
 health check:
 
 ```bash
@@ -39,8 +39,7 @@ That's the whole setup. codebase-memory-mcp (graph code navigation) is installed
 <summary>Manual path (if you don't want bootstrap to install deps)</summary>
 
 ```bash
-brew install python3 node gh rtk ast-grep go
-brew install yvgude/lean-ctx/lean-ctx     # optional
+brew install python3 node gh ast-grep go
 cp secrets/.env.example secrets/.env       # only to override auto-detected paths
 bin/install.sh --provider all
 bin/doctor.sh --deep
@@ -51,8 +50,8 @@ What each provider gets:
 
 | Provider | Installed |
 |----------|-----------|
-| **Cursor** | `~/.cursor/skills` → symlink to `core/skills`; rule `core/rules/lean-ctx.mdc` → `~/.cursor/rules`; hooks → `~/.cursor/hooks.json`; MCP **merged into** `~/.cursor/mcp.json` (existing servers preserved) |
-| **Claude** | `~/.claude/skills` → symlink; `~/.claude/CLAUDE.md` generated from `AGENTS.md` + user-rules; MCP registered into `~/.claude.json` (user scope, via the `claude` CLI — PORT-03, *not* `~/.claude/.mcp.json`); hooks + permissions merged into `settings.json` |
+| **Cursor** | `~/.cursor/skills` → symlink to `core/skills`; principles → `~/.cursor/rules`; MCP **merged into** `~/.cursor/mcp.json` (existing servers preserved) |
+| **Claude** | `~/.claude/skills` → symlink; `~/.claude/CLAUDE.md` generated from `AGENTS.md` + user-rules; MCP registered into `~/.claude.json` (user scope, via the `claude` CLI — PORT-03, *not* `~/.claude/.mcp.json`); hooks merged into `settings.json` |
 
 Restart Cursor / Claude afterwards.
 
@@ -157,17 +156,17 @@ agentic eject
 
 ## Notes
 
-1. **lean-ctx is portable on both sides.** Cursor gets the rule, MCP server, and
-   hooks; Claude gets the MCP server plus hooks + permissions merged into
-   `~/.claude/settings.json` (your machine-local `env`, e.g. a proxy URL, is
-   preserved). The `lean-ctx` binary is installed by `bin/bootstrap.sh`.
-2. **`rtk`** is installed by `bin/bootstrap.sh` (Homebrew core). There is no
-   separate rtk hook — on machines running lean-ctx, its rewrite hook wraps shell
-   commands; see the tool-precedence section in `AGENTS.md`.
-3. **`ANTHROPIC_BASE_URL`** and other machine-local `env` are intentionally not
+1. **Removing lean-ctx from an older install.** lean-ctx is no longer part of the
+   toolset. Re-running the installer drops its PreToolUse/PostToolUse hook
+   groups and `mcp__lean-ctx__*` allow entries; run `lean-ctx uninstall` to
+   remove the rest (its other hooks, MCP server, shell hooks, and data), then
+   `brew uninstall lean-ctx`. `lean-ctx uninstall` also deletes
+   `ANTHROPIC_BASE_URL` from `~/.claude/settings.json`, so re-add it if you set
+   that yourself.
+2. **`ANTHROPIC_BASE_URL`** and other machine-local `env` are intentionally not
    vendored — set them per machine in `~/.claude/settings.json`.
-4. **codebase-memory-mcp** must be indexed per project (`index_repository`).
-5. **CI workflow** (`.github/workflows/ci.yml`) is live on master, running
+3. **codebase-memory-mcp** must be indexed per project (`index_repository`).
+4. **CI workflow** (`.github/workflows/ci.yml`) is live on master, running
    `bin/ci-check.sh` and `golangci-lint` on every push and pull request.
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how the repo is wired internally.

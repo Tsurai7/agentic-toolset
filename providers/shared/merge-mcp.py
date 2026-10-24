@@ -38,9 +38,6 @@ def load_env(agentic_root: Path) -> dict[str, str]:
         "NPX": os.environ.get("NPX") or _which("npx", "npx"),
         "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
         "NODE_PATH": os.environ.get("NODE_PATH") or _node_path(),
-        "LEAN_CTX": os.environ.get("LEAN_CTX") or _which("lean-ctx", "lean-ctx"),
-        "LEAN_CTX_DATA_DIR": os.environ.get("LEAN_CTX_DATA_DIR")
-        or os.path.expanduser("~/.lean-ctx"),
     }
     dotenv = agentic_root / "secrets" / ".env"
     if dotenv.is_file():
@@ -78,8 +75,7 @@ def load_json(path: Path) -> dict:
 
 
 def _excluded_servers() -> set[str]:
-    """Server names to drop, from AGENTIC_MCP_EXCLUDE (comma-separated). The weak
-    install tier sets this to omit the orientation-inducing layer (e.g. lean-ctx)."""
+    """Server names to drop, from AGENTIC_MCP_EXCLUDE (comma-separated)."""
     return {n.strip() for n in os.environ.get("AGENTIC_MCP_EXCLUDE", "").split(",") if n.strip()}
 
 

@@ -84,8 +84,7 @@ ratcheted down behind it so it cannot silently regrow.
 
 The on-demand skill set grows week to week — `ls core/skills/` is the live list
 (a dozen at the time of writing): `answer-shapes`, `ast-grep`, `create-pr`,
-`git-safety`, `codebase-memory`, `lean-ctx` (companion skill for the
-context-runtime integration), `model-orchestration`, `no-mistakes`,
+`git-safety`, `codebase-memory`, `model-orchestration`, `no-mistakes`,
 `office-hours` (the vet-an-idea forcing questions, reconstructed in-repo after
 the gstack upstream went private), `prompt-caching-playbook`,
 `systematic-debugging`, `verification-before-completion`. Each is a directory
@@ -137,23 +136,19 @@ measurement runs.
 
 ### Hooks (`providers/claude/hooks/`, rendered into `~/.claude/settings.json`)
 
-The mechanical layer — three hook groups with **anchored** matchers (an unanchored
-matcher is a regex and can over-match tool names); the first two fire *before* the
-tool runs (PreToolUse), the third fires *after* an edit lands (PostToolUse):
+The mechanical layer — two hook groups with **anchored** matchers (an unanchored
+matcher is a regex and can over-match tool names); the first fires *before* the
+tool runs (PreToolUse), the second fires *after* an edit lands (PostToolUse):
 
-- `^Bash$` → **shell-guard**: rewrites plain terminal commands through the
-  compression stack (prefers a `lean-ctx hook rewrite` delegate when installed,
-  falls back to an `rtk` prefix). Complex commands — heredocs, multi-line,
-  leading variable assignments — **fail open first**, before any other verdict: a
-  command that can't be safely re-quoted or attributed to a single grep target
-  runs untouched. Then bare regex-grep over source files is **denied** with a
+- `^Bash$` → **shell-guard**: complex commands — heredocs, multi-line, `cd`
+  chains, command substitution — **fail open first**: a command whose grep
+  target can't be attributed reliably runs untouched. Then bare regex-grep over
+  source files is **denied** with a
   pointer at `ast-grep` — a best-effort nudge with documented evasions (see
   `issues/`), not a security boundary. Implemented twice on purpose: a fast Go
   binary (`agentic hook`, built by the installer; it fails open even on a panic)
   with a pure-shell fallback (`SHELL_GUARD_NO_GO=1` selects it); parity between
   the two is test-covered.
-- `^(Read|Grep|Glob)$` → lean-ctx **redirect** (only when lean-ctx is installed):
-  steers big reads through compressed variants.
 - `^(Edit|Write|MultiEdit)$` (PostToolUse) → **edit-lint**: syntax-checks edited
   py/go/js/sh files right after the write lands (`python3 -c 'import ast…'`,
   `gofmt`, `node --check`, `bash -n`), so a broken edit is caught before anything
@@ -161,14 +156,10 @@ tool runs (PreToolUse), the third fires *after* an edit lands (PostToolUse):
 
 Settings merging is **idempotent**: the merge tool recognizes repo-managed hook
 commands by basename (so absolute-path variants don't duplicate) and manages its
-allow-list entries as a set, which also lets a tier change *remove* entries. The
+allow-list entries as a set, so entries the fragment no longer ships are removed. The
 same logic exists byte-identically in Go (`internal/settings`) and Python
 (`providers/shared/merge-settings.py`) — the installer prefers the Go binary and
 falls back to Python.
-
-`AGENTIC_TIER=weak` installs a reduced profile for cheap models — it drops the
-lean-ctx server, its redirect hook, and its allow entries, because measurement
-showed the orientation stack *taxes* weak models on easy tasks instead of helping.
 
 ### The `agentic` Go CLI (`cmd/agentic`, `internal/`)
 
@@ -190,8 +181,6 @@ prefix.
 
 External runtime tools live in **their own repos** and are only *wired up* here:
 
-- [`integrations/lean-ctx`](../integrations/lean-ctx) — context-compression MCP
-  server + hook delegate (`ctx_*` tools, the compression stack behind shell-guard).
 - [`integrations/no-mistakes`](../integrations/no-mistakes) — the local ship gate
   (see "Shipping a change" below).
 
@@ -249,7 +238,7 @@ Claude Code's per-project memory directories at install time (`sync.py`, gated b
 | Cost | Lever in this repo |
 |---|---|
 | Always-on prefix in every request | byte budget + diet (prefix-budget.sh); everything situational demoted to skills |
-| Orientation churn (agent re-reading files, verbose tool output) | lean-ctx compression + shell-guard rewrite; codebase-memory-mcp for structural questions instead of grep-and-read |
+| Orientation churn (agent re-reading files, verbose tool output) | codebase-memory-mcp for structural questions instead of grep-and-read |
 | Strong-model tokens on mechanical work | agent roles with cheap-tier pins + the delegation protocol |
 | Repeated boilerplate in delegation prompts | role bodies carry it once (pay-per-spawn) |
 | Cache misses | stable prefix ordering + `prompt-caching-playbook`; `agentic gain`/`cache` report the observed economics |
@@ -285,7 +274,7 @@ on tool-bound tasks) and retractions (W1).
 ## Why this is one repo (and where the real seam is)
 
 The natural boundary already exists and is already used: **runtime tools live in
-their own repos** (lean-ctx, codebase-memory-mcp, rtk, no-mistakes are all external projects —
+their own repos** (codebase-memory-mcp, no-mistakes are all external projects —
 this repo only wires them), and **plugins are cataloged, not vendored**. What
 remains inside is exactly the set of things that must move in lockstep:
 
